@@ -1,0 +1,19 @@
+[package]
+name = "lxb-toolkit-ffi"
+description = "The C ABI for lxb-toolkit, and the library the Python binding loads"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "lxb_toolkit"
+# Both, deliberately. The shared object is what Python's ctypes opens and what
+# a C program links against; the static one is for anybody who would rather
+# have no runtime dependency at all.
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.2.0" }

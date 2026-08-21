@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lxb-toolkit"
+version = "0.2.0"
+description = "The LineXinBar design language: colour roles, glass, motion, type, marks and sounds"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "GPL-3.0-only" }
+authors = [{ name = "Piotr Lewandowski" }]
+keywords = ["design-system", "ui", "console", "wayland", "shell"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Desktop Environment",
+    "Topic :: Software Development :: User Interfaces",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+]
+# Nothing. The binding is ctypes over the C ABI, so there is no build step, no
+# compiler needed to install it, and no wheel per Python version.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/petexy/lxb-toolkit"
+
+[tool.setuptools]
+packages = ["lxb_toolkit"]
+
+[tool.setuptools.package-data]
+# The shared library, where a wheel puts it. Built with `cargo build --release`
+# and copied in before packaging; see the README.
+lxb_toolkit = ["*.so", "*.dylib", "*.dll"]

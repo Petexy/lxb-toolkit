@@ -1,0 +1,22 @@
+[package]
+name = "lxb-toolkit"
+description = "The LineXinBar design language: colour roles, glass, motion, type, marks and sounds"
+keywords = ["design-system", "ui", "console", "wayland", "shell"]
+categories = ["gui"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# Nothing. A design language that dragged a dependency tree behind it would be
+# a dependency tree, and every one of them is a thing that can stop building on
+# the machine somebody wants this on.
+[dependencies]
+
+[dev-dependencies]
+# Only to prove the shipped shader is a shader: it is parsed and validated in
+# `tests/shader.rs` rather than taken on trust. Consumers pay nothing for this.
+naga = { version = "30", features = ["wgsl-in"] }

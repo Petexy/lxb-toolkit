@@ -1,0 +1,16 @@
+prefix=@PREFIX@
+exec_prefix=${prefix}
+libdir=@LIBDIR@
+includedir=${prefix}/include
+
+Name: lxb-toolkit
+Description: The LineXinBar design language: colour roles, glass, motion, type, marks and sounds
+URL: https://github.com/petexy/lxb-toolkit
+Version: @VERSION@
+Libs: -L${libdir} -llxb_toolkit
+# What the static archive needs beside it. A Rust staticlib carries its own
+# standard library but not the platform's, and a consumer linking
+# liblxb_toolkit.a rather than the shared object gets these from
+# `pkg-config --static`.
+Libs.private: -lm -lpthread -ldl
+Cflags: -I${includedir}

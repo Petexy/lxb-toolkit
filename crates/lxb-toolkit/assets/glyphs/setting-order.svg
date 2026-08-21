@@ -1,0 +1,40 @@
+<!--
+  Two panes side by side with an arrow under them: the row that changes which
+  display is on which side.
+
+  The panes are openings in nothing — each is a body with its screen taken out —
+  and the arrow below is a third. Nothing touches, so nothing needs a crevice.
+
+  Drawn a little smaller than the old mark was. A shape has to leave room round
+  itself for the shadow the shader casts beside it, and this one ran to within a
+  unit of the cell's edge; the scale below is what brings it inside. The four
+  rotations all carry the same factor whatever each needs on its own, because
+  they are one object turned and have to stay one size.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <path id="left" d="M2.9 3.4h10.7a1.5 1.5 0 0 1 1.5 1.5v8.6a1.5 1.5 0 0 1-1.5 1.5H2.9a1.5 1.5 0 0 1-1.5-1.5V4.9a1.5 1.5 0 0 1 1.5-1.5z"/>
+    <path id="right" d="M18.4 3.4h10.7a1.5 1.5 0 0 1 1.5 1.5v8.6a1.5 1.5 0 0 1-1.5 1.5H18.4a1.5 1.5 0 0 1-1.5-1.5V4.9a1.5 1.5 0 0 1 1.5-1.5z"/>
+    <path id="arrow" d="M3.2 23.6 9.8 19.8V22.2H22.2V19.8L28.8 23.6 22.2 27.4V25H9.8V27.4Z"/>
+    <g id="panes">
+      <rect x="3.5" y="5.5" width="9.5" height="7.4" rx="0.6"/>
+      <rect x="19" y="5.5" width="9.5" height="7.4" rx="0.6"/>
+    </g>
+    <g id="bead"><use href="#left"/><use href="#right"/><use href="#arrow"/></g>
+    <g id="holes"><use href="#panes"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+    </mask>
+  </defs>
+  <g transform="translate(16 16) scale(0.8966) translate(-16 -16)">
+  
+    <g mask="url(#pierced)">
+      <use href="#bead" fill="#ffffff"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,42 @@
+<!--
+  The mixer: a frame with three faders in it.
+
+  The frame is a body with its middle taken out, which is an opening like any
+  other and gets its ring of displaced water for nothing. The three rods stand
+  inside that opening without touching the frame, and each cap is a separate
+  body sitting on its rod, so each takes a crevice — a cap merged into its rod
+  is a rod with a bulge, and the whole mark is about where the three caps are.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <rect id="shell" x="3.4" y="5.2" width="25.2" height="21.6" rx="4.8"/>
+    <rect id="window" x="5.7" y="7.5" width="20.6" height="17" rx="2.8"/>
+    <g id="rods">
+      <rect x="8.35" y="9.5" width="1.7" height="13.1" rx="0.85"/>
+      <rect x="15.15" y="9.5" width="1.7" height="13.1" rx="0.85"/>
+      <rect x="21.95" y="9.5" width="1.7" height="13.1" rx="0.85"/>
+    </g>
+    <g id="caps">
+      <rect x="6.5" y="18.2" width="5.4" height="3" rx="1"/>
+      <rect x="13.3" y="11.2" width="5.4" height="3" rx="1"/>
+      <rect x="20.1" y="14.8" width="5.4" height="3" rx="1"/>
+    </g>
+    <g id="bead"><use href="#shell"/><use href="#rods"/><use href="#caps"/></g>
+    <g id="holes"><use href="#window"/></g>
+    <mask id="pierced">
+      <use href="#shell" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+      <use href="#rods" fill="#ffffff"/>
+      <use href="#caps" fill="#000000" stroke="#000000" stroke-width="0.85" stroke-linejoin="round"/>
+      <use href="#caps" fill="#ffffff"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

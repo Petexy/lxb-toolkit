@@ -1,0 +1,19 @@
+Package: lxb-toolkit-dev
+Version: @VERSION@-1
+Architecture: @ARCH@
+Maintainer: Piotr Lewandowski <piotr.petexy@gmail.com>
+Section: libdevel
+Priority: optional
+Depends: @SHLIB_DEPENDS@, lxb-toolkit (= @VERSION@-1)
+Recommends: cargo
+Installed-Size: @INSTALLED_SIZE@
+Homepage: https://github.com/petexy/lxb-toolkit
+Description: header, static library and application generator for lxb-toolkit
+ The C header, the static archive, the pkg-config file, and lxb-new: the
+ generator that creates a runnable Wayland application with a matching desktop
+ entry and icon, already speaking the design language.
+ .
+ Also installs the toolkit's Rust crate sources under /usr/share/lxb-toolkit,
+ which is what a generated project builds against on a machine that has never
+ seen the upstream checkout. Cargo reads a path or a registry rather than a
+ library directory, which is why the sources ship rather than only the library.

@@ -1,0 +1,18 @@
+<!--
+  The ellipsis, on the context menu row that hands a file to another program.
+
+  Three beads standing apart. They are the plainest thing in the set and the one
+  where standing apart matters most: three circles a little closer together
+  would be measured by the field as one lozenge with two dents in it.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <g fill="#fff">
+    <circle cx="6.4" cy="16" r="3.5"/>
+    <circle cx="16" cy="16" r="3.5"/>
+    <circle cx="25.6" cy="16" r="3.5"/>
+  </g>
+</svg>

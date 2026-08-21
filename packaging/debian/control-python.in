@@ -1,0 +1,16 @@
+Package: python3-lxb-toolkit
+Version: @VERSION@-1
+Architecture: all
+Maintainer: Piotr Lewandowski <piotr.petexy@gmail.com>
+Section: python
+Priority: optional
+Depends: python3, lxb-toolkit (= @VERSION@-1)
+Installed-Size: @INSTALLED_SIZE@
+Homepage: https://github.com/petexy/lxb-toolkit
+Description: the LineXinBar design language, for Python
+ The same design language through the same native core as the Rust and C APIs:
+ colour roles, theme choices, glass, motion, sizes, type, the neutral marks and
+ their material, and sound semantics.
+ .
+ The module is ctypes over the C ABI, so there is no build step, no compiler
+ needed to install it, and no wheel per Python version.

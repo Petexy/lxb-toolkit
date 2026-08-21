@@ -1,0 +1,44 @@
+<!--
+  The bell.
+
+  Three bodies: the bell, the loop it hangs by and the clapper under it. The
+  loop and the clapper each take a crevice against the bell, which is what makes
+  them read as three things rather than as one lumpy one — the clapper in
+  particular sat a third of a unit clear of the bell in the old drawing, and a
+  third of a unit is under a pixel where this is drawn, so the field would have
+  run them together.
+
+  The lip the old drawing ruled across the bell's foot is gone. It was a line
+  and not an edge, and the material has no way to be told about it.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <path id="bell"
+          d="M16 4.8
+             C12.1 4.8 9.5 7.9 9.2 12
+             C8.95 15.6 8.3 19 6.9 20.9
+             C6.2 21.85 6.9 23.2 8.05 23.2
+             H23.95
+             C25.1 23.2 25.8 21.85 25.1 20.9
+             C23.7 19 23.05 15.6 22.8 12
+             C22.5 7.9 19.9 4.8 16 4.8
+             Z"/>
+    <rect id="loop" x="14.15" y="2.6" width="3.7" height="3.6" rx="1.6"/>
+    <circle id="clapper" cx="16" cy="25.9" r="2.15"/>
+    <g id="hung"><use href="#loop"/><use href="#clapper"/></g>
+    <g id="bead"><use href="#bell"/><use href="#hung"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#hung" fill="#000000" stroke="#000000" stroke-width="0.85" stroke-linejoin="round"/>
+      <use href="#hung" fill="#ffffff"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

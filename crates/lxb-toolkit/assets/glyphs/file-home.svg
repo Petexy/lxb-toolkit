@@ -1,0 +1,29 @@
+<!--
+  The house that stands for the user's own folder.
+
+  Roof and wall are one object and take no crevice between them — a rim drawn
+  along that join would be a line ruled across the middle of a solid. The door
+  is an opening, which is what a door is, and the eaves the old drawing ruled
+  under the roof are gone with the rest of the shading.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <path id="roof" d="M16 4.6L28.2 15.2H3.8z" stroke-width="1.5" stroke-linejoin="round"/>
+    <rect id="wall" x="6.8" y="13.8" width="18.4" height="13.4" rx="1.8"/>
+    <rect id="door" x="13.1" y="18.9" width="5.8" height="8.3" rx="1"/>
+    <g id="bead"><use href="#roof" stroke="#ffffff"/><use href="#wall"/></g>
+    <g id="holes"><use href="#door"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

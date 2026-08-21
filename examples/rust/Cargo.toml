@@ -1,0 +1,31 @@
+[package]
+name = "hello-lxb"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+license = "GPL-3.0-only"
+description = "Hello, world — the LineXinBar design language in its own material"
+publish = false
+
+# Outside the toolkit's workspace on purpose, the way a real application would
+# be: it depends on the two crates by path and version and on nothing else of
+# the toolkit's.
+[workspace]
+
+[dependencies]
+lxb-toolkit = { path = "../../crates/lxb-toolkit", version = "0.2.0" }
+lxb-render = { path = "../../crates/lxb-render", version = "0.2.0" }
+lxb-input = { path = "../../crates/lxb-input", version = "0.2.0", features = [
+    "winit",
+] }
+lxb-sound = { path = "../../crates/lxb-sound", version = "0.2.0" }
+
+png = "0.17"
+pollster = "0.4"
+wgpu = "30"
+winit = { version = "0.30", default-features = false, features = [
+    "rwh_06",
+    "wayland",
+    "wayland-dlopen",
+    "x11",
+] }

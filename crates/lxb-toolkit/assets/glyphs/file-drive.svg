@@ -1,0 +1,35 @@
+<!--
+  The drum a disk is drawn as, at the head of the file explorer's device rows.
+
+  A cylinder seen a little from above: two ellipses and the wall between them,
+  one body. The two ribs round its waist are openings and not lines — the old
+  drawing ruled them on as a pair of strokes, a light one under a dark one, and
+  a rule is exactly what the material cannot be told about. Cut through, each
+  gets its own ring of displaced water and reads as a groove turned in the
+  drum, which is what a rib is.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <ellipse id="lid" cx="16" cy="8.4" rx="9.8" ry="3.8"/>
+    <ellipse id="foot" cx="16" cy="23.2" rx="9.8" ry="3.8"/>
+    <rect id="wall" x="6.2" y="8.4" width="19.6" height="14.8"/>
+    <g id="ribs" fill="none" stroke-width="0.9" stroke-linecap="round">
+      <path d="M6.9 14a9.1 3.4 0 0 0 18.2 0"/>
+      <path d="M6.9 18.4a9.1 3.4 0 0 0 18.2 0"/>
+    </g>
+    <g id="bead"><use href="#lid"/><use href="#wall"/><use href="#foot"/></g>
+    <g id="holes"><use href="#ribs" stroke="#000000"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

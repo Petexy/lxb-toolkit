@@ -1,0 +1,24 @@
+/target
+# Each greeting is a separate project, so each has a target of its own.
+/examples/rust/target
+/examples/rust-hello/target
+# Written where an example was run from, never checked in.
+/one-page.png
+__pycache__/
+.pytest_cache/
+# The file manager's own note about this folder, not the project's.
+.directory
+*.pyc
+/python/build
+/python/dist
+/python/*.egg-info
+/examples/c/swatch
+/examples/c/swatch-static
+/examples/c/swatch.svg
+/examples/c/hello
+/examples/c/hello-app
+/examples/c/tour
+/examples/python/contact-sheet.html
+# Written by examples/css/generate.sh, never checked in: a copied token is
+# a token that goes stale.
+/examples/css/lxb.css

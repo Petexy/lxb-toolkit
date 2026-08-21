@@ -1,0 +1,49 @@
+<!--
+  A display stood on its end with an arrow turning into it: the row that sets
+  which way round a screen is.
+
+  The display is setting-rotation-90.svg's — same bezel, same screen, same stand
+  on its left — carried in at three quarters and dropped down the cell by the one
+  matrix it has always used. That matrix is what keeps it clear of the arrow, and
+  it is not decoration: at full size the two run into each other and the arrow
+  has to be cut out of the display's corner, which reads as a bite taken out of
+  the screen rather than as something being done to it.
+
+  Nothing here touches anything, so there is no crevice in the drawing. The
+  screen is an opening, as on every display in these rows, and the stand is part
+  of the same body as the bezel.
+
+  The outer scale is only what brings the arrowhead inside the margin the
+  shader's shadow needs.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <path id="bezel" d="M12.75 3.15h12.9a2 2 0 0 1 2 2v23.2a2 2 0 0 1-2 2h-12.9a2 2 0 0 1-2-2V5.15a2 2 0 0 1 2-2z"/>
+    <path id="pane" d="M13.25 6.15h11.9v21.2h-11.9z"/>
+    <path id="neck" d="M7.15 14.15h4.2v5.2h-4.2z"/>
+    <path id="foot" d="M5.45 8.25h.8a1.1 1.1 0 0 1 1.1 1.1v14.8a1.1 1.1 0 0 1-1.1 1.1h-.8a1.1 1.1 0 0 1-1.1-1.1V9.35a1.1 1.1 0 0 1 1.1-1.1z"/>
+    <path id="arrow" d="M14 3.2H22.175 A6.1 6.1 0 0 1 28.275 9.3 V12.8H30.275L27.075 17.2 23.875 12.8H25.875V9.3 A3.7 3.7 0 0 0 22.175 5.6H14Z"/>
+    <g id="display" transform="matrix(.75 0 0 .75 .9375 5.4375)">
+      <use href="#bezel"/><use href="#neck"/><use href="#foot"/>
+    </g>
+    <g id="screen" transform="matrix(.75 0 0 .75 .9375 5.4375)">
+      <use href="#pane"/>
+    </g>
+    <g id="bead"><use href="#display"/><use href="#arrow"/></g>
+    <g id="holes"><use href="#screen"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <g transform="translate(16 16) scale(0.9107) translate(-16 -16)">
+    <g mask="url(#pierced)">
+      <use href="#bead" fill="#ffffff"/>
+    </g>
+  </g>
+</svg>

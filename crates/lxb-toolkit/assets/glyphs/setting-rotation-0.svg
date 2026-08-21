@@ -1,0 +1,45 @@
+<!--
+  The display at 0 degrees, one of the four a rotation row offers.
+
+  **The stand is the mark.** Bezel and screen are the same object in all four —
+  the same landscape rectangle, stood on its end for two of them — so what says
+  which turn this is, and the only thing that does, is where the stand ends up:
+  below it. Drop the stand and this glyph and the one for the opposite turn
+  become the same picture, which is exactly what happened when this set was first
+  cut back to its shape: the stand was drawn in the body rather than in the defs
+  the conversion read, so all four came out as a bare screen and two pairs of
+  them were indistinguishable.
+
+  Bezel, neck and foot are one object and take no crevice between them — a
+  monitor is not a screen resting on a separate stand. The screen is an opening,
+  as it is on every display in these rows.
+
+  The four all carry the same scale whatever each needs on its own. They are one
+  object turned, and one object seen four ways cannot change size as it goes
+  round; the factor is what the two portrait turns need, because on its end the
+  display is the tallest thing here.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <path id="bezel" d="M4.4 5.1h23.2a2 2 0 0 1 2 2v12.9a2 2 0 0 1-2 2H4.4a2 2 0 0 1-2-2V7.1a2 2 0 0 1 2-2z"/>
+    <path id="pane" d="M5.4 7.6h21.2v11.9H5.4z"/>
+    <path id="neck" d="M13.4 21.4h5.2v4.2h-5.2z"/>
+    <path id="foot" d="M8.6 25.4h14.8a1.1 1.1 0 0 1 1.1 1.1v0.8a1.1 1.1 0 0 1-1.1 1.1H8.6a1.1 1.1 0 0 1-1.1-1.1v-0.8a1.1 1.1 0 0 1 1.1-1.1z"/>
+    <g id="bead"><use href="#bezel"/><use href="#neck"/><use href="#foot"/></g>
+    <g id="holes"><use href="#pane"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <g transform="translate(16 16) scale(0.9059) translate(-16 -16)">
+    <g mask="url(#pierced)">
+      <use href="#bead" fill="#ffffff"/>
+    </g>
+  </g>
+</svg>

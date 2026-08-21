@@ -1,0 +1,30 @@
+<!--
+  The Other column's glyph: three beads in a row.
+
+  The column that takes whatever the XDG groups did not place, so its mark has
+  to say *more* without saying what kind of more — an ellipsis, which is the one
+  punctuation mark that means exactly that.
+
+  No openings, and three separate bodies of water that never touch: the gap
+  between them is the drawing. It is the narrowest air in the set, and what
+  keeps the three from running together is that the field there stays positive.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <circle id="d0" cx="6.5" cy="16" r="4.3"/>
+    <circle id="d1" cx="16" cy="16" r="4.3"/>
+    <circle id="d2" cx="25.5" cy="16" r="4.3"/>
+    <g id="bead"><use href="#d0"/><use href="#d1"/><use href="#d2"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

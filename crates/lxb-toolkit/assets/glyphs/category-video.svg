@@ -1,0 +1,31 @@
+<!--
+  The Video subcategory's glyph: a strip of film.
+
+  Under Multimedia, beside Music, and the plainer of the two: where the parent
+  column carries a strip and a pair of notes, this carries the strip alone.
+
+  The sprockets and the frames are the openings — the small holes down both
+  edges and the two large ones between them, which is the whole of what a length
+  of film is: a band with more taken out of it than left in.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <rect id="strip" x="2.4" y="6.6" width="27.2" height="18.8" rx="1.8"/>
+    <g id="sprockets"><rect x="4.9" y="8.2" width="2.4" height="2.2" rx="0.7"/><rect x="9.9" y="8.2" width="2.4" height="2.2" rx="0.7"/><rect x="14.8" y="8.2" width="2.4" height="2.2" rx="0.7"/><rect x="19.7" y="8.2" width="2.4" height="2.2" rx="0.7"/><rect x="24.7" y="8.2" width="2.4" height="2.2" rx="0.7"/><rect x="4.9" y="21.6" width="2.4" height="2.2" rx="0.7"/><rect x="9.9" y="21.6" width="2.4" height="2.2" rx="0.7"/><rect x="14.8" y="21.6" width="2.4" height="2.2" rx="0.7"/><rect x="19.7" y="21.6" width="2.4" height="2.2" rx="0.7"/><rect x="24.7" y="21.6" width="2.4" height="2.2" rx="0.7"/></g>
+    <g id="frames"><rect x="4.9" y="11.9" width="10.4" height="8.2" rx="1.1"/><rect x="16.7" y="11.9" width="10.4" height="8.2" rx="1.1"/></g>
+    <g id="bead"><use href="#strip"/></g>
+    <g id="holes"><use href="#sprockets"/><use href="#frames"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

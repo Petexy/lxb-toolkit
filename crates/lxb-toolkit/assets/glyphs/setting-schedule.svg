@@ -1,0 +1,23 @@
+<!--
+  A clock, for the rows that ask when.
+
+  A ring cut by its own path, two hands and a boss at their pivot. The hands are
+  strokes standing inside the bore with air all round them, so nothing merges
+  and nothing needs a crevice — which is the whole reason the bore is as wide as
+  it is.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <g fill="#fff">
+    <path fill-rule="evenodd" clip-rule="evenodd"
+          d="M5.4 16a10.6 10.6 0 1 0 21.2 0a10.6 10.6 0 1 0 -21.2 0Z M7.8 16a8.2 8.2 0 1 1 16.4 0a8.2 8.2 0 1 1 -16.4 0Z"/>
+    <circle cx="16" cy="16" r="1.2"/>
+  </g>
+  <g fill="none" stroke="#fff" stroke-linecap="round">
+    <path d="M16 16V9.6" stroke-width="1.8"/>
+    <path d="M16 16h4.6" stroke-width="2.2"/>
+  </g>
+</svg>

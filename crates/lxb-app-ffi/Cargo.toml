@@ -1,0 +1,21 @@
+[package]
+name = "lxb-app-ffi"
+description = "The C ABI for lxb-app: the window, the loop, the controls and the sounds, for a program in any language"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.87"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "lxb_app"
+# Its own shared object rather than more of `liblxb_toolkit.so`, deliberately.
+# The toolkit answers what the language is and has no dependencies at all,
+# which is the point of it; this one carries a GPU stack, a window system, a
+# controller library and an audio device. A program that only wants the answers
+# should not have to link any of that.
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+lxb-app = { path = "../lxb-app", version = "0.2.0" }

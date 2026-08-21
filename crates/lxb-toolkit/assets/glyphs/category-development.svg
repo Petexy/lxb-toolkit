@@ -1,0 +1,34 @@
+<!--
+  The Development column's glyph: two angle brackets and a slash.
+
+  The mark every editor and every terminal in the XDG `Development` group is
+  already wearing, which is worth more here than anything more literal.
+
+  No openings. The slash crosses both brackets, so a crevice is cut round it —
+  three rods that met with no gap would be one X-shaped body of water, and the
+  crossing is the whole of what makes this read as code.
+
+  The rods are thin, and thin is correct: a part narrower than twice the bevel
+  is all wall, which is what a rod of water looks like.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <path id="rod-l" d="M10.29 8.68L3.59 14.78L3.38 15.00L3.22 15.26L3.11 15.55L3.06 15.85L3.06 16.15L3.11 16.45L3.22 16.74L3.38 17.00L3.59 17.22L10.29 23.32L10.77 23.63L11.33 23.75L11.90 23.67L12.41 23.41L12.79 22.98L13.01 22.45L13.04 21.88L12.86 21.33L12.51 20.88L5.81 14.78L7.15 16.00L12.51 11.12L12.86 10.67L13.04 10.12L13.01 9.55L12.79 9.02L12.41 8.59L11.90 8.33L11.33 8.25L10.77 8.37Z"/>
+    <path id="rod-r" d="M19.49 11.12L26.19 17.22L24.85 16.00L19.49 20.88L19.14 21.33L18.96 21.88L18.99 22.45L19.21 22.98L19.59 23.41L20.10 23.67L20.67 23.75L21.23 23.63L21.71 23.32L28.41 17.22L28.62 17.00L28.78 16.74L28.89 16.45L28.94 16.15L28.94 15.85L28.89 15.55L28.78 15.26L28.62 15.00L28.41 14.78L21.71 8.68L21.23 8.37L20.67 8.25L20.10 8.33L19.59 8.59L19.21 9.02L18.99 9.55L18.96 10.12L19.14 10.67Z"/>
+    <path id="rod-s" d="M16.91 6.84L11.91 24.24L11.85 24.81L11.99 25.37L12.31 25.85L12.78 26.18L13.33 26.34L13.90 26.30L14.42 26.07L14.83 25.67L15.09 25.16L20.09 7.76L20.15 7.19L20.01 6.63L19.69 6.15L19.22 5.82L18.67 5.66L18.10 5.70L17.58 5.93L17.17 6.33Z"/>
+    <g id="bead"><use href="#rod-l"/><use href="#rod-r"/><use href="#rod-s"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#rod-s" fill="#000000" stroke="#000000" stroke-width="0.85" stroke-linejoin="round"/>
+      <use href="#rod-s" fill="#ffffff"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

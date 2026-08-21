@@ -1,0 +1,15 @@
+[package]
+name = "hello-lxb-app"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+license = "GPL-3.0-only"
+description = "Hello, world — the whole of an application in this language"
+publish = false
+
+# Outside the toolkit's workspace on purpose, the way a real application would
+# be: it depends on one crate by path and version and on nothing else.
+[workspace]
+
+[dependencies]
+lxb-app = { path = "../../crates/lxb-app", version = "0.2.0" }

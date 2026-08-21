@@ -1,0 +1,55 @@
+<!--
+  The Games column's glyph, and the drawing the rest of the set is measured
+  against: a bead of water standing on a flat space, sculpted into a controller.
+
+  lxb:shape — this file is a *shape*, and not a picture of one. Nothing in it is
+  shaded and nothing in it should be. The atlas measures how far every pixel is
+  from the nearest edge of the mark, and the quad shader builds the water out of
+  that field: `icons::SHAPE_MARK` is the marker, `icons::builtin_distance_field`
+  takes the measurement, and `glyph_material` in shaders.wgsl is the material.
+
+  What the material makes of a shape, so that one can be judged before it is
+  looked at:
+
+    * The wall. The field's gradient points straight out of the nearest edge, so
+      wherever the mark ends its surface turns over and stands up. That is the
+      whole of the bead — dark at the crown, where the wall is edge-on to the
+      light and hands over the room behind it, and bright at the foot, where the
+      wall has laid down and the whole lamp arrives at once.
+    * The openings. A hole's edge is an edge like any other, so the ring of
+      displaced volume standing round each one is that same wall arriving from
+      the other side, and nothing has to be drawn for it. This is what used to
+      cost five hand-tuned passes per opening, and it is why the set was redrawn.
+    * The shadow. The field reaches out past the mark, so the shader can ask
+      what is up-light of a pixel *outside* it and darken the flat space there.
+
+  Which leaves three ways for a drawing here to go wrong, all of them geometry:
+  a mark with no margin round it for its shadow, a part narrower than the bevel
+  is deep, and two bodies overlapping with no gap between them — the field
+  cannot tell that from one body, so a seam has to be cut as a real crevice.
+
+  The controller: the shell of the pad is the bead, and the controls are taken
+  out of it rather than laid on top of it. Raised droplets on a droplet were the
+  first attempt and read as a pile of blobs; water pulled off a surface leaves a
+  clean hole, and a hole is what the eye resolves at the size a column is drawn.
+  The d-pad is one cross and the four face buttons are four pips, none of them
+  quite regular — a bead is not a moulding, and the small irregularities are
+  what keep it from looking pressed out of plastic.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <path id="bead" d="M3.4 13.4C4.4 9.5 8 7.6 12.4 7.4C13.6 7.32 14.7 7.3 16 7.3C17.3 7.3 18.5 7.3 20.2 7.35C24.6 7.5 27.7 9.5 28.5 13.4C29 16.2 29 19.4 27.6 22.6C26.9 24.2 25.4 25.4 23.8 25C22.2 24.6 21.2 23 20.4 21.4C19.6 19.8 18.2 19.2 16 19.2C13.8 19.2 12.4 19.8 11.6 21.4C10.8 23 9.8 24.6 8.2 25C6.6 25.4 5.1 24.2 4.4 22.6C3 19.4 2.9 16.2 3.4 13.4Z"/>
+    <path id="plus" d="M10.2 10.75C10.75 10.67 11.25 10.67 11.8 10.75A0.75 0.75 0 0 1 12.55 11.5V12.15A0.75 0.75 0 0 0 13.3 12.9H13.95A0.75 0.75 0 0 1 14.7 13.65C14.8 14.15 14.8 14.75 14.7 15.25A0.75 0.75 0 0 1 13.95 16H13.3A0.75 0.75 0 0 0 12.55 16.75V17.4A0.75 0.75 0 0 1 11.8 18.15C11.25 18.23 10.75 18.23 10.2 18.15A0.75 0.75 0 0 1 9.45 17.4V16.75A0.75 0.75 0 0 0 8.7 16H8.05A0.75 0.75 0 0 1 7.3 15.25C7.2 14.75 7.2 14.15 7.3 13.65A0.75 0.75 0 0 1 8.05 12.9H8.7A0.75 0.75 0 0 0 9.45 12.15V11.5A0.75 0.75 0 0 1 10.2 10.75Z"/>
+    <g id="pips"><ellipse cx="21.7" cy="11.1" rx="1.38" ry="1.31" transform="rotate(-14 21.7 11.1)"/><ellipse cx="24.45" cy="13.85" rx="1.32" ry="1.37" transform="rotate(20 24.45 13.85)"/><ellipse cx="21.7" cy="16.6" rx="1.37" ry="1.32" transform="rotate(8 21.7 16.6)"/><ellipse cx="19" cy="13.85" rx="1.31" ry="1.36" transform="rotate(-6 19 13.85)"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#plus" fill="#000000"/>
+      <use href="#pips" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

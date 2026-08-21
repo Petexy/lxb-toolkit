@@ -1,0 +1,17 @@
+[package]
+name = "lxb-render"
+description = "The LineXinBar design language, drawn: one call per thing, in the shell's own material"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.87"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.2.0" }
+
+bytemuck = { version = "1", features = ["derive"] }
+glyphon = "0.12"
+resvg = { version = "0.48", default-features = false }
+wgpu = "30"

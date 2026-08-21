@@ -1,0 +1,19 @@
+[package]
+name = "{{SLUG}}"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+license = "GPL-3.0-only"
+
+# Keep this project independent even when it is created below another Cargo
+# workspace. Remove this section if you deliberately add it to that workspace.
+[workspace]
+
+[dependencies]
+# One crate: the window, the frame loop, every control on the machine and the
+# shell's own sounds. It re-exports the four underneath it — `lxb_app::lxb_toolkit`
+# is what the language answers, `lxb_app::lxb_render` draws it, `lxb_app::lxb_input`
+# reads the controls and `lxb_app::lxb_sound` answers them — so nothing here has
+# to name them separately, and a project cannot end up built against two
+# different releases of one language.
+lxb-app = {{APP_DEPENDENCY}}

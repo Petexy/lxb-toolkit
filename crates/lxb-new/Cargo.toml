@@ -1,0 +1,15 @@
+[package]
+name = "lxb-new"
+description = "Create a small, runnable LineXinBar application"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "GPL-3.0-only"
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "lxb-new"
+path = "src/main.rs"
+
+[dependencies]

@@ -1,0 +1,31 @@
+[package]
+name = "lxb-input"
+description = "The LineXinBar interaction language, read from real devices: a controller, a keyboard and a pointer as one interface"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.87"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.2.0" }
+
+# Hot-plugging and the SDL mapping database, which is the same table Steam
+# reads — so a pad that works in Big Picture works here, under the same names.
+gilrs = "0.11.2"
+
+# Only to turn one `winit::event::KeyEvent` into one `input::Key`. Fifteen
+# lines of matching, and optional twice over: an application on SDL or GTK has
+# its own key events and wants none of it, and a workspace that pulled a window
+# library in to run its unit tests would be paying for a window nothing opens.
+# `lxb-new` writes the feature into every generated application.
+winit = { version = "0.30", default-features = false, features = [
+    "wayland",
+    "wayland-dlopen",
+    "x11",
+], optional = true }
+
+[features]
+default = []
+winit = ["dep:winit"]

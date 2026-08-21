@@ -1,0 +1,39 @@
+<!--
+  The door an account is left by, with an arrow going out through it.
+
+  Two bodies with a crevice between: the arrow is in front of the door and has
+  to read as passing it rather than growing out of it. The door's two panels are
+  openings — they were engraved lines in the old drawing — and the handle is a
+  third, small and round, which is what says which side the door opens.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <rect id="door" x="3.2" y="4.2" width="10.6" height="23.6" rx="1.8"/>
+    <g id="panels">
+      <rect x="4.8" y="6.4" width="6" height="8.2" rx="0.5"/>
+      <rect x="4.8" y="17" width="6" height="8.2" rx="0.5"/>
+    </g>
+    <circle id="handle" cx="12.3" cy="16.6" r="1.3"/>
+    <path id="bolt"
+          d="M18 14.4 L21.95 14.4a0.65 0.65 0 0 0 0.65-0.65L22.6 12.67
+             a1 1 0 0 1 1.62-0.78L28.12 14.98a1.3 1.3 0 0 1 0 2.04
+             L24.22 20.11a1 1 0 0 1-1.62-0.78L22.6 18.25
+             a0.65 0.65 0 0 0-0.65-0.65L18 17.6a1.6 1.6 0 0 1 0-3.2z"/>
+    <g id="bead"><use href="#door"/><use href="#bolt"/></g>
+    <g id="holes"><use href="#panels"/><use href="#handle"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#bolt" fill="#000000" stroke="#000000" stroke-width="0.85" stroke-linejoin="round"/>
+      <use href="#bolt" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

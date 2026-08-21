@@ -1,0 +1,19 @@
+Package: lxb-toolkit
+Version: @VERSION@-1
+Architecture: @ARCH@
+Maintainer: Piotr Lewandowski <piotr.petexy@gmail.com>
+Section: libs
+Priority: optional
+Depends: @SHLIB_DEPENDS@
+Suggests: lxb-toolkit-dev, python3-lxb-toolkit
+Installed-Size: @INSTALLED_SIZE@
+Homepage: https://github.com/petexy/lxb-toolkit
+Description: the LineXinBar design language, as a shared library
+ The interface vocabulary of the LineXinBar shell — its colour roles, its
+ glass, its motion, its type, its 98 marks and its recordings — so that
+ something which is not that shell can be built out of the same material and
+ belong beside it.
+ .
+ This package is the shared library. It has no dependencies of its own: a
+ design language that dragged a dependency tree behind it would be a
+ dependency tree. To build against it, install lxb-toolkit-dev.

@@ -1,0 +1,31 @@
+<!--
+  The Graphics column's glyph: a sun over two hills, in a mount.
+
+  Graphics collects the things that make and show pictures, and the one drawing
+  that says "a picture" in any icon set is a landscape in a frame.
+
+  The scene is the opening — sun, hills and sky are all one hole, cut in a
+  single path so that the light standing round it is one ring rather than three.
+  What is inside it is whatever the shell is drawn on, which is the honest answer
+  for a picture the shell has no picture for.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <rect id="mount" x="3.4" y="5.4" width="25.2" height="21.2" rx="3.2"/>
+    <g id="scene"><circle cx="10.2" cy="11.7" r="2.15"/><path d="M7.4 23.2L13.2 14.2l4.1 5.5 3.3-4.3 4.9 7.8z"/></g>
+    <g id="bead"><use href="#mount"/></g>
+    <g id="holes"><use href="#scene"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

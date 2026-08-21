@@ -1,0 +1,17 @@
+prefix=@PREFIX@
+exec_prefix=${prefix}
+libdir=@LIBDIR@
+includedir=${prefix}/include
+
+Name: lxb-app
+Description: The window, the loop, the controls and the sounds — an application in the LineXinBar design language
+URL: https://github.com/petexy/lxb-toolkit
+Version: @VERSION@
+Requires: lxb-toolkit
+Libs: -L${libdir} -llxb_app
+# What the static archive needs beside it, and rather more than the toolkit's:
+# this one carries a GPU stack, a window system, the controllers and an audio
+# device, and a consumer linking liblxb_app.a rather than the shared object
+# gets these from `pkg-config --static`.
+Libs.private: -lm -lpthread -ldl
+Cflags: -I${includedir}

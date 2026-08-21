@@ -1,0 +1,33 @@
+<!--
+  The camera, on the context menu row that photographs the screen.
+
+  Hump and body are one object — the hump is the housing rising over the lens,
+  not a lid on it — and the lens and the flash beside it are openings. A lens
+  drawn as a disc laid on the body would be a sticker; cut through, it is a
+  barrel with a ring of displaced water standing round its mouth.
+
+  The body is pulled in from the old drawing's, which ran to within a unit of
+  the cell's edge and left the shadow nowhere to fall.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <path id="shell" d="M5.1 10.3h21.8a2.3 2.3 0 0 1 2.3 2.3v11.2a2.3 2.3 0 0 1-2.3 2.3H5.1a2.3 2.3 0 0 1-2.3-2.3V12.6a2.3 2.3 0 0 1 2.3-2.3z"/>
+    <path id="hump" d="M12.2 6.6h7.6a1.5 1.5 0 0 1 1.5 1.5v2.9h-10.6V8.1a1.5 1.5 0 0 1 1.5-1.5z"/>
+    <circle id="lens" cx="16" cy="18.2" r="5.3"/>
+    <circle id="flash" cx="25.2" cy="13.9" r="1.15"/>
+    <g id="bead"><use href="#hump"/><use href="#shell"/></g>
+    <g id="holes"><use href="#lens"/><use href="#flash"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

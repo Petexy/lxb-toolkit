@@ -1,0 +1,34 @@
+<!--
+  The padlock on the panel that asks for a password.
+
+  Shackle and body are one object. The keyhole is an opening, and it is the only
+  thing in the drawing that has to survive being small — a lock without one is a
+  handbag — so it is cut rather than shaded, and comes out with the ring of
+  displaced water every opening in the set gets.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <path id="shackle"
+          d="M16 2.6a7.1 7.1 0 0 1 7.1 7.1v5.1h-3.5V9.7a3.6 3.6 0 0 0-7.2 0v5.1H8.9V9.7
+             A7.1 7.1 0 0 1 16 2.6z"/>
+    <path id="case"
+          d="M7.4 13.9h17.2a2.6 2.6 0 0 1 2.6 2.6v10.3a2.6 2.6 0 0 1-2.6 2.6H7.4
+             a2.6 2.6 0 0 1-2.6-2.6V16.5a2.6 2.6 0 0 1 2.6-2.6z"/>
+    <path id="keyhole"
+          d="M16 17.6a2.3 2.3 0 0 1 1.2 4.25l1 4.05h-4.4l1-4.05A2.3 2.3 0 0 1 16 17.6z"/>
+    <g id="bead"><use href="#shackle"/><use href="#case"/></g>
+    <g id="holes"><use href="#keyhole"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

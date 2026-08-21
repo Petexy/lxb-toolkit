@@ -1,0 +1,22 @@
+<!--
+  The magnifier at the head of a shelf that can be searched.
+
+  Ring and handle are one object. The lens is an opening cut by the ring's own
+  path — `fill-rule="evenodd"` on a shape that winds twice, which is the one
+  place in the set a hole is made without a mask, and it is worth it: the ring
+  and its bore stay one path, so they cannot drift apart if the mark is
+  resized.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <g fill="#fff">
+      <rect x="0" y="-2.1" width="11.3" height="4.2" rx="2.1"
+            transform="translate(18.6 18.2) rotate(45)"/>
+      <path fill-rule="evenodd"
+            d="M13.6 4.4a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 1 0 0-17.6z
+               m0 3.1a5.7 5.7 0 1 1 0 11.4 5.7 5.7 0 1 1 0-11.4z"/>
+  </g>
+</svg>

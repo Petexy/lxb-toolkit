@@ -1,0 +1,15 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: lxb-toolkit
+Source: https://github.com/petexy/lxb-toolkit
+
+Files: *
+Copyright: 2026 Piotr Lewandowski and contributors
+License: GPL-3.0-only
+ The complete GNU General Public License version 3 is available in
+ /usr/share/common-licenses/GPL-3 on Debian systems.
+
+Files: crates/lxb-toolkit/assets/fonts/*
+Copyright: Christian Robertson
+License: Apache-2.0
+ The complete Apache License version 2.0 is available in
+ /usr/share/common-licenses/Apache-2.0 on Debian systems.

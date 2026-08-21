@@ -1,0 +1,124 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Hello, world — the LineXinBar design language</title>
+
+<!--
+  Hello, world — the smallest useful thing to write against the toolkit's
+  stylesheet, for an interface that reads CSS instead of linking a renderer.
+
+      cargo build --release -p lxb-toolkit-ffi   # from the repository root
+      ./generate.sh                              # writes lxb.css beside this
+      xdg-open hello.html
+
+  This is the one route with no library at run time: the palette is chosen when
+  the sheet is written, not read when the page is opened. Everything below is
+  named rather than picked — every colour, size, weight and duration on this
+  page is a var(--lxb-*), and not one hex value or millisecond was typed here.
+
+  It is also the honest flat approximation, and says so at the bottom. Real
+  glass refracts what is behind it; that needs the shipped WGSL and a renderer.
+-->
+
+<link rel="stylesheet" href="lxb.css">
+
+<style>
+:root {
+  /* The one number an application computes for itself: its screen height over
+     1080, clamped to 0.6..2.5. Height decides the scale, never width. */
+  --lxb-scale: 1;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: var(--lxb-panel-padding);
+  background: linear-gradient(var(--lxb-sky-top), var(--lxb-sky-bottom)) fixed;
+  /* Roboto is bundled with the toolkit precisely because the machine this runs
+     on may have no font service at all. A page cannot reach into the library,
+     so it names the family and falls back; an application embeds the face. */
+  font-family: var(--lxb-font), system-ui, sans-serif;
+  font-size: var(--lxb-text-body);
+  line-height: var(--lxb-line-height);
+  color: var(--lxb-text);
+}
+
+/* The greeting: the text role over the sky it sits on, ruled underneath in the
+   accent. Three roles, no colours. */
+.greeting {
+  font-size: var(--lxb-text-title);
+  font-weight: var(--lxb-font-weight-bold);
+  padding: var(--lxb-row-padding) var(--lxb-panel-padding);
+  border-bottom: calc(6px * var(--lxb-scale)) solid var(--lxb-accent);
+}
+
+/* A row is a row height tall, and a control inside it is a capsule: its radius
+   is half its own height, always. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--lxb-gap);
+  height: var(--lxb-row-height);
+  padding: 0 var(--lxb-row-padding);
+  border-radius: var(--lxb-card-radius);
+  /* Blended in the light rather than in the encoding, which is the same
+     reason the library hands a renderer linear values. */
+  background: color-mix(in srgb-linear, var(--lxb-glass-raised) 8%, transparent);
+}
+
+.control {
+  height: calc(var(--lxb-row-height) * 0.6);
+  padding: 0 var(--lxb-row-padding);
+  display: grid;
+  place-content: center;
+  border: none;
+  border-radius: calc(var(--lxb-row-height) * 0.6 / 2);
+  background: var(--lxb-accent);
+  color: var(--lxb-text);
+  font: inherit;
+  font-size: var(--lxb-text-label);
+}
+
+.label {
+  flex: 1;
+  color: var(--lxb-text-soft);
+  font-size: var(--lxb-text-label);
+}
+
+/* Motion is a duration and an easing under a name, and is never linear. */
+.control {
+  transition: transform var(--lxb-duration-panel) var(--lxb-ease),
+              background var(--lxb-duration-colour-fade) var(--lxb-ease);
+}
+.control:hover,
+.control:focus-visible {
+  transform: scale(1.06);
+  background: var(--lxb-accent-soft);
+  color: var(--lxb-accent-deep);
+}
+
+.note {
+  max-width: calc(var(--lxb-dialog-width) * 1.2);
+  color: var(--lxb-text-soft);
+  font-size: var(--lxb-text-caption);
+}
+.note code { color: var(--lxb-accent-soft); }
+</style>
+
+<main>
+  <p class="greeting">Hello, world</p>
+
+  <div class="row">
+    <span class="label">a row, and a capsule in it</span>
+    <button class="control">Press</button>
+  </div>
+
+  <p class="note">
+    Every value on this page came from <code>lxb.css</code>, which the toolkit
+    wrote. What a stylesheet cannot carry is the material: real glass refracts
+    what is behind it, splits it at the corners and brightens along the bevel,
+    and that needs the shipped WGSL and a renderer. Marks and recordings need
+    the library too — see the Rust, C and Python greetings for those.
+  </p>
+</main>

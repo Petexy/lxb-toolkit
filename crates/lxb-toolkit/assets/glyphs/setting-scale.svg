@@ -1,0 +1,36 @@
+<!--
+  A frame with a small pane in it and an arrow pulling away, for the scale rows.
+
+  The frame's inside is cut by its own path. The pane and the arrow are bodies
+  standing in that hole, and the arrow points away from the pane rather than at
+  it: what this row changes is how big everything is drawn, not where it is.
+
+  Drawn a little smaller than the old mark was. A shape has to leave room round
+  itself for the shadow the shader casts beside it, and this one ran to within a
+  unit of the cell's edge; the scale below is what brings it inside. The four
+  rotations all carry the same factor whatever each needs on its own, because
+  they are one object turned and have to stay one size.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <path id="frame" fill-rule="evenodd" clip-rule="evenodd"
+          d="M4.2 3.4h23.6a1.8 1.8 0 0 1 1.8 1.8v21.4a1.8 1.8 0 0 1-1.8 1.8H4.2a1.8 1.8 0 0 1-1.8-1.8V5.2a1.8 1.8 0 0 1 1.8-1.8z
+             M4.4 5.2v21.4h23.2V5.2z"/>
+    <rect id="pane" x="5.6" y="6.6" width="11.4" height="8.4" rx="1.1"/>
+    <path id="arrow" d="M26.8 24.4 21.09 23.58 22.32 22.2 16.3 16.81 18.1 14.79 24.12 20.19 25.36 18.81z"/>
+    <g id="bead"><use href="#frame"/><use href="#pane"/><use href="#arrow"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+    </mask>
+  </defs>
+  <g transform="translate(16 16) scale(0.963) translate(-16 -16)">
+  
+    <g mask="url(#pierced)">
+      <use href="#bead" fill="#ffffff"/>
+    </g>
+  </g>
+</svg>

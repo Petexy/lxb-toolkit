@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name={{TITLE}}
+Comment=A small application in the LineXinBar design language
+Exec={{SLUG}}
+Icon={{APP_ID}}
+Terminal=false
+Categories=Utility;
+StartupWMClass={{APP_ID}}
+OnlyShowIn=LineXinBar;

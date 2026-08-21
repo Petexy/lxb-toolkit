@@ -1,0 +1,53 @@
+<!--
+  The Multimedia column's glyph: a strip of film with a pair of notes over it.
+
+  Multimedia is the column that has both Video and Audio under it, so its mark
+  has to be both without being either — the two subcategories carry the film and
+  the note on their own.
+
+  The sprockets are the openings. They are the one place in the set where a run
+  of small holes is wanted rather than one large one: the eye reads the rhythm
+  before it reads the shape, which is what says film.
+
+  The notes lie *over* the strip rather than beside it, and a crevice runs
+  between them: the left head sits mostly on the strip, the left stem straddles
+  its edge and the beam's near cap comes to rest on it. Two pieces standing
+  apart are two marks that have to be read one after the other, and at the size
+  a column is drawn there is not room for two. Crossing them makes one.
+
+  The crevice is cut in the mask and not painted: the whole note is laid down
+  swollen in black and then again at its true size in white, so what is left
+  between it and the strip is a gap in the shape itself. The field cannot tell
+  two touching bodies from one, so the separation has to be real — and then the
+  shader turns the wall over on both sides of it for nothing. Its width is the
+  set's, and the sprocket the left head covers is meant to be covered: the notes
+  are in front.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <rect id="strip" x="5.55" y="4.12" width="9.68" height="23.76" rx="1.76"/>
+    <path id="beam" d="M16.06 11.51L25.08 9.75L25.63 9.54L26.08 9.15L26.36 8.63L26.45 8.05L26.34 7.46L26.03 6.96L25.57 6.58L25.01 6.4L24.41 6.41L15.4 8.17L14.85 8.38L14.39 8.77L14.11 9.29L14.02 9.87L14.13 10.46L14.44 10.96L14.9 11.34L15.46 11.52Z"/>
+    <path id="stem-l" d="M14.57 9.84L14.57 21.5L14.64 21.9L14.85 22.24L15.15 22.5L15.53 22.63L15.92 22.63L16.3 22.5L16.61 22.24L16.81 21.9L16.88 21.5L16.88 9.84L16.81 9.44L16.61 9.1L16.3 8.84L15.92 8.71L15.53 8.71L15.15 8.84L14.85 9.1L14.64 9.44Z"/>
+    <path id="stem-r" d="M23.59 8.08L23.59 19.3L23.66 19.7L23.87 20.04L24.17 20.3L24.55 20.43L24.94 20.43L25.32 20.3L25.63 20.04L25.83 19.7L25.9 19.3L25.9 8.08L25.83 7.68L25.63 7.34L25.32 7.08L24.94 6.95L24.55 6.95L24.17 7.08L23.87 7.34L23.66 7.68Z"/>
+    <ellipse id="head-l" cx="13.41" cy="22.82" rx="4.29" ry="3.41" transform="rotate(-20 13.41 22.82)"/>
+    <ellipse id="head-r" cx="22.44" cy="20.73" rx="4.29" ry="3.41" transform="rotate(-20 22.44 20.73)"/>
+    <g id="sprockets"><rect x="6.32" y="6.54" width="1.87" height="1.65" rx="0.55"/><rect x="12.15" y="6.54" width="1.87" height="1.65" rx="0.55"/><rect x="6.32" y="12.04" width="1.87" height="1.65" rx="0.55"/><rect x="12.15" y="12.04" width="1.87" height="1.65" rx="0.55"/><rect x="6.32" y="17.54" width="1.87" height="1.65" rx="0.55"/><rect x="12.15" y="17.54" width="1.87" height="1.65" rx="0.55"/><rect x="6.32" y="23.04" width="1.87" height="1.65" rx="0.55"/><rect x="12.15" y="23.04" width="1.87" height="1.65" rx="0.55"/></g>
+    <g id="note"><use href="#beam"/><use href="#stem-l"/><use href="#stem-r"/><use href="#head-l"/><use href="#head-r"/></g>
+    <g id="bead"><use href="#strip"/><use href="#note"/></g>
+    <g id="holes"><use href="#sprockets"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+      <use href="#note" fill="#000000" stroke="#000000" stroke-width="0.85" stroke-linejoin="round"/>
+      <use href="#note" fill="#ffffff"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

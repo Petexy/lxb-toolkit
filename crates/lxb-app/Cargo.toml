@@ -1,0 +1,25 @@
+[package]
+name = "lxb-app"
+description = "The window, the loop, the controls and the sounds — everything an application in this language has in common with every other one"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.87"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.2.0" }
+lxb-render = { path = "../lxb-render", version = "0.2.0" }
+lxb-input = { path = "../lxb-input", version = "0.2.0", features = ["winit"] }
+lxb-sound = { path = "../lxb-sound", version = "0.2.0" }
+
+png = "0.17"
+pollster = "0.4"
+wgpu = "30"
+winit = { version = "0.30", default-features = false, features = [
+    "rwh_06",
+    "wayland",
+    "wayland-dlopen",
+    "x11",
+] }

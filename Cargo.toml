@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "crates/lxb-toolkit",
+    "crates/lxb-toolkit-ffi",
+    "crates/lxb-new",
+    "crates/lxb-render",
+    "crates/lxb-input",
+    "crates/lxb-sound",
+    "crates/lxb-app",
+    "crates/lxb-app-ffi",
+]
+
+# examples/rust is deliberately not a member. It is the greeting that draws the
+# real material, so it carries winit, wgpu and glyphon — and a member that did
+# would put a GPU stack into `cargo test --workspace`, into `cargo vendor` and
+# therefore into every distribution package built from this tree. It is built
+# on its own: see examples/README.md.
+resolver = "2"
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.85"
+license = "GPL-3.0-only"
+repository = "https://github.com/petexy/lxb-toolkit"
+authors = ["Piotr Lewandowski"]
+
+[profile.release]
+lto = true
+strip = true

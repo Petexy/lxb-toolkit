@@ -1,0 +1,17 @@
+<!--
+  The play mark, on the context menu row that starts something.
+
+  One shape with three round corners, and nothing else needed. A triangle is
+  where the material does most for the least: its three corners are the only
+  places on it where the wall turns through anything, so the light gathers there
+  and the flat between them stays flat.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <path fill="#fff"
+        d="M11.69 9.54 20.27 14.44a1.8 1.8 0 0 1 0 3.12L11.69 22.46
+           a1.8 1.8 0 0 1-2.69-1.56V11.1a1.8 1.8 0 0 1 2.69-1.56z"/>
+</svg>

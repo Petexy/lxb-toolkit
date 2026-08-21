@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="sky" x1="18" y1="12" x2="108" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4968a8"/>
+      <stop offset="0.52" stop-color="#594385"/>
+      <stop offset="1" stop-color="#171b36"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="34" y1="31" x2="92" y2="96" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity=".42"/>
+      <stop offset=".36" stop-color="#d8e6ff" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#10162d" stop-opacity=".45"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#sky)"/>
+  <path d="M5 83c23-18 40-2 58-14 18-12 31-27 60-19" fill="none" stroke="#c6d9ff" stroke-opacity=".22" stroke-width="3"/>
+  <path d="M13 101c22-15 40-8 56-18 15-10 29-25 52-22" fill="none" stroke="#f5eeff" stroke-opacity=".15" stroke-width="2"/>
+  <rect x="24" y="27" width="80" height="74" rx="17" fill="url(#glass)" stroke="#f6f8ff" stroke-opacity=".58" stroke-width="2"/>
+  <rect x="37" y="68" width="54" height="17" rx="8.5" fill="#c9b9ff" fill-opacity=".42" stroke="#ffffff" stroke-opacity=".62"/>
+  <circle cx="46" cy="46" r="5" fill="#ffffff" fill-opacity=".88"/>
+  <path d="M58 46h25" stroke="#ffffff" stroke-opacity=".74" stroke-width="4" stroke-linecap="round"/>
+</svg>

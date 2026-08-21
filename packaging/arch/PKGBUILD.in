@@ -1,0 +1,118 @@
+# Maintainer: Piotr Lewandowski <piotr.petexy@gmail.com>
+
+pkgbase=lxb-toolkit
+# Arch does not split headers from libraries, so the toolkit is one package:
+# a machine that has it can both run something built against the C ABI and
+# build something new against it. The Python binding is separate because it is
+# the one part tied to a Python version rather than to this library.
+pkgname=('lxb-toolkit' 'python-lxb-toolkit')
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='The LineXinBar design language, for applications built to sit beside it'
+arch=('x86_64' 'aarch64')
+url='https://github.com/petexy/lxb-toolkit'
+license=('GPL-3.0-only' 'Apache-2.0')
+# The library has no dependencies of its own — that is deliberate, and the
+# reason it is a design language rather than a dependency tree. What is left is
+# what any Rust binary links.
+depends=('glibc' 'gcc-libs')
+makedepends=('cargo')
+options=(!lto)
+source=("$pkgbase-$pkgver.tar.gz")
+sha256sums=('@SOURCE_SHA256@')
+_lxb_toolkit_rustflags="${RUSTFLAGS:-}"
+
+# `$pkgname` is an array here and expands to its first element, so everything
+# outside a `package_*` function names the source directory with `$pkgbase`.
+prepare() {
+    cd "$pkgbase-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    _cargo_target="$(rustc -vV | sed -n 's/^host: //p')"
+    cargo fetch --locked --target "$_cargo_target"
+}
+
+build() {
+    cd "$pkgbase-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    export RUSTFLAGS="$_lxb_toolkit_rustflags --remap-path-prefix=$srcdir=/usr/src/debug/$pkgbase"
+    cargo build --frozen --release -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lxb-app-ffi -p lxb-new
+
+    # The crate the installed generator points new projects at. Built here
+    # rather than in package(), where makepkg has already dropped network and
+    # write access to anything but $pkgdir — and --frozen because a package
+    # build that resolves a dependency is a package build that is not
+    # reproducible.
+    cargo package --frozen --offline --no-verify -p lxb-toolkit
+}
+
+check() {
+    cd "$pkgbase-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    # `cargo test` already builds in the dev profile. Nothing here may pin an
+    # optimisation level: RUSTFLAGS is appended after the profile's own flags
+    # and wins.
+    export RUSTFLAGS="$_lxb_toolkit_rustflags --remap-path-prefix=$srcdir=/usr/src/debug/$pkgbase"
+    cargo test --frozen -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lxb-app-ffi -p lxb-new --all-targets
+}
+
+# Both packages carry the licences: they are installed and used independently,
+# and the Python binding on a machine without the C library is still shipped
+# under terms of its own.
+_lxb_toolkit_licenses() {
+    install -Dm0644 LICENSE \
+        "$pkgdir/usr/share/licenses/$1/GPL-3.0-only.txt"
+    # Roboto is compiled into the library rather than loaded from a theme,
+    # because the machine this is for may have no font service at all. Apache-2.0
+    # asks for its notice to travel with what carries it.
+    install -Dm0644 crates/lxb-toolkit/assets/fonts/LICENSE-Roboto.txt \
+        "$pkgdir/usr/share/licenses/$1/Roboto-Apache-2.0.txt"
+}
+
+package_lxb-toolkit() {
+    pkgdesc='The LineXinBar design language, for applications built to sit beside it'
+    optdepends=('python-lxb-toolkit: the same language from Python')
+    # No `provides` for the two libraries. An entry naming a .so is a promise
+    # that something can depend on that soname, and makepkg asks for it
+    # versioned; neither of these carries a SONAME at all, so a version here
+    # would be a number no reader could find in the file. Nothing depends on
+    # them that way — a consumer asks pkg-config where they are — and an
+    # unversioned entry only bought two warnings a release.
+
+    cd "$pkgbase-$pkgver"
+    ./packaging/install.sh \
+        --destdir "$pkgdir" \
+        --prefix /usr \
+        --target-dir target \
+        --component library
+    ./packaging/install.sh \
+        --destdir "$pkgdir" \
+        --prefix /usr \
+        --target-dir target \
+        --component devel
+
+    _lxb_toolkit_licenses "$pkgname"
+    install -Dm0644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm0644 docs/design-language.md \
+        "$pkgdir/usr/share/doc/$pkgname/design-language.md"
+    install -Dm0644 docs/application-development.md \
+        "$pkgdir/usr/share/doc/$pkgname/application-development.md"
+    install -Dm0644 docs/api-reference.md \
+        "$pkgdir/usr/share/doc/$pkgname/api-reference.md"
+}
+
+package_python-lxb-toolkit() {
+    pkgdesc='The LineXinBar design language, for Python'
+    depends=("lxb-toolkit=$pkgver-$pkgrel" 'python')
+
+    cd "$pkgbase-$pkgver"
+    ./packaging/install.sh \
+        --destdir "$pkgdir" \
+        --prefix /usr \
+        --target-dir target \
+        --component python
+
+    _lxb_toolkit_licenses "$pkgname"
+    install -Dm0644 python/README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

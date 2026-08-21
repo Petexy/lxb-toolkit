@@ -1,0 +1,10 @@
+Source: lxb-toolkit
+Section: libdevel
+Priority: optional
+Maintainer: Piotr Lewandowski <piotr.petexy@gmail.com>
+Standards-Version: 4.7.4
+Rules-Requires-Root: no
+
+Package: lxb-toolkit
+Architecture: linux-any
+Description: the LineXinBar design language

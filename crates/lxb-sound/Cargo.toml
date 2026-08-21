@@ -1,0 +1,20 @@
+[package]
+name = "lxb-sound"
+description = "The LineXinBar interface sounds, played: the shipped recordings, the rests between them, and the machine's output"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.87"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.2.0" }
+
+# Cut to the two jobs it is here for: `playback` is the output device, and
+# `vorbis` is the format the shipped clips are in. Every decoder beyond that
+# would be a codec compiled in for a file nothing here opens.
+rodio = { version = "0.22", default-features = false, features = [
+    "playback",
+    "vorbis",
+] }

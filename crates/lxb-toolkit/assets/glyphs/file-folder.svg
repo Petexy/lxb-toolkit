@@ -1,0 +1,30 @@
+<!--
+  A folder, at the head of the file explorer's place rows and on any row that
+  is a directory.
+
+  Two bodies: the back with its tab, and the pocket standing in front of it. The
+  crevice between them is what makes it a folder rather than a stepped block —
+  it is the only line in the drawing, and it has to be a real gap in the shape
+  because the field cannot be told about a line that is not an edge.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <rect id="tab" x="4.0" y="7.4" width="11.6" height="6.6" rx="1.9"/>
+    <rect id="back" x="4.0" y="10.0" width="24.0" height="14.6" rx="2.2"/>
+    <rect id="pocket" x="4.0" y="12.6" width="24.0" height="12.0" rx="2.2"/>
+    <g id="bead"><use href="#tab"/><use href="#back"/><use href="#pocket"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#pocket" fill="#000000" stroke="#000000" stroke-width="0.85" stroke-linejoin="round"/>
+      <use href="#pocket" fill="#ffffff"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

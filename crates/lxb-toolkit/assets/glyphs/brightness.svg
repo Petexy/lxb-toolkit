@@ -1,0 +1,19 @@
+<!--
+  The brightness bar's glyph: a sun.
+
+  A disc and eight rays that do not touch it. The gap is what makes it a sun
+  rather than a cog: two bodies of water that touch are one body and the field
+  cannot be told otherwise — see category-games.svg. Here the gap was already in
+  the drawing and only had to be left alone.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="4.3" fill="#fff"/>
+  <g fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round">
+    <path d="M12 2.95v2.5M12 18.55v2.5M2.95 12h2.5M18.55 12h2.5"/>
+    <path d="M5.6 5.6l1.77 1.77M16.63 16.63l1.77 1.77M18.4 5.6l-1.77 1.77M7.37 16.63l-1.77 1.77"/>
+  </g>
+</svg>

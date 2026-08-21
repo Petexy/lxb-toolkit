@@ -1,0 +1,20 @@
+<!--
+  The muted speaker: volume.svg's body exactly, with a cross beside it.
+
+  The body is copied and not redrawn, and that is the whole point of the mark —
+  muting has to read as something done to the speaker, which it cannot do if it
+  is a differently shaped speaker. The cross is pulled in a little from where
+  the old drawing had it, because a stroke's round cap reaches half its width
+  past the point it ends on and the shadow needs that room.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path fill="#fff" d="M2.4 9.2h4.9L12.8 4.4v15.2L7.3 14.8H2.4z"/>
+  <g fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round">
+    <path d="M16.1 9.7l5 5"/>
+    <path d="M21.1 9.7l-5 5"/>
+  </g>
+</svg>

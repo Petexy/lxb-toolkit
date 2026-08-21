@@ -1,0 +1,33 @@
+<!--
+  A chip, at the head of the system information panel.
+
+  The package with its die taken out and twelve legs standing off it. The legs
+  do not touch the package — a hair of air between each and the body — because
+  the field would otherwise measure the lot as one lump with a scalloped edge.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <rect id="package" x="7.4" y="7.4" width="17.2" height="17.2" rx="2.3"/>
+    <rect id="die" x="11.3" y="11.3" width="9.4" height="9.4" rx="1.1"/>
+    <g id="legs">
+      <path d="M2.9 9.9h4.1v2.3H2.9zM2.9 14.85h4.1v2.3H2.9zM2.9 19.8h4.1v2.3H2.9z"/>
+      <path d="M25 9.9h4.1v2.3H25zM25 14.85h4.1v2.3H25zM25 19.8h4.1v2.3H25z"/>
+      <path d="M9.9 2.9h2.3v4.1H9.9zM14.85 2.9h2.3v4.1h-2.3zM19.8 2.9h2.3v4.1h-2.3z"/>
+      <path d="M9.9 25h2.3v4.1H9.9zM14.85 25h2.3v4.1h-2.3zM19.8 25h2.3v4.1h-2.3z"/>
+    </g>
+    <g id="bead"><use href="#package"/><use href="#legs"/></g>
+    <g id="holes"><use href="#die"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

@@ -1,0 +1,36 @@
+<!--
+  The Files column's glyph: three folders, stacked.
+
+  System's Files row opens a file explorer, and this is the mark at the head of
+  it. Three rather than one, because a column called Files is a place with more
+  than one thing in it.
+
+  No openings. What carries the drawing instead is two crevices — one where the
+  front folder crosses the one behind it and one where the pocket crosses the
+  folder — cut as real gaps in the shape, because the field cannot tell three
+  overlapping bodies from one and would put a single rim round the silhouette of
+  all three.
+
+  lxb:shape — the material is computed from this outline. See
+  category-games.svg, which is where it is explained.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <rect id="behind" x="10.6" y="7" width="17.6" height="11.8" rx="2.2" transform="rotate(10 19.4 12.9)"/>
+    <path id="folder" d="M5.0 10.2H10.8A1.8 1.8 0 0 1 12.6 12V12.6H22A2.2 2.2 0 0 1 24.2 14.8V23.4A2.2 2.2 0 0 1 22 25.6H5A2.2 2.2 0 0 1 2.8 23.4V12.4A2.2 2.2 0 0 1 5 10.2Z"/>
+    <rect id="pocket" x="2.8" y="15" width="21.4" height="10.6" rx="2.2"/>
+    <g id="bead"><use href="#behind"/><use href="#folder"/><use href="#pocket"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#folder" fill="#000000" stroke="#000000" stroke-width="0.85" stroke-linejoin="round"/>
+      <use href="#folder" fill="#ffffff"/>
+      <use href="#pocket" fill="#000000" stroke="#000000" stroke-width="0.85" stroke-linejoin="round"/>
+      <use href="#pocket" fill="#ffffff"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>
