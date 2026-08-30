@@ -12,7 +12,7 @@
 //! The other six pages are the rest of the answer, because most of it is not a
 //! number. The water behind everything is the shell's own wallpaper. Every
 //! pane bends what is behind it, so the sidebar bends the water and a context
-//! menu bends the sidebar, the rows and the words. The ninety-eight marks are
+//! menu bends the sidebar, the rows and the words. The marks are
 //! beads of water shaded out of their own distance fields.
 //!
 //! None of that is written here. This application asks for a pane, a button, a
@@ -36,7 +36,7 @@ mod tour;
 use std::sync::Arc;
 
 use lxb_input::Controls;
-use lxb_render::{Spot, Ui};
+use lxb_render::{Spot, Ui, WallpaperClock};
 use lxb_sound::Sounds;
 use lxb_toolkit::{
     input::{Action, Key, Wheel},
@@ -76,7 +76,7 @@ fn main() {
         Some("--shot") => shot(&arguments[1..]),
         None => window(),
         Some(_) => Err("usage: hello-lxb [--print [HEIGHT]]\n\
-             \x20                [--shot FILE [WIDTHxHEIGHT] [PAGE] [menu|dialog]]"
+             \x20                [--shot FILE [WIDTHxHEIGHT] [PAGE] [OVERLAY]]"
             .to_string()),
     };
     if let Err(message) = result {
@@ -136,9 +136,10 @@ fn report(height: f32) {
 /// One settled frame, to a PNG. No display, no compositor, no window — the
 /// same device, the same shaders and the same passes.
 fn shot(arguments: &[String]) -> Result<(), String> {
-    let path = arguments
-        .first()
-        .ok_or("usage: --shot FILE [WIDTHxHEIGHT] [PAGE] [menu|dialog]")?;
+    let path = arguments.first().ok_or(
+        "usage: --shot FILE [WIDTHxHEIGHT] [PAGE] \
+         [menu|dialog|picker-file|picker-many|picker-folder|picker-save]",
+    )?;
     let (width, height) = match arguments.get(1) {
         Some(size) => {
             let (w, h) = size
@@ -164,12 +165,27 @@ fn shot(arguments: &[String]) -> Result<(), String> {
             .ok_or_else(|| format!("no such page: {page} ({})", PAGES.join(", ")))?;
     }
     let overlay = arguments.get(3).map(String::as_str);
-    if !matches!(overlay, None | Some("menu") | Some("dialog")) {
+    if !matches!(
+        overlay,
+        None | Some("menu")
+            | Some("dialog")
+            | Some("picker-file")
+            | Some("picker-many")
+            | Some("picker-folder")
+            | Some("picker-save")
+            | Some("picker-image")
+            | Some("picker-options")
+    ) {
         return Err(format!(
-            "no such overlay: {} (menu, dialog)",
+            "no such overlay: {} (menu, dialog, picker-file, picker-many, \
+             picker-folder, picker-save, picker-image, picker-options)",
             overlay.unwrap_or_default()
         ));
     }
+
+    // A picture of this window has to contain the chooser, so the shot never
+    // puts its question to the desktop — the same rule App::shot keeps.
+    tour.keep_its_own_questions();
 
     let mut ui = Ui::headless(width, height)?;
     // Far enough past every entrance that nothing is still arriving. The first
@@ -180,9 +196,39 @@ fn shot(arguments: &[String]) -> Result<(), String> {
     if let Some(overlay) = overlay {
         match overlay {
             "menu" => tour.open_menu(),
-            _ => {
+            "dialog" => {
                 let _ = tour.act();
             }
+            "picker-file" => {
+                tour.open_picker(0);
+            }
+            "picker-many" => {
+                tour.open_picker(1);
+            }
+            "picker-folder" => {
+                tour.open_picker(2);
+            }
+            "picker-save" => {
+                tour.open_picker(3);
+            }
+            "picker-image" => {
+                tour.open_picker(4);
+            }
+            "picker-options" => {
+                // The image question, because it is the one with a kind in
+                // force and so the only one whose menu has a Types row.
+                tour.open_picker(4);
+                // The panel has to have been drawn once before its menu can be
+                // raised: the menu hangs off a word on the legend, and only the
+                // drawing knows where that word landed.
+                for _ in 0..60 {
+                    tour.advance(1.0 / 60.0);
+                }
+                tour.draw(&mut ui, width as f32, height as f32, 10.0);
+                let _ = ui.end_to_image()?;
+                tour.open_picker_menu();
+            }
+            _ => unreachable!("the overlay was checked above"),
         }
         // Settled, rather than caught on its way out.
         for _ in 0..60 {
@@ -210,9 +256,16 @@ fn shot(arguments: &[String]) -> Result<(), String> {
 /// Ordinary public winit and wgpu: nothing here uses LineXinBar's private
 /// shell protocol, and the same binary runs on any other desktop.
 fn window() -> Result<(), String> {
+    // Before anything else in this process starts a thread of its own: the
+    // record is taken out of the environment as it is read, and reading the
+    // environment while another thread may be writing it is not something to
+    // arrange casually. `App::run` does exactly this for the short form.
+    let wallpaper = WallpaperClock::from_environment(ShellTheme::load().accent.name)
+        .unwrap_or_else(WallpaperClock::local);
+
     let event_loop = EventLoop::new().map_err(|err| err.to_string())?;
     event_loop.set_control_flow(ControlFlow::Poll);
-    let mut application = Application::new();
+    let mut application = Application::new(wallpaper);
     event_loop
         .run_app(&mut application)
         .map_err(|err| err.to_string())
@@ -226,6 +279,11 @@ struct Application {
     tour: Tour,
     opened: std::time::Instant,
     last: std::time::Instant,
+    /// The wallpaper's own clock, which is the one thing here that may have
+    /// started before this process did. Everything else — transitions, key
+    /// repeat, controller motion — runs on `opened`, because they are this
+    /// window's own time and must not inherit a second from somewhere else.
+    wallpaper: WallpaperClock,
 
     /// Every control this is driven from, read as one: the keyboard's keys go
     /// in, the controllers are read here, and one list of actions comes out
@@ -251,7 +309,7 @@ struct Application {
 }
 
 impl Application {
-    fn new() -> Self {
+    fn new(wallpaper: WallpaperClock) -> Self {
         let controls = Controls::new();
         if let Some(trouble) = controls.trouble() {
             // Said once and never again: controller input is an enhancement,
@@ -267,6 +325,7 @@ impl Application {
             tour: Tour::new(),
             opened: std::time::Instant::now(),
             last: std::time::Instant::now(),
+            wallpaper,
             controls,
             sounds: Sounds::new(),
             pointer: [0.0; 2],
@@ -360,6 +419,9 @@ impl ApplicationHandler for Application {
         self.ui = Some(ui);
         self.opened = std::time::Instant::now();
         self.last = self.opened;
+        // A wallpaper carried in from somewhere else keeps running; one that
+        // began here begins with the window.
+        self.wallpaper.restart();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -448,7 +510,14 @@ impl ApplicationHandler for Application {
                     return;
                 }
                 let down = event.state == ElementState::Pressed;
-                let Some(key) = lxb_input::key_of(&event, self.shift) else {
+                let key = lxb_input::key_of(&event, self.shift);
+                // Everything a keyboard means to the chooser, in one call:
+                // the search field, the controller board it may be showing,
+                // and the letters that reach neither.
+                if down && self.tour.picker_key(key, event.text.as_deref()) {
+                    return;
+                }
+                let Some(key) = key else {
                     return;
                 };
                 let now = self.now();
@@ -529,7 +598,7 @@ impl ApplicationHandler for Application {
                 }
 
                 let size = window.inner_size();
-                let elapsed = (now - self.opened).as_secs_f32();
+                let elapsed = self.wallpaper.elapsed_secs();
                 let (Some(surface), Some(ui)) = (self.surface.as_ref(), self.ui.as_mut()) else {
                     return;
                 };
@@ -659,11 +728,11 @@ mod tests {
         }
     }
 
-    /// The marks page is the one with ninety-eight of them, in a grid with
+    /// The marks page is the one with every one of them, in a grid with
     /// gaps between. Every single one has to be reachable, or the grid is a
     /// dartboard.
     #[test]
-    fn all_ninety_eight_marks_can_be_pointed_at() {
+    fn every_mark_can_be_pointed_at() {
         let (width, height) = (1280, 800);
         let mut ui = Ui::headless(width, height).expect("a device to draw with");
         let mut tour = Tour::new();
@@ -805,6 +874,117 @@ mod tests {
         tour.page = 0;
         assert_eq!(tour.on_action(Action::Left), None);
         assert_eq!(tour.on_action(Action::Right), None);
+    }
+
+    #[test]
+    fn the_picker_search_board_is_driven_by_the_controller_and_b_leaves_it() {
+        let mut tour = Tour::new();
+        tour.keep_its_own_questions();
+        assert!(tour.open_picker(0));
+        assert_eq!(tour.on_action(Action::Up), Some(Sound::Move), "to Search");
+        assert_eq!(tour.on_action(Action::Accept), Some(Sound::Press));
+        assert!(tour.files.typing());
+
+        assert_eq!(tour.on_action(Action::Down), Some(Sound::Move));
+        assert!(tour.files.typing());
+        assert_eq!(tour.on_action(Action::Back), Some(Sound::Back));
+        assert!(!tour.files.typing());
+        assert!(tour.picker_open(), "B returns to the picker, not the page");
+    }
+
+    /// Where the session already has a chooser, the question goes to it and
+    /// this window draws nothing of its own.
+    ///
+    /// This is the whole rule: the toolkit's chooser is what answers when
+    /// nothing else can, and a program that opened it anyway would be putting a
+    /// second file dialog in front of somebody who already has one. The test is
+    /// skipped where the machine running it has no portal, because then there
+    /// is nothing to defer to and the fallback is the right answer.
+    #[test]
+    fn a_desktop_with_a_chooser_of_its_own_is_asked_instead() {
+        if lxb_portal::Portal::open().is_none() {
+            eprintln!("no portal on this machine: deferring to one was not checked");
+            return;
+        }
+        let mut tour = Tour::new();
+        assert!(tour.open_picker(0));
+        assert!(
+            tour.asking_the_desktop(),
+            "the question was not put to the desktop"
+        );
+        assert!(
+            !tour.picker_open(),
+            "the toolkit drew its own chooser over the desktop's"
+        );
+    }
+
+    /// Every question the Picker page offers can be put. The page is the only
+    /// place in this program the purposes are named, so one added to the
+    /// library and left out of the page shows up here as a row that opens
+    /// nothing.
+    #[test]
+    fn every_question_the_picker_page_offers_can_be_put() {
+        for (index, (_, _, label, _)) in tour::PICKER_PURPOSES.iter().enumerate() {
+            let mut tour = Tour::new();
+            // This is about the chooser this program draws. Where the machine
+            // running the tests has a portal the question would go there
+            // instead and nothing would open in this window at all — which is
+            // what the test below is about.
+            tour.keep_its_own_questions();
+            tour.page = 7;
+            for _ in 0..index {
+                assert_eq!(tour.walk(1), Some(Sound::Move), "the row before {label}");
+            }
+            assert_eq!(
+                tour.on_action(Action::Accept),
+                Some(Sound::Press),
+                "{label} opened nothing"
+            );
+            assert!(tour.picker_open(), "{label} opened nothing");
+        }
+    }
+
+    /// Several files are ticked one at a time and handed over together, and
+    /// until the row that answers is reached there is no answer at all — which
+    /// is what stops a press of Accept out of habit choosing one file when the
+    /// question asked for a set.
+    ///
+    /// Driven the way somebody at the machine drives it — one action at a time
+    /// — because that is the whole of what a program using `Files` has to
+    /// write. The fixture's shape is asserted rather than searched for, so a
+    /// file added to examples/tour-files fails here instead of quietly leaving
+    /// this test ticking nothing.
+    #[test]
+    fn many_files_are_ticked_and_handed_over_by_the_head_row() {
+        const FOLDERS: usize = 3;
+
+        let mut tour = Tour::new();
+        tour.keep_its_own_questions();
+        assert!(tour.open_picker(1));
+
+        // Past Albums, Empty and Scenes to the first file of the fixture.
+        for _ in 0..FOLDERS {
+            assert_eq!(tour.on_action(Action::Down), Some(Sound::Move));
+        }
+        assert_eq!(
+            tour.on_action(Action::Accept),
+            Some(Sound::Press),
+            "notes.txt is ticked"
+        );
+        assert!(tour.picked().is_empty(), "a tick is not an answer");
+        assert_eq!(tour.on_action(Action::Down), Some(Sound::Move));
+        assert_eq!(tour.on_action(Action::Accept), Some(Sound::Press));
+
+        // Up out of the listing, past Search, to the row that ends it.
+        while tour.on_action(Action::Up).is_some() {}
+        assert_eq!(
+            tour.on_action(Action::Accept),
+            Some(Sound::Press),
+            "the head row hands over everything ticked"
+        );
+        assert!(!tour.picker_open());
+        tour.advance(1.0 / 60.0);
+        assert_eq!(tour.picked().len(), 2, "both of them");
     }
 
     /// The Sound page answers a press with the recording the row is about,

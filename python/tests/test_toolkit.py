@@ -14,6 +14,7 @@ actually has.
 
 from __future__ import annotations
 
+import ctypes
 import os
 import sys
 from pathlib import Path
@@ -27,7 +28,8 @@ import lxb_toolkit as lxb
 def test_the_palettes_are_the_authored_ones():
     """A colour survives the journey out of the library unchanged."""
     assert [p.name for p in lxb.PALETTES] == [
-        "Purple", "Blue", "Green", "Yellow", "Red",
+        "Purple", "Blue", "Green", "Yellow", "Red", "Teal",
+        "Indigo", "Pink", "Orange", "White", "Silver", "Black",
     ]
     assert lxb.PALETTES[0].color(lxb.Role.ACCENT).hex == "#8b5cf6"
     assert lxb.PALETTES[0][lxb.Role.DANGER].hex == "#e0533a"
@@ -73,6 +75,47 @@ def test_the_enumerations_come_from_the_library():
     names = dict(lxb.roles())
     assert names["accent"] == lxb.Role.ACCENT
     assert names["glass-raised"] == lxb.Role.GLASS_RAISED
+
+
+def test_a_picker_walks_and_answers_across_the_abi():
+    """The owned filesystem model survives Python's borrowed C strings."""
+    with TemporaryDirectory() as raw:
+        root = Path(raw)
+        (root / "inside").mkdir()
+        (root / "note.txt").write_text("x", encoding="utf-8")
+        (root / "inside" / "picked.txt").write_text("x", encoding="utf-8")
+
+        with lxb.Picker(lxb.Selection.FILE, root) as picker:
+            assert picker.selection is lxb.Selection.FILE
+            assert picker.can_search
+            assert picker.location == root
+            assert picker.note == "1 folder, 1 file"
+            assert [(entry.name, entry.kind) for entry in picker.entries] == [
+                ("inside", lxb.EntryKind.FOLDER),
+                ("note.txt", lxb.EntryKind.FILE),
+            ]
+            assert picker.selected == 0
+            assert picker.choose() is None
+            assert not picker.can_choose
+            assert picker.select(1)
+            assert picker.can_choose
+            assert picker.choose() == root / "note.txt"
+            assert picker.select(0)
+            assert picker.enter()
+            assert picker.location == root / "inside"
+            picker.search("PICK")
+            assert picker.query == "PICK"
+            assert picker.choose() == root / "inside" / "picked.txt"
+            assert picker.leave()
+            assert picker.query == ""
+
+        with lxb.Picker(lxb.Selection.FOLDER, root) as picker:
+            assert not picker.can_search
+            assert picker.can_choose
+            assert picker.choose() == root
+            picker.search("inside")
+            assert picker.query == ""
+            assert [entry.name for entry in picker.entries] == ["inside"]
 
 
 def test_the_current_shell_theme_crosses_all_three_languages():
@@ -428,7 +471,7 @@ def test_a_press_is_a_journey_rather_than_a_state():
 
 
 def test_the_assets_are_really_here():
-    assert len(lxb.GLYPHS) == 98
+    assert len(lxb.GLYPHS) == 108
     assert len(lxb.SOUNDS) == 14
     assert len(lxb.SHELL_SOUNDS) == 12
     assert set(lxb.SOUNDS) - set(lxb.SHELL_SOUNDS) == {"trash", "error"}
@@ -438,8 +481,9 @@ def test_the_assets_are_really_here():
     assert lxb.Sound.COMPAT_ERROR == "error"
 
     launch = lxb.glyph("launch")
-    assert launch is not None and launch.startswith(b"<!--")
-    assert b"<svg" in launch
+    assert launch is not None and launch.startswith(b"<svg")
+    assert launch.rstrip().endswith(b"</svg>")
+    assert b'data-lxb-material="lxb:shape"' in launch
     assert lxb.glyph("no-such-mark") is None
     assert lxb.glyph_box("volume") == 24
     assert lxb.glyph_box("launch") == 32
@@ -786,6 +830,43 @@ def test_a_fade_starts_and_ends_flat() -> None:
     assert lxb.SOUND_MUSIC_FADE_OUT > lxb.SOUND_MUSIC_FADE_IN
 
 
+def test_a_wheel_says_which_list_it_was_over_without_taking_its_directions() -> None:
+    """The pointer half of a gesture, asked the way C asks for it.
+
+    Every step is already in `actions()`; this only says which of a page's own
+    lists the pointer was over, so a page can move that one instead of
+    whichever the light was left on.
+    """
+    from lxb_toolkit import app as app_module
+
+    asked = []
+
+    class Stub:
+        @staticmethod
+        def lxb_page_scrolled(_page, ident):
+            asked.append(ident)
+            return 3 if ident == 0x7001 else 0
+
+        @staticmethod
+        def lxb_draw_soft_edges(_page, rect, band, top, bottom):
+            asked.append((rect[0], rect[1], rect[2], rect[3], band, top, bottom))
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        over_list = page.scrolled(0x7001)
+        over_panel = page.scrolled(0x7000)
+        page.draw_soft_edges((10.0, 20.0, 300.0, 400.0), 40.0, 1.0, 0.5)
+    finally:
+        app_module._lib = real
+
+    assert over_list == 3
+    assert over_panel == 0
+    assert asked[:2] == [0x7001, 0x7000]
+    assert asked[2] == (10.0, 20.0, 300.0, 400.0, 40.0, 1.0, 0.5)
+
+
 def test_what_the_controls_said_comes_back_as_numbers() -> None:
     """Every action a driven page reads, without a window.
 
@@ -816,6 +897,87 @@ def test_what_the_controls_said_comes_back_as_numbers() -> None:
     assert got == said[:-1], got
     assert all(isinstance(action, int) for action in got)
     assert got[2] == lxb.Action.MENU, "it has to compare against the constants"
+
+
+def test_every_file_of_an_answer_is_read_one_call_at_a_time() -> None:
+    """picked_files walks lxb_page_picked_next until it answers null.
+
+    The C side hands one owned string back per call and null when the answer is
+    spent, so a binding that read it once would silently drop every file but
+    the first of a many-files question.
+    """
+    from lxb_toolkit import app as app_module
+
+    answer = [b"/tmp/one.png", b"/tmp/two.png"]
+    freed: list[int] = []
+    kept: list[ctypes.Array] = []
+
+    class Stub:
+        @staticmethod
+        def lxb_page_picked_next(_page):
+            if not answer:
+                return None
+            buffer = ctypes.create_string_buffer(answer.pop(0))
+            kept.append(buffer)
+            return ctypes.cast(buffer, ctypes.c_void_p).value
+
+        @staticmethod
+        def lxb_app_string_free(raw):
+            freed.append(raw)
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        got = page.picked_files()
+    finally:
+        app_module._lib = real
+
+    assert got == [Path("/tmp/one.png"), Path("/tmp/two.png")], got
+    assert len(freed) == 2, "every path handed over has to be released"
+
+
+def test_a_question_names_the_purpose_it_puts() -> None:
+    """pick, pick_many and save reach three different calls."""
+    from lxb_toolkit import app as app_module
+
+    asked: list[tuple[str, tuple]] = []
+
+    class Stub:
+        @staticmethod
+        def lxb_page_pick(page, selection, directory):
+            asked.append(("pick", (selection, directory)))
+            return 1
+
+        @staticmethod
+        def lxb_page_pick_many(page, selection, directory):
+            asked.append(("pick_many", (selection, directory)))
+            return 1
+
+        @staticmethod
+        def lxb_page_save(page, name, directory):
+            asked.append(("save", (name, directory)))
+            return 1
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        assert page.pick(lxb.Selection.IMAGE, "/tmp")
+        assert page.pick_many(lxb.Selection.FILE, "/tmp")
+        assert page.save("notes.txt", "/tmp")
+        try:
+            page.pick("not a selection", "/tmp")
+        except ValueError:
+            pass
+        else:  # pragma: no cover - the guard is the point
+            raise AssertionError("an unknown selection was accepted")
+    finally:
+        app_module._lib = real
+
+    assert [name for name, _ in asked] == ["pick", "pick_many", "save"]
+    assert asked[0][1] == (int(lxb.Selection.IMAGE), b"/tmp")
+    assert asked[2][1] == (b"notes.txt", b"/tmp")
 
 
 if __name__ == "__main__":

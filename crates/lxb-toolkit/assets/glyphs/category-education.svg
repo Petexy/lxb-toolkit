@@ -1,22 +1,4 @@
-<!--
-  The Education column's glyph: a flask.
-
-  Education collects the things that teach, and a flask is the one object that
-  says learning without saying *school* — which would be wrong for a machine
-  that has a chemistry set and a language course in the same column.
-
-  The bubbles are the openings, and they are the reason this object was chosen
-  over a book: bubbles in water are holes in water, so the mark and the material
-  are saying the same thing.
-
-  The lip is a second body across the neck and takes a crevice, which is what
-  makes it a lip rather than a widening.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="flask" d="M13.4 3.4h5.2v7.6l6.5 13.2a2.6 2.6 0 0 1-2.33 3.76H9.23a2.6 2.6 0 0 1-2.33-3.76l6.5-13.2z"/>
     <rect id="lip" x="12.1" y="2.9" width="7.8" height="2.3" rx="1.15"/>

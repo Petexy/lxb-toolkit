@@ -1,19 +1,4 @@
-<!--
-  A sheet of paper, for a row that is an ordinary file.
-
-  The three lines of writing are openings. They were ruled on in the old drawing
-  as pairs of strokes and the material has no way to be told about a rule; cut
-  through, each gets the ring of water a hole displaces and reads as an
-  impression in the sheet.
-
-  The folded corner is a body in front of the sheet with a crevice between, so
-  the fold is a real edge. Everything else about the sheet is one piece.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="sheet" d="M8.6 3.4h9.9l6.9 6.9v16.5a1.9 1.9 0 0 1-1.9 1.9H8.6a1.9
                         1.9 0 0 1-1.9-1.9V5.3a1.9 1.9 0 0 1 1.9-1.9z"/>

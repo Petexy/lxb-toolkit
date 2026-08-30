@@ -44,7 +44,7 @@ import sys
 from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Iterator, Sequence, cast
 
 __all__ = [
     "Accent",
@@ -67,6 +67,7 @@ __all__ = [
     "control_glow_rect",
     "DURATIONS",
     "ease",
+    "EntryKind",
     "Face",
     "fill_arrival",
     "font",
@@ -131,6 +132,8 @@ __all__ = [
     "Palette",
     "palette",
     "PALETTES",
+    "Picker",
+    "PickerEntry",
     "Press",
     "press_scale",
     "pressed",
@@ -140,6 +143,7 @@ __all__ = [
     "Role",
     "roles",
     "scale_for",
+    "Selection",
     "SHELL_SOUNDS",
     "ShellTheme",
     "size",
@@ -547,6 +551,26 @@ for _name, _argtypes, _restype in [
       ctypes.c_float, ctypes.c_float, ctypes.POINTER(ctypes.c_int), _SIZE], _SIZE),
     ("lxb_wheel_notches",
      [ctypes.POINTER(ctypes.c_float), ctypes.c_float], ctypes.c_int),
+    ("lxb_picker_new", [_SIZE, _STR], ctypes.c_void_p),
+    ("lxb_picker_free", [ctypes.c_void_p], None),
+    ("lxb_picker_location", [ctypes.c_void_p], _STR),
+    ("lxb_picker_note", [ctypes.c_void_p], _STR),
+    ("lxb_picker_query", [ctypes.c_void_p], _STR),
+    ("lxb_picker_selection", [ctypes.c_void_p], _SIZE),
+    ("lxb_picker_can_search", [ctypes.c_void_p], ctypes.c_int),
+    ("lxb_picker_can_choose", [ctypes.c_void_p], ctypes.c_int),
+    ("lxb_picker_entry_count", [ctypes.c_void_p], _SIZE),
+    ("lxb_picker_entry_name", [ctypes.c_void_p, _SIZE], _STR),
+    ("lxb_picker_entry_path", [ctypes.c_void_p, _SIZE], _STR),
+    ("lxb_picker_entry_kind", [ctypes.c_void_p, _SIZE], ctypes.c_int),
+    ("lxb_picker_selected", [ctypes.c_void_p], ctypes.c_int),
+    ("lxb_picker_select", [ctypes.c_void_p, _SIZE], ctypes.c_int),
+    ("lxb_picker_move", [ctypes.c_void_p, ctypes.c_int], ctypes.c_int),
+    ("lxb_picker_enter", [ctypes.c_void_p], ctypes.c_int),
+    ("lxb_picker_leave", [ctypes.c_void_p], ctypes.c_int),
+    ("lxb_picker_refresh", [ctypes.c_void_p], None),
+    ("lxb_picker_search", [ctypes.c_void_p, _STR], None),
+    ("lxb_picker_choose", [ctypes.c_void_p], _STR),
     ("lxb_font", [ctypes.c_int], _Bytes),
     ("lxb_version", [], _STR),
     ("lxb_menu_layout_new",
@@ -670,7 +694,106 @@ def _named_enum(name: str, count_fn, name_fn) -> type[IntEnum]:
     return IntEnum(name, members)
 
 
-Role = _named_enum("Role", _lib.lxb_role_count, _lib.lxb_role_name)
+# These classes are the editor-facing view of the named C ABI.  The actual
+# classes still come from the library below, so a new ABI can never silently
+# receive an old numeric mapping.  ``cast`` retains this declared surface for
+# static analysers: they cannot infer attributes created by IntEnum's
+# functional form.
+class Role(IntEnum):
+    ACCENT = 0
+    ACCENT_SOFT = 1
+    ACCENT_DEEP = 2
+    GLASS = 3
+    GLASS_RAISED = 4
+    RIM = 5
+    TEXT = 6
+    TEXT_SOFT = 7
+    DANGER = 8
+    GLOW = 9
+    SKY_TOP = 10
+    SKY_BOTTOM = 11
+    SKY_TOP_ALT = 12
+    SKY_BOTTOM_ALT = 13
+
+
+class Metric(IntEnum):
+    CARD_RADIUS = 0
+    PANEL_RADIUS = 1
+    PANEL_INSET = 2
+    ROW_HEIGHT = 3
+    ROW_PADDING = 4
+    PANEL_PADDING = 5
+    TILE = 6
+    GAP = 7
+    TILE_GLYPH = 8
+    TILE_RADIUS = 9
+    ITEM_SPACING = 10
+    COLUMN_SPACING = 11
+    ITEM_ICON = 12
+    ITEM_ICON_FOCUSED = 13
+    COLUMN_ICON = 14
+    COLUMN_ICON_FOCUSED = 15
+    MENU_WIDTH = 16
+    DIALOG_WIDTH = 17
+    DIALOG_DIM = 18
+    POWER_WIDTH = 19
+    POWER_DIM = 20
+
+
+class Text(IntEnum):
+    DISPLAY = 0
+    TITLE = 1
+    BODY = 2
+    LABEL = 3
+    CAPTION = 4
+
+
+class Surface(IntEnum):
+    PANEL = 0
+    CONTROL = 1
+    SIDEBAR = 2
+
+
+class Overlay(IntEnum):
+    CONTEXT_MENU = 0
+    DIALOG = 1
+
+
+class IconStyle(IntEnum):
+    DEFAULT = 0
+    SIMPLE = 1
+
+
+class WallpaperStyle(IntEnum):
+    DEFAULT = 0
+    SIMPLE = 1
+    CUSTOM = 2
+
+
+Role = cast(type[Role], _named_enum("Role", _lib.lxb_role_count, _lib.lxb_role_name))
+Metric = cast(
+    type[Metric], _named_enum("Metric", _lib.lxb_metric_count, _lib.lxb_metric_name)
+)
+Text = cast(type[Text], _named_enum("Text", _lib.lxb_text_count, _lib.lxb_text_name))
+Surface = cast(
+    type[Surface], _named_enum("Surface", _lib.lxb_surface_count, _lib.lxb_surface_name)
+)
+Overlay = cast(
+    type[Overlay], _named_enum("Overlay", _lib.lxb_overlay_count, _lib.lxb_overlay_name)
+)
+IconStyle = cast(
+    type[IconStyle],
+    _named_enum("IconStyle", _lib.lxb_icon_style_count, _lib.lxb_icon_style_name),
+)
+WallpaperStyle = cast(
+    type[WallpaperStyle],
+    _named_enum(
+        "WallpaperStyle",
+        _lib.lxb_wallpaper_style_count,
+        _lib.lxb_wallpaper_style_name,
+    ),
+)
+
 Role.__doc__ = """What a colour is *for*.
 
 Nothing in this language is coloured by picking a colour; it is coloured by
@@ -678,28 +801,16 @@ naming the role and letting the palette answer. That is what lets a whole
 interface change accent in one move.
 """
 
-Metric = _named_enum("Metric", _lib.lxb_metric_count, _lib.lxb_metric_name)
 Metric.__doc__ = "A named size, against a 1080-tall screen. See :func:`size`."
 
-Text = _named_enum("Text", _lib.lxb_text_count, _lib.lxb_text_name)
 Text.__doc__ = "A step of the type scale."
 
-Surface = _named_enum("Surface", _lib.lxb_surface_count, _lib.lxb_surface_name)
 Surface.__doc__ = "What kind of pane something is: the three cuts of glass."
 
-Overlay = _named_enum("Overlay", _lib.lxb_overlay_count, _lib.lxb_overlay_name)
 Overlay.__doc__ = "Context menu or dialog: two uses of one layered material."
 
-IconStyle = _named_enum(
-    "IconStyle", _lib.lxb_icon_style_count, _lib.lxb_icon_style_name
-)
 IconStyle.__doc__ = "How the shell's own marks are made: Default or Simple."
 
-WallpaperStyle = _named_enum(
-    "WallpaperStyle",
-    _lib.lxb_wallpaper_style_count,
-    _lib.lxb_wallpaper_style_name,
-)
 WallpaperStyle.__doc__ = "What stands behind the shell: Default, Simple or Custom."
 
 
@@ -1435,6 +1546,203 @@ def wallpaper_wgsl() -> str:
     got = _bytes(_lib.lxb_wallpaper_wgsl())
     assert got is not None
     return got.decode("utf-8")
+
+
+# --- file and folder selection ---------------------------------------------
+
+class Selection(IntEnum):
+    """What a :class:`Picker` is allowed to choose.
+
+    ``FILE`` accepts every visible file, ``IMAGE`` the still-image extensions
+    LineXinBar uses, and ``SCENERY`` those plus video. ``FOLDER`` lists only
+    directories and answers with the directory currently being shown.
+    """
+
+    FILE = 0
+    IMAGE = 1
+    SCENERY = 2
+    FOLDER = 3
+
+
+class EntryKind(IntEnum):
+    """Whether a visible picker entry is a folder or a file."""
+
+    FOLDER = 0
+    FILE = 1
+
+
+@dataclass(frozen=True)
+class PickerEntry:
+    """One visible filesystem entry in a :class:`Picker`."""
+
+    name: str
+    path: Path
+    kind: EntryKind
+
+    @property
+    def is_folder(self) -> bool:
+        return self.kind is EntryKind.FOLDER
+
+    @property
+    def is_file(self) -> bool:
+        return self.kind is EntryKind.FILE
+
+
+def _picker_string(value, name: str) -> bytes:
+    value = os.fspath(value)
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if not isinstance(value, str):  # pragma: no cover - os.fspath guarantees it
+        raise TypeError(f"{name} must be a path or string")
+    if "\0" in value:
+        raise ValueError(f"{name} must not contain a NUL character")
+    return value.encode("utf-8")
+
+
+class Picker:
+    """A lazy, renderer-neutral file or folder chooser.
+
+    It is the selection model, not a native dialog: draw :attr:`entries` with
+    the renderer you already use, call :meth:`enter` for a focused folder, and
+    call :meth:`choose` only from an explicit action. Folder mode deliberately
+    leaves its ``Select folder`` row to the caller, so opening a folder cannot
+    select it by accident.
+
+    Visible names exclude dotfiles and non-UTF-8 filenames. Folders precede
+    files and both groups are case-insensitively alphabetical. The current
+    directory is reread only when it is reached, searched, or refreshed.
+    """
+
+    __slots__ = ("_picker",)
+
+    def __init__(self, selection: Selection, directory) -> None:
+        try:
+            selection = Selection(selection)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"unknown picker selection: {selection!r}") from error
+        handle = _lib.lxb_picker_new(int(selection), _picker_string(directory, "directory"))
+        if not handle:
+            raise ValueError("the picker could not be created")
+        self._picker = handle
+
+    def close(self) -> None:
+        """Release the model. Safe to call more than once."""
+        picker, self._picker = getattr(self, "_picker", None), None
+        if picker:
+            _lib.lxb_picker_free(picker)
+
+    def __enter__(self) -> "Picker":
+        return self
+
+    def __exit__(self, *_unused) -> None:
+        self.close()
+
+    def __del__(self):  # pragma: no cover - interpreter teardown
+        self.close()
+
+    def _handle(self):
+        picker = self._picker
+        if not picker:
+            raise RuntimeError("the picker is closed")
+        return picker
+
+    @property
+    def selection(self) -> Selection:
+        return Selection(int(_lib.lxb_picker_selection(self._handle())))
+
+    @property
+    def can_search(self) -> bool:
+        """Whether this picker has a search field.
+
+        Folder pickers deliberately put their explicit ``Select folder``
+        control there instead, so their query always stays empty. Empty and
+        unreadable file listings have no search field either.
+        """
+        return bool(_lib.lxb_picker_can_search(self._handle()))
+
+    @property
+    def can_choose(self) -> bool:
+        """Whether an explicit choose action currently has an answer.
+
+        Folder mode becomes choosable only after its current directory opens;
+        file mode only when focus rests on a file.
+        """
+        return bool(_lib.lxb_picker_can_choose(self._handle()))
+
+    @property
+    def location(self) -> Path:
+        """The directory currently being listed."""
+        return Path(_text(_lib.lxb_picker_location(self._handle())))
+
+    @property
+    def note(self) -> str:
+        """The listing's count, ``Empty``, or ``This cannot be opened``."""
+        return _text(_lib.lxb_picker_note(self._handle()))
+
+    @property
+    def query(self) -> str:
+        """The case-insensitive substring that currently narrows this folder."""
+        return _text(_lib.lxb_picker_query(self._handle()))
+
+    @property
+    def entries(self) -> tuple[PickerEntry, ...]:
+        """Visible entries, folders first. There is no synthetic folder-choice row."""
+        picker = self._handle()
+        return tuple(
+            PickerEntry(
+                _text(_lib.lxb_picker_entry_name(picker, index)),
+                Path(_text(_lib.lxb_picker_entry_path(picker, index))),
+                EntryKind(int(_lib.lxb_picker_entry_kind(picker, index))),
+            )
+            for index in range(int(_lib.lxb_picker_entry_count(picker)))
+        )
+
+    @property
+    def selected(self) -> int | None:
+        """The focused visible entry, or ``None`` when there is none."""
+        index = int(_lib.lxb_picker_selected(self._handle()))
+        return None if index < 0 else index
+
+    def select(self, index: int) -> bool:
+        """Focus one visible entry. ``False`` means it was invalid or already focused."""
+        if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+            return False
+        return bool(_lib.lxb_picker_select(self._handle(), index))
+
+    def move(self, delta: int) -> bool:
+        """Move focus without wrapping at either end of the listing."""
+        if not isinstance(delta, int) or isinstance(delta, bool):
+            raise TypeError("delta must be an integer")
+        return bool(_lib.lxb_picker_move(self._handle(), delta))
+
+    def enter(self) -> bool:
+        """Open the focused folder, clearing this folder's search."""
+        return bool(_lib.lxb_picker_enter(self._handle()))
+
+    def leave(self) -> bool:
+        """Return to the parent directory, stopping at the filesystem root."""
+        return bool(_lib.lxb_picker_leave(self._handle()))
+
+    def refresh(self) -> None:
+        """Reread the current directory as it is now."""
+        _lib.lxb_picker_refresh(self._handle())
+
+    def search(self, query: str) -> None:
+        """Replace the current case-insensitive substring search and reread.
+
+        A listing without a search field, including a folder picker, ignores
+        this call.
+        """
+        _lib.lxb_picker_search(self._handle(), _picker_string(query, "query"))
+
+    def choose(self) -> Path | None:
+        """Return the deliberate file/folder answer, or ``None`` when none is valid.
+
+        In folder mode it is the current directory after it opens. In file
+        mode it is a file only; focus a folder and call :meth:`enter` instead.
+        """
+        picked = _lib.lxb_picker_choose(self._handle())
+        return Path(_text(picked)) if picked else None
 
 
 # --- assets -----------------------------------------------------------------

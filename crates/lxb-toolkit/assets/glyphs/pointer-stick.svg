@@ -1,27 +1,4 @@
-<!--
-  The tile that hands the pointer to the stick: a mouse with a pad in front of
-  it.
-
-  Two objects and not one, so the seam between them is cut as a real crevice —
-  the pad is laid down swollen in black and then again at its true size in
-  white, which leaves a gap in the shape itself. A field cannot tell two touching
-  bodies from one, and a mouse merged into a pad is a bean.
-
-  Both bodies are the old drawing's exactly. What has gone is the seam down the
-  mouse's back, the wheel, the stick's cap and the two sunk wells — every one of
-  them was shading rather than shape, and the material has no way to be told
-  about a line that is not an edge. The mouse keeps its two buttons because
-  those are an opening, and an opening is an edge.
-
-  The mouse sits about a unit lower than the old drawing had it. Its crown was
-  one and four fifths off the top of the cell, and the shadow needs more than
-  two.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="mouse" d="M2.8 9.3a6.6 6.6 0 0 1 13.2 0v9.9a3.1 3.1 0 0 1-3.1 3.1h-7a3.1 3.1 0 0 1-3.1-3.1z"/>
     <path id="pad" d="M16.1 18h5.6a5.4 5.4 0 0 1 5.2 4l0.9 3.6a2.3 2.3 0 0 1-4.1 1.9l-1.6-2.4h-6.4l-1.6 2.4a2.3 2.3 0 0 1-4.1-1.9l0.9-3.6a5.4 5.4 0 0 1 5.2-4z"/>

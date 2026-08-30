@@ -1,20 +1,4 @@
-<!--
-  The power symbol: a ring broken at the top, with a bar standing in the break.
-
-  One body. The break is cut by a wedge taken out of the ring rather than by
-  ending the ring's stroke, because the wedge's two edges are radial and a
-  stroke's cap is not — and at this size the difference between the two is the
-  difference between a symbol and a horseshoe.
-
-  The bar is laid down after the wedge, so the wedge does not cut it. The gap
-  either side of it is what says the two are not touching, and it has to stay:
-  a bar run into the ring is a keyhole.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <circle id="ring" cx="16" cy="16.6" r="11.6"/>
     <circle id="bore" cx="16" cy="16.6" r="7.9"/>

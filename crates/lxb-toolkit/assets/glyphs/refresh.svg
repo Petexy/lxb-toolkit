@@ -1,15 +1,4 @@
-<!--
-  The cycle, on the row that asks Steam for the library again.
-
-  Two arms, each an arrowhead on the end of an arc, the second the first turned
-  half a revolution. They do not meet, and the gaps are the mark: a closed ring
-  says nothing about direction, and it is direction this row is about.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="arm"
           d="M5.27 14.11A10.9 10.9 0 0 1 22.25 7.07L23.23 5.68 26.18 12.63

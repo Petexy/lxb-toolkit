@@ -1,19 +1,4 @@
-<!--
-  The Images subcategory's glyph: two mounts, one behind the other.
-
-  Under Graphics, and the plural of it: where the parent column carries one
-  landscape, this carries a stack of them, which is what a folder of images is.
-
-  The scene in the front mount is the opening. The back mount is a second body
-  standing behind the front one, so a crevice is cut between them — the field
-  cannot tell two overlapping bodies from one, and without the gap the pair
-  would come out as a single L-shaped blob with one rim round the outside.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <rect id="back" x="4.2" y="6.6" width="20.4" height="16.2" rx="2.4" transform="rotate(-10 14.4 14.7)"/>
     <rect id="front" x="8.2" y="10.4" width="20.4" height="16.2" rx="2.4"/>

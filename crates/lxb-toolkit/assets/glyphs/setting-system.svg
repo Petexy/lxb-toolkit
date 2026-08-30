@@ -1,15 +1,4 @@
-<!--
-  A chip, at the head of the system information panel.
-
-  The package with its die taken out and twelve legs standing off it. The legs
-  do not touch the package — a hair of air between each and the body — because
-  the field would otherwise measure the lot as one lump with a scalloped edge.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <rect id="package" x="7.4" y="7.4" width="17.2" height="17.2" rx="2.3"/>
     <rect id="die" x="11.3" y="11.3" width="9.4" height="9.4" rx="1.1"/>

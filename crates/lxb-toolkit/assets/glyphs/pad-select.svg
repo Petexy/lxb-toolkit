@@ -1,16 +1,4 @@
-<!--
-  The Select button, as the pad it is on.
-
-  An outlined pad with the button in question filled and its neighbour left
-  open — the same distinction pad-west.svg makes, and it survives the material
-  because a filled bead and a ring of one are different objects rather than two
-  weights of the same line.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
   <path fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"
         d="M7.7 7.4h8.6a4 4 0 0 1 3.9 3.1l0.95 4.3a2.35 2.35 0 0 1-4.25 1.85l-1.75-2.4H8.85l-1.75 2.4a2.35 2.35 0 0 1-4.25-1.85l0.95-4.3a4 4 0 0 1 3.9-3.1z"/>
   <circle cx="9.7" cy="11.6" r="2.1" fill="#fff"/>

@@ -2,9 +2,11 @@
 
 Every function the toolkit answers, in the order its headers declare them.
 
-198 functions in all.
+229 functions in all.
 
-**Generated** by `scripts/make-reference.py` from the two C headers, which are the authoritative surface: a signature copied by hand is a signature that goes stale. Edit the header, then run the script.
+The reference is the authoritative documentation. `scripts/make-reference.py`
+refreshes every C signature from the two headers and refuses missing, extra, or
+reordered entries, so adding an API also requires documenting it here.
 
 The three languages are one API. A C function `lxb_page_button` is `page.button` in Python and `Page::button` in Rust; `lxb_glyph_count` is `lxb.GLYPHS` and `glyph::ALL`. Where a C call takes an out parameter, the other two return the value. Enumerations cross as indices into this library's own lists, so the two shared objects agree by construction.
 
@@ -14,7 +16,7 @@ Three shapes repeat and are not written out each time. `X_count` answers how man
 
 What the language answers: colours, sizes, motion, type, marks, recordings and the shapes of its panels. Links nothing.
 
-144 functions.
+164 functions.
 
 ### palettes
 
@@ -649,6 +651,148 @@ The binding-free current Default-water / Simple-silk wallpaper module.
 lxb_bytes lxb_wallpaper_wgsl(void);
 ```
 
+### file and folder selection
+
+Start at `directory`. The path is UTF-8 and may be relative; relative paths are made relative to the process's current directory. An unreadable or missing directory still returns a picker whose note explains the problem. NULL means an invalid selection or path.
+
+`lxb_picker_new`
+
+```c
+lxb_picker *lxb_picker_new(unsigned long selection, const char *directory);
+```
+
+Free a picker. NULL is accepted.
+
+`lxb_picker_free`
+
+```c
+void lxb_picker_free(lxb_picker *picker);
+```
+
+Borrowed UTF-8, valid until a call that changes `picker` or until it is freed. The location is the directory currently being listed; note is its count, Empty, or This cannot be opened; query is the current case-insensitive substring filter (empty in folder mode, which has no search field).
+
+`lxb_picker_location`
+
+```c
+const char *lxb_picker_location(const lxb_picker *picker);
+```
+
+`lxb_picker_note`
+
+```c
+const char *lxb_picker_note(const lxb_picker *picker);
+```
+
+`lxb_picker_query`
+
+```c
+const char *lxb_picker_query(const lxb_picker *picker);
+```
+
+`lxb_picker_selection`
+
+```c
+unsigned long lxb_picker_selection(const lxb_picker *picker);
+```
+
+Whether the current listing has a search field. Empty/unreadable file listings have none; a zero-match search keeps its field so it can be cleared. Folder mode uses this position for Select folder instead.
+
+`lxb_picker_can_search`
+
+```c
+int lxb_picker_can_search(const lxb_picker *picker);
+```
+
+Whether an explicit choose action currently has an answer. A folder picker is choosable only when its current directory opened successfully; a file picker only while a file is focused.
+
+`lxb_picker_can_choose`
+
+```c
+int lxb_picker_can_choose(const lxb_picker *picker);
+```
+
+Every visible entry. Invalid indices return NULL for strings and -1 for its kind. Folder entries can be entered; file entries are leaves.
+
+`lxb_picker_entry_count`
+
+```c
+unsigned long lxb_picker_entry_count(const lxb_picker *picker);
+```
+
+`lxb_picker_entry_name`
+
+```c
+const char *lxb_picker_entry_name(const lxb_picker *picker, unsigned long index);
+```
+
+`lxb_picker_entry_path`
+
+```c
+const char *lxb_picker_entry_path(const lxb_picker *picker, unsigned long index);
+```
+
+`lxb_picker_entry_kind`
+
+```c
+int lxb_picker_entry_kind(const lxb_picker *picker, unsigned long index);
+```
+
+The visible entry under focus, or -1 for none. Select and move return non-zero only when focus moved. Movement stops at either end rather than wrapping.
+
+`lxb_picker_selected`
+
+```c
+int lxb_picker_selected(const lxb_picker *picker);
+```
+
+`lxb_picker_select`
+
+```c
+int lxb_picker_select(lxb_picker *picker, unsigned long index);
+```
+
+`lxb_picker_move`
+
+```c
+int lxb_picker_move(lxb_picker *picker, int delta);
+```
+
+Enter the focused folder, or leave to its parent. Both reread lazily and clear the query; they return non-zero only when the directory changed.
+
+`lxb_picker_enter`
+
+```c
+int lxb_picker_enter(lxb_picker *picker);
+```
+
+`lxb_picker_leave`
+
+```c
+int lxb_picker_leave(lxb_picker *picker);
+```
+
+Reread the directory as it is now, or replace its case-insensitive substring query and reread it. A listing without a search field, including folder mode, ignores search. NULL query is invalid and does nothing.
+
+`lxb_picker_refresh`
+
+```c
+void lxb_picker_refresh(lxb_picker *picker);
+```
+
+`lxb_picker_search`
+
+```c
+void lxb_picker_search(lxb_picker *picker, const char *query);
+```
+
+The current answer, or NULL if a file picker is focused on a folder or has no visible selection. A folder picker answers with a current directory that opened successfully; draw its explicit Select folder control separately so opening a folder never chooses it by accident. Borrowed UTF-8, valid until a call that changes `picker` or until it is freed.
+
+`lxb_picker_choose`
+
+```c
+const char *lxb_picker_choose(lxb_picker *picker);
+```
+
 ### assets
 
 `lxb_glyph_count`
@@ -1072,7 +1216,7 @@ void lxb_string_free(char *text);
 
 The window, the frame loop, the controls and the sounds — and the page an application draws into. Carries the GPU stack.
 
-54 functions.
+65 functions.
 
 A new application. `app_id` is the stable name the desktop entry, the executable and StartupWMClass all have to agree on; `title` is what a person sees. Never null; free it with lxb_app_free.
 
@@ -1174,6 +1318,14 @@ The next thing the keyboard or a controller said since the last frame, as an ind
 int lxb_page_action(lxb_page *page);
 ```
 
+How far a wheel or touchpad moved over the spot written down under `id` with lxb_draw_spot, counted in directions and signed downwards. The directions themselves are already waiting in lxb_page_action, so a page that never asks this still scrolls; ask it to decide *which* of the page's own lists this frame's Up and Down are moving, which is the one question a pointer raises and an action cannot answer.
+
+`lxb_page_scrolled`
+
+```c
+int lxb_page_scrolled(const lxb_page *page, unsigned int id);
+```
+
 Say which control the light is on, by the order it is drawn in. What a page that moves its own selection does before it draws — see lxb_app_driven.
 
 `lxb_page_focus`
@@ -1224,6 +1376,14 @@ Whether a press landed on the spot written down under `id` with lxb_draw_spot, a
 
 ```c
 int lxb_page_pressed(lxb_page *page, unsigned int id);
+```
+
+Where the pointer is while a press that began on `id` is still held down: two floats written to `out`, answering 1, or 0 and nothing written. The one gesture a press and a release cannot describe between them — a bar taken hold of and moved. Only a pointer drags; a finger on the same control moves the list instead, which is what a finger does everywhere else on the page.
+
+`lxb_page_dragging`
+
+```c
+int lxb_page_dragging(const lxb_page *page, unsigned int id, float *out);
 ```
 
 Close the window at the end of this frame.
@@ -1364,6 +1524,14 @@ The same, with what it is currently set to on the right of it — how this langu
 int lxb_page_row_value(lxb_page *page, const char *label, const char *value);
 ```
 
+Where the light is standing, for a page that draws its own controls: four floats, x, y, width, height. `lxb_page` records this for its own rows and buttons as they are drawn, and a menu grows out of it; a page that lays out its own cards has to say so itself, or a menu raised over one grows out of the corner of the window.
+
+`lxb_page_light_at`
+
+```c
+void lxb_page_light_at(lxb_page *page, const float *rect);
+```
+
 Raise a context menu over the control the light is on. `title` may be null for a menu that is about nothing in particular. Nothing happens if one is already up.
 
 `lxb_page_menu`
@@ -1371,6 +1539,16 @@ Raise a context menu over the control the light is on. `title` may be null for a
 ```c
 void lxb_page_menu(lxb_page *page, const char *title,
                    const char *const *commands, unsigned long count);
+```
+
+The same menu, with the one command already in force wearing the language's own chosen mark. A menu of alternatives that does not say which one you are on is a menu somebody has to press to find out. `marked` indexes `commands`; anything past the end marks nothing, which is what `lxb_page_menu` passes.
+
+`lxb_page_menu_marked`
+
+```c
+void lxb_page_menu_marked(lxb_page *page, const char *title,
+                          const char *const *commands, unsigned long count,
+                          unsigned long marked);
 ```
 
 Which command was pressed, on the frame it was pressed, or -1 for none.
@@ -1396,6 +1574,56 @@ Which answer was given, on the frame it was given, or -1 for none.
 
 ```c
 int lxb_page_answered(lxb_page *page);
+```
+
+Ask for one file, or for a folder, starting at `directory`. The desktop is asked first: where the session runs an `org.freedesktop.portal.FileChooser` — every desktop does — the question goes through it, so the answer comes from the chooser the rest of the machine uses. Where there is no portal the toolkit puts the question itself, in a centred Lattice chooser covering roughly seventy percent of the app and keeping the page behind strong frost and depth; its directory columns form the path trail and it owns keyboard, controller and pointer input until it is answered or cancelled. Pointer hover is inert, so a row takes one click to focus and another to activate. Controller Accept on Search opens the local keyboard; D-pad/left stick moves, A enters, Start finishes, and B or its hide key returns to the lattice with the query intact. `selection` is one of LXB_PICKER_FILE, LXB_PICKER_IMAGE, LXB_PICKER_SCENERY or LXB_PICKER_FOLDER from lxb_toolkit.h, and decides both what is listed and which kinds of file a portal chooser offers. Setting LXB_FILE_PORTAL=0 in the environment uses the toolkit's own chooser always. Zero means another panel or an unanswered question already owns input, the selection was unknown, or `directory` was null.
+
+`lxb_page_pick`
+
+```c
+int lxb_page_pick(lxb_page *page, unsigned long selection,
+                  const char *directory);
+```
+
+Ask for any number of files at once, the same two ways. The answer may be several paths; read it with lxb_page_picked_next. In the toolkit's own chooser each file is ticked with Accept and the row at the head of the column ends the question.
+
+`lxb_page_pick_many`
+
+```c
+int lxb_page_pick_many(lxb_page *page, unsigned long selection,
+                       const char *directory);
+```
+
+Ask where to write a file and what to call it, the same two ways. `name` is what it is called to begin with and may be empty. The answer is one path that need not exist yet; read it with lxb_page_picked.
+
+`lxb_page_save`
+
+```c
+int lxb_page_save(lxb_page *page, const char *name, const char *directory);
+```
+
+The accepted path since the last frame, once, or null after a cancellation or when there is no new answer. The whole answer is taken: where several files were chosen this is the first of them and the rest are dropped. The returned UTF-8 is owned by the caller; release it with lxb_app_string_free.
+
+`lxb_page_picked`
+
+```c
+char *lxb_page_picked(lxb_page *page);
+```
+
+The next file of the accepted answer, or null when there are none left. Call it until it answers null to read every file a lxb_page_pick_many question was answered with. Each returned UTF-8 is owned by the caller; release it with lxb_app_string_free.
+
+`lxb_page_picked_next`
+
+```c
+char *lxb_page_picked_next(lxb_page *page);
+```
+
+Release a path returned by lxb_page_picked. NULL is accepted. This is kept in liblxb_app rather than lxb_string_free in liblxb_toolkit because the two shared libraries deliberately have separate allocation boundaries.
+
+`lxb_app_string_free`
+
+```c
+void lxb_app_string_free(char *text);
 ```
 
 A sheet of the shell's glass. `overlay` indexes lxb_overlay.
@@ -1481,6 +1709,15 @@ Write down where something you drew yourself went, so that a pointer over it can
 
 ```c
 void lxb_draw_spot(lxb_page *page, unsigned int id, const float *rect);
+```
+
+Blur and dissolve the top and bottom ends of a scrolling area, after everything inside it has been drawn: surfaces and words soften together as one picture, the middle is untouched, and a menu or dialog still stands clear over it. Blur and translucency grow together, and the last of the fade is exactly what is behind the page's own content there, so a list stops without anything to stop at. `band` is the feather in points; `top` and `bottom` are how much really continues past each end, and an end with nothing past it should be nought so that a finished list looks finished rather than permanently fogged.
+
+`lxb_draw_soft_edges`
+
+```c
+void lxb_draw_soft_edges(lxb_page *page, const float *rect, float band,
+                         float top, float bottom);
 ```
 
 What is at a point of the frame that is on screen: the id of the thing there, or -1 for nothing. Read from the last frame drawn, because a pointer event is about the picture the person could see.

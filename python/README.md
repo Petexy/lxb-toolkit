@@ -90,6 +90,52 @@ button is how somebody gets out of your application.
 lights under the glass, the curved Sidebar cut, and its hairline rim. Dialogue
 width, scrim, and content may differ from a context menu; the material does not.
 
+For a normal `lxb.App`, use the built-in Lattice picker. It stays in the
+running application window as a centred glass window covering roughly seventy
+percent of the app: directory columns recede along the trail, the focused row
+owns the glass, and the surrounding page falls under strong frost and depth
+while the picker owns keyboard, controller, and pointer input:
+
+```python
+from pathlib import Path
+import lxb_toolkit as lxb
+
+app = lxb.App("com.example.Gallery", "Gallery")
+
+@app.page
+def draw(page):
+    if page.button("Choose image"):
+        page.pick(lxb.Selection.IMAGE, Path.home() / "Pictures")
+    if path := page.picked():
+        print("selected", path)
+
+app.run()
+```
+
+`page.pick` returns `False` when another panel already owns input; `page.picked()`
+returns a `Path` once when a file or folder was accepted, and `None` after a
+cancellation. Folder mode exposes **Select folder** at the head of its active
+column, so a
+listed folder is always opened rather than accidentally accepted.
+
+`Picker` remains the lazy lower-level file/folder-selection model for a custom
+renderer. Start it where your application wants, draw `picker.entries`, call
+`picker.enter()` on a folder, and save `picker.choose()` from your own explicit
+action. `Selection.FOLDER` lists directories only and deliberately has no
+search field; draw **Select folder** only while `picker.can_choose` is true. It
+follows folder symlinks, hides dotfiles, and keeps folders before files. Use it
+as a context manager so its native model is released promptly:
+
+```python
+from pathlib import Path
+import lxb_toolkit as lxb
+
+with lxb.Picker(lxb.Selection.IMAGE, Path.home() / "Pictures") as picker:
+    for index, entry in enumerate(picker.entries):
+        draw_row(entry.name, focused=index == picker.selected)
+    # On an explicit accept action: picker.enter() or picker.choose().
+```
+
 The module is `ctypes` over `liblxb_toolkit`. It looks for the native library
 beside the package, then in this repository's `target/release` and
 `target/debug`, and finally through the platform library search. Set

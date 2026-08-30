@@ -1,0 +1,17 @@
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <rect id="box" x="3.6" y="3.6" width="24.8" height="24.8" rx="4.2"/>
+    <path id="tick" d="M10.3 16.4L14.2 20.3L21.7 11.9"
+          fill="none" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <g id="bead"><use href="#box"/></g>
+    <g id="holes"><use href="#tick" stroke="#000000"/></g>
+    <mask id="pierced">
+      <use href="#bead" fill="#ffffff"/>
+      <use href="#holes"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#pierced)">
+    <use href="#bead" fill="#ffffff"/>
+  </g>
+</svg>

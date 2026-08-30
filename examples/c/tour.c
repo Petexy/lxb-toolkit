@@ -1,15 +1,17 @@
 /*
  * A tour of the LineXinBar design language, in C.
  *
- * Seven pages: what the language answers, its colour, its material, its marks,
- * its type, its motion and its sounds. Every one of them is drawn by the
- * shell's own renderer on the GPU — the same wallpaper shader, the same glass
- * shader and the same glyph shader the shell itself runs — through two
+ * Eight pages: what the language answers, its colour, its material, its marks,
+ * its type, its motion, its sounds and its built-in picker. Every one is drawn
+ * by the shell's own renderer on the GPU — the same wallpaper shader, the
+ * same glass shader and the same glyph shader the shell itself runs — through
+ * two
  * libraries and one page function.
  *
  *     make tour && ./tour                 # the window
  *     ./tour --shot tour.png              # one frame of it, with no display
  *     ./tour --shot tour.png Colour
+ *     ./tour --shot picker.png Picker picker-file
  *
  * Up and Down walk the pages; Left and Right walk within one. Enter presses;
  * Escape leaves; the Menu key or the right mouse button raises a context
@@ -26,6 +28,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -35,8 +38,8 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-static const char *const SECTIONS[]
-    = { "Hello", "Colour", "Material", "Marks", "Type", "Motion", "Sound" };
+static const char *const SECTIONS[] = { "Hello",   "Colour", "Material", "Marks",
+                                        "Type",    "Motion", "Sound",    "Picker" };
 
 #define GREETING "Hello, world"
 
@@ -69,6 +72,10 @@ struct tour {
     int asked;
     /* A panel to raise on the first frame, for a picture of one. */
     const char *raise_panel;
+    /* The directory the Picker page demonstrates, never the user's own files. */
+    const char *picker_root;
+    /* A path lxb_page_picked gave us. Owned here until the next answer. */
+    char *picked;
 };
 
 /* How many things the current page has to walk between. */
@@ -76,6 +83,83 @@ struct tour {
  * The numbers are this program's, and are kept clear of the sidebar's, which
  * lxb_page_item numbers from zero in the order it draws them. */
 #define ITEM_SPOT 0x200u
+
+/* How many capsules one row of chips can hold. The array is the bound: a
+ * palette added to the library must not walk off the end of it, and must not
+ * be silently left out either, so this is comfortably above every list the
+ * tour draws and `chips` wraps rather than truncating. */
+#define CHIPS_MOST 32
+
+#ifndef LXB_TOUR_FILES_DEFAULT
+#define LXB_TOUR_FILES_DEFAULT "../tour-files"
+#endif
+
+/* A checked-in miniature filesystem keeps a tour and its headless pictures
+ * independent of the machine running them. The checker overrides this one
+ * value for both C and Python, rather than letting each process make a temp
+ * directory of its own. */
+static const char *tour_files(void)
+{
+    const char *set = getenv("LXB_TOUR_FILES");
+    return set != NULL && set[0] != '\0' ? set : LXB_TOUR_FILES_DEFAULT;
+}
+
+static const char *file_name(const char *path)
+{
+    const char *slash = strrchr(path, '/');
+    return slash == NULL ? path : slash[1] == '\0' ? path : slash + 1;
+}
+
+/* The four questions the Picker page can put, in the order it offers them, and
+ * the name each is raised by for a headless shot. A save arrives named because
+ * that is the case worth a picture: it is the one purpose whose column opens on
+ * the row that answers. */
+#define PICKER_CHOICES 5
+static const char *const PICKER_LABELS[PICKER_CHOICES] = {
+    "Choose a file", "Choose some files", "Choose a folder",
+    "Choose somewhere to save", "Choose an image"
+};
+static const char *const PICKER_PANELS[PICKER_CHOICES] = {
+    "picker-file", "picker-many", "picker-folder", "picker-save", "picker-image"
+};
+#define PICKER_SAVE_NAME "untitled.txt"
+
+static int panel_name_is_known(const char *name)
+{
+    if (strcmp(name, "menu") == 0 || strcmp(name, "dialog") == 0) {
+        return 1;
+    }
+    for (long index = 0; index < PICKER_CHOICES; index++) {
+        if (strcmp(name, PICKER_PANELS[index]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Put the question the Picker page's row at `index` asks. */
+static void ask_for_files(lxb_page *page, const char *root, long index)
+{
+    switch (index) {
+    case 1:
+        lxb_page_pick_many(page, LXB_PICKER_FILE, root);
+        break;
+    case 2:
+        lxb_page_pick(page, LXB_PICKER_FOLDER, root);
+        break;
+    case 3:
+        lxb_page_save(page, PICKER_SAVE_NAME, root);
+        break;
+    /* The one question with a kind of file in force, which is what the panel's
+     * Types row exists for. */
+    case 4:
+        lxb_page_pick(page, LXB_PICKER_IMAGE, root);
+        break;
+    default:
+        lxb_page_pick(page, LXB_PICKER_FILE, root);
+        break;
+    }
+}
 
 static long page_count(const struct tour *tour)
 {
@@ -92,6 +176,8 @@ static long page_count(const struct tour *tour)
         return COUNT(SHOWN_DURATIONS);
     case 6:
         return (long)lxb_sound_count();
+    case 7:
+        return PICKER_CHOICES;
     default:
         return 1;
     }
@@ -165,6 +251,8 @@ static void apply(struct tour *tour, lxb_page *page)
         tour->palette = at(tour);
     } else if (tour->section == 6) {
         lxb_page_play(page, (unsigned long)at(tour));
+    } else if (tour->section == 7) {
+        ask_for_files(page, tour->picker_root, at(tour));
     }
 }
 
@@ -218,7 +306,7 @@ static void act(struct tour *tour, lxb_page *page, int action)
     }
 }
 
-/* -- the seven pages ------------------------------------------------------ */
+/* -- the eight pages ------------------------------------------------------ */
 
 static void head(lxb_page *page, const char *title, const char *mark)
 {
@@ -321,17 +409,27 @@ static void light(struct tour *tour, lxb_page *page, const float rect[4])
 static void chips(struct tour *tour, lxb_page *page, const char *const *names,
                   long count, long chosen)
 {
-    float cursor[4], box[4], rects[8][4];
+    float cursor[4], box[4], rects[CHIPS_MOST][4];
     double gap = lxb_page_metric(page, LXB_METRIC_GAP) * 0.5;
     double height = lxb_page_scaled(page, 44.0f);
-    double left;
+    double left, top;
+    long rows = 1;
 
     lxb_page_cursor(page, cursor);
     left = cursor[0];
+    top = cursor[1];
     for (long index = 0; index < count; index++) {
         double room = lxb_page_measure(page, LXB_TEXT_LABEL, names[index])
                       + 2.0 * lxb_page_metric(page, LXB_METRIC_ROW_PADDING);
-        rect_of(rects[index], left, cursor[1], room, height);
+        /* A capsule that would hang off the page starts the next row instead.
+         * One that is wider than the whole column stays where it is, because
+         * there is nowhere better for it to go. */
+        if (left > cursor[0] && left + room > cursor[0] + cursor[2]) {
+            left = cursor[0];
+            top += height + gap;
+            rows += 1;
+        }
+        rect_of(rects[index], left, top, room, height);
         left += room + gap;
     }
 
@@ -347,14 +445,14 @@ static void chips(struct tour *tour, lxb_page *page, const char *const *names,
         lxb_draw_button(page, rects[index], names[index],
                         lxb_page_press(page, index == chosen));
     }
-    rect_of(box, cursor[0], cursor[1] + height + gap, cursor[2], 0.0);
+    rect_of(box, cursor[0], cursor[1] + (double)rows * (height + gap), cursor[2], 0.0);
     lxb_page_set_cursor(page, box);
 }
 
 static void page_colour(struct tour *tour, lxb_page *page)
 {
     char hex[16];
-    const char *names[8];
+    const char *names[CHIPS_MOST];
     float cursor[4], box[4];
     double gap, step, chip, column;
     long roles = (long)lxb_role_count();
@@ -387,10 +485,10 @@ static void page_colour(struct tour *tour, lxb_page *page)
 
     rect_of(box, cursor[0], cursor[1] + (double)per * step + gap, cursor[2], 0.0);
     lxb_page_set_cursor(page, box);
-    for (long index = 0; index < (long)lxb_palette_count() && index < 8; index++) {
+    for (long index = 0; index < MIN((long)lxb_palette_count(), CHIPS_MOST); index++) {
         names[index] = lxb_palette_name((unsigned long)index);
     }
-    chips(tour, page, names, MIN((long)lxb_palette_count(), 8), palette);
+    chips(tour, page, names, MIN((long)lxb_palette_count(), CHIPS_MOST), palette);
     lxb_page_gap(page);
     {
         char said[256];
@@ -648,6 +746,28 @@ static void page_sound(struct tour *tour, lxb_page *page)
                         "of itself.");
 }
 
+static void page_picker(struct tour *tour, lxb_page *page)
+{
+    static const char *const *choices = PICKER_LABELS;
+    const char *status = "No file or folder chosen yet.";
+    char said[256];
+
+    head(page, "File and folder picker", "file-folder");
+    chips(tour, page, choices, PICKER_CHOICES, tour->cursor[7]);
+    lxb_page_gap(page);
+    if (tour->picked != NULL) {
+        snprintf(said, sizeof said, "Last choice: %s", file_name(tour->picked));
+        status = said;
+    }
+    lxb_page_note(page, status);
+    lxb_page_text(page,
+                  "One call opens a centred Lattice window covering roughly seventy percent "
+                  "of this application. Folder columns recede along the trail while strong "
+                  "frost and depth put this page behind it. A on Search opens its controller "
+                  "keyboard; Start finishes; B or its hide key returns without losing the "
+                  "query.");
+}
+
 /* -- the screen ----------------------------------------------------------- */
 
 /* The pages, as a column beside the page they are about.
@@ -712,10 +832,27 @@ static void draw(lxb_page *page, void *data)
         act(tour, page, action);
     }
     if (tour->raise_panel != NULL) {
-        act(tour, page,
-            strcmp(tour->raise_panel, "menu") == 0 ? LXB_ACTION_MENU
-                                                   : LXB_ACTION_BACK);
+        if (strcmp(tour->raise_panel, "menu") == 0) {
+            act(tour, page, LXB_ACTION_MENU);
+        } else if (strcmp(tour->raise_panel, "dialog") == 0) {
+            act(tour, page, LXB_ACTION_BACK);
+        } else {
+            for (long index = 0; index < PICKER_CHOICES; index++) {
+                if (strcmp(tour->raise_panel, PICKER_PANELS[index]) == 0) {
+                    ask_for_files(page, tour->picker_root, index);
+                    break;
+                }
+            }
+        }
         tour->raise_panel = NULL;
+    }
+
+    {
+        char *picked = lxb_page_picked(page);
+        if (picked != NULL) {
+            lxb_app_string_free(tour->picked);
+            tour->picked = picked;
+        }
     }
 
     /* A press on one of this page's own items. The pointer's half of Left and
@@ -778,6 +915,9 @@ static void draw(lxb_page *page, void *data)
     case 6:
         page_sound(tour, page);
         break;
+    case 7:
+        page_picker(tour, page);
+        break;
     default:
         page_hello(tour, page);
         break;
@@ -793,10 +933,17 @@ int main(int argc, char **argv)
     tour.theme = lxb_shell_theme_load();
     tour.palette = (long)tour.theme.accent;
     tour.cursor[1] = tour.palette;
+    tour.picker_root = tour_files();
 
     shot = argc > 2 && strcmp(argv[1], "--shot") == 0;
     if (shot && argc > 4) {
         tour.raise_panel = argv[4];
+        if (!panel_name_is_known(tour.raise_panel)) {
+            fprintf(stderr,
+                    "panel must be one of: menu, dialog, picker-file, "
+                    "picker-many, picker-folder, picker-save, picker-image\n");
+            return 2;
+        }
     }
     if (shot && argc > 3) {
         for (long index = 0; index < COUNT(SECTIONS); index++) {
@@ -815,5 +962,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s\n", lxb_app_trouble(app));
     }
     lxb_app_free(app);
+    lxb_app_string_free(tour.picked);
     return code;
 }

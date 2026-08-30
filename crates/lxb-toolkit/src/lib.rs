@@ -4,6 +4,7 @@ pub mod color;
 pub mod control;
 pub mod css;
 pub mod glyph_material;
+pub mod handoff;
 pub mod input;
 pub mod material;
 pub mod menu;
@@ -11,6 +12,7 @@ pub mod metrics;
 pub mod motion;
 pub mod paint;
 pub mod palette;
+pub mod picker;
 pub mod settings;
 pub mod sound;
 pub mod typography;
@@ -18,7 +20,7 @@ pub mod wallpaper;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub const TRANSCRIBED_FROM: &str = "3ac4eb3";
+pub const TRANSCRIBED_FROM: &str = "01bfee3";
 
 pub fn motion_durations() -> [(&'static str, f32); 34] {
     use motion::duration::*;
@@ -67,8 +69,8 @@ mod tests {
     fn the_toolkit_is_whole() {
         assert!(!super::VERSION.is_empty());
         assert_eq!(super::TRANSCRIBED_FROM.len(), 7);
-        assert_eq!(crate::palette::PALETTES.len(), 5);
-        assert_eq!(crate::assets::GLYPHS.len(), 98);
+        assert_eq!(crate::palette::PALETTES.len(), 12);
+        assert_eq!(crate::assets::GLYPHS.len(), 109);
         assert_eq!(crate::sound::Sound::ALL.len(), 14);
     }
 

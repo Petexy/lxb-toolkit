@@ -238,7 +238,149 @@ pub const RED: Palette = Palette {
     ],
 };
 
-pub const PALETTES: [Palette; 5] = [PURPLE, BLUE, GREEN, YELLOW, RED];
+pub const TEAL: Palette = Palette {
+    name: "Teal",
+    accent: Srgb(0x14B8A6),
+    accent_soft: Srgb(0x5EEAD4),
+    accent_deep: Srgb(0x134E4A),
+    glass: Srgb(0x051A19),
+    glass_raised: Srgb(0xA7CFC9),
+    rim: Srgb(0xFFFFFF),
+    text: Srgb(0xFFFFFF),
+    text_soft: Srgb(0xC7E0DB),
+    danger: Srgb(0xE0533A),
+    glow: Srgb(0x115E59),
+    sky: [
+        Srgb(0x08302B),
+        Srgb(0x020F0D),
+        Srgb(0x0B4038),
+        Srgb(0x041614),
+    ],
+};
+
+pub const INDIGO: Palette = Palette {
+    name: "Indigo",
+    accent: Srgb(0xA5B4FC),
+    accent_soft: Srgb(0xC7D2FE),
+    accent_deep: Srgb(0x312E81),
+    glass: Srgb(0x0D0E22),
+    glass_raised: Srgb(0xB3B9DE),
+    rim: Srgb(0xFFFFFF),
+    text: Srgb(0xFFFFFF),
+    text_soft: Srgb(0xD5D9F2),
+    danger: Srgb(0xE0533A),
+    glow: Srgb(0x252270),
+    sky: [
+        Srgb(0x101128),
+        Srgb(0x030409),
+        Srgb(0x15163A),
+        Srgb(0x070813),
+    ],
+};
+
+pub const PINK: Palette = Palette {
+    name: "Pink",
+    accent: Srgb(0xEC4899),
+    accent_soft: Srgb(0xF9A8D4),
+    accent_deep: Srgb(0x831843),
+    glass: Srgb(0x200714),
+    glass_raised: Srgb(0xE0A7C4),
+    rim: Srgb(0xFFFFFF),
+    text: Srgb(0xFFFFFF),
+    text_soft: Srgb(0xF0CCE0),
+    danger: Srgb(0xE0533A),
+    glow: Srgb(0x861042),
+    sky: [
+        Srgb(0x2C0A1E),
+        Srgb(0x0C0207),
+        Srgb(0x3E0D28),
+        Srgb(0x160410),
+    ],
+};
+
+pub const ORANGE: Palette = Palette {
+    name: "Orange",
+    accent: Srgb(0xF97316),
+    accent_soft: Srgb(0xFDBA74),
+    accent_deep: Srgb(0x7C2D12),
+    glass: Srgb(0x1D0B02),
+    glass_raised: Srgb(0xE8C3A7),
+    rim: Srgb(0xFFFFFF),
+    text: Srgb(0xFFFFFF),
+    text_soft: Srgb(0xF0DAC4),
+    danger: Srgb(0xDC2626),
+    glow: Srgb(0x842C0F),
+    sky: [
+        Srgb(0x301206),
+        Srgb(0x0D0402),
+        Srgb(0x421A07),
+        Srgb(0x160702),
+    ],
+};
+
+pub const WHITE: Palette = Palette {
+    name: "White",
+    accent: Srgb(0xE4E4E4),
+    accent_soft: Srgb(0xF5F5F5),
+    accent_deep: Srgb(0x3D3D3D),
+    glass: Srgb(0x0C0C0C),
+    glass_raised: Srgb(0xC4C4C4),
+    rim: Srgb(0xFFFFFF),
+    text: Srgb(0xFFFFFF),
+    text_soft: Srgb(0xC9C9C9),
+    danger: Srgb(0xE0533A),
+    glow: Srgb(0x444444),
+    sky: [
+        Srgb(0x151515),
+        Srgb(0x040404),
+        Srgb(0x1E1E1E),
+        Srgb(0x090909),
+    ],
+};
+
+pub const SILVER: Palette = Palette {
+    name: "Silver",
+    accent: Srgb(0xA6A6A6),
+    accent_soft: Srgb(0xD6D6D6),
+    accent_deep: Srgb(0x4A4A4A),
+    glass: Srgb(0x121212),
+    glass_raised: Srgb(0xC0C0C0),
+    rim: Srgb(0xFFFFFF),
+    text: Srgb(0xFFFFFF),
+    text_soft: Srgb(0xCFCFCF),
+    danger: Srgb(0xE0533A),
+    glow: Srgb(0x6B6B6B),
+    sky: [
+        Srgb(0x2A2A2A),
+        Srgb(0x0B0B0B),
+        Srgb(0x383838),
+        Srgb(0x131313),
+    ],
+};
+
+pub const BLACK: Palette = Palette {
+    name: "Black",
+    accent: Srgb(0x525252),
+    accent_soft: Srgb(0x8A8A8A),
+    accent_deep: Srgb(0x1F1F1F),
+    glass: Srgb(0x0A0A0A),
+    glass_raised: Srgb(0x969696),
+    rim: Srgb(0xFFFFFF),
+    text: Srgb(0xFFFFFF),
+    text_soft: Srgb(0xB0B0B0),
+    danger: Srgb(0xE0533A),
+    glow: Srgb(0x2E2E2E),
+    sky: [
+        Srgb(0x141414),
+        Srgb(0x030303),
+        Srgb(0x1C1C1C),
+        Srgb(0x070707),
+    ],
+};
+
+pub const PALETTES: [Palette; 12] = [
+    PURPLE, BLUE, GREEN, YELLOW, RED, TEAL, INDIGO, PINK, ORANGE, WHITE, SILVER, BLACK,
+];
 
 pub fn palette(name: &str) -> Option<&'static Palette> {
     PALETTES
@@ -286,6 +428,7 @@ mod tests {
         assert_eq!(palette("Purple").map(|p| p.name), Some("Purple"));
         assert_eq!(palette("blue").map(|p| p.name), Some("Blue"));
         assert_eq!(palette_index("red"), Some(4));
+        assert_eq!(palette_index("black"), Some(PALETTES.len() - 1));
         assert!(palette("mauve").is_none());
         assert_eq!(PALETTES[0].name, "Purple", "the default is the first");
     }

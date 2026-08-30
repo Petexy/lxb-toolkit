@@ -1,16 +1,4 @@
-<!--
-  The magnifier with a cross in it, on the row that empties a search.
-
-  search.svg's mark exactly, with the cross laid into the lens. The cross is
-  part of the same body rather than a separate one, so it reads as a bar welded
-  across the glass rather than as something floating in the hole — at the size
-  a shelf head is drawn there is no room for a crevice inside a lens.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <g fill="#fff">
       <rect x="0" y="-2.1" width="11.3" height="4.2" rx="2.1"
             transform="translate(18.6 18.2) rotate(45)"/>

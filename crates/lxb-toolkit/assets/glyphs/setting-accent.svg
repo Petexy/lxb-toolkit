@@ -1,15 +1,3 @@
-<!--
-  The accent rows' mark: a drop.
-
-  There is nothing to strip out of this one. It was already the shape the whole
-  set has been cut back to, and it was drawn as a drop because that is what the
-  material is — which makes it the one glyph where the old drawing and the new
-  language were never in disagreement.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <path fill="#fff" d="M16 3.4C16 3.4 25.1 14.1 25.1 19.7A9.1 9.1 0 0 1 6.9 19.7C6.9 14.1 16 3.4 16 3.4z"/>
 </svg>

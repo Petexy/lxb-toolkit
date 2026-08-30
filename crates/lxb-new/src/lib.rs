@@ -8,12 +8,13 @@ const USAGE: &str = "usage: lxb-new [--language rust|c|python] [--toolkit-path P
 
 const INSTALLED_CRATES: &str = "share/lxb-toolkit/crates";
 
-const CRATES: [&str; 5] = [
+const CRATES: [&str; 6] = [
     "lxb-toolkit",
     "lxb-render",
     "lxb-input",
     "lxb-sound",
     "lxb-app",
+    "lxb-portal",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

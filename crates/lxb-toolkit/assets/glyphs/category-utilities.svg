@@ -1,19 +1,4 @@
-<!--
-  The Utilities column's glyph: a toolbox.
-
-  The toolbox a console settings column traditionally carries, kept for the
-  column that actually collects tools. The seam along the lid is an opening and the catch
-  under it is another, which is as much detail as an object this size will hold.
-
-  The handle stands behind the box, so a crevice is cut round the box: without
-  it the two would merge and the handle would read as a bite out of the top
-  rather than as a thing to pick the box up by.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="handle" d="M10.65 13.20L10.65 11.90L10.65 12.26L12.26 9.66L11.97 10.13L16.23 9.33L16.00 9.37L20.57 10.23L20.03 10.13L21.54 12.56L21.35 12.26L21.35 13.20L21.43 13.63L21.64 14.00L21.98 14.28L22.38 14.43L22.82 14.43L23.23 14.28L23.56 14.00L23.77 13.63L23.85 13.20L23.85 11.90L23.85 11.82L23.84 11.75L23.83 11.67L23.81 11.59L23.79 11.52L23.77 11.45L23.74 11.38L23.70 11.31L23.66 11.24L21.86 8.34L21.80 8.25L21.72 8.16L21.64 8.08L21.55 8.00L21.46 7.94L21.36 7.88L21.25 7.83L21.14 7.80L21.03 7.77L16.23 6.87L16.18 6.86L16.13 6.86L16.08 6.85L16.03 6.85L15.97 6.85L15.92 6.85L15.87 6.86L15.82 6.86L15.77 6.87L10.97 7.77L10.86 7.80L10.75 7.83L10.64 7.88L10.54 7.94L10.45 8.00L10.36 8.08L10.28 8.16L10.20 8.25L10.14 8.34L8.34 11.24L8.30 11.31L8.26 11.38L8.23 11.45L8.21 11.52L8.19 11.59L8.17 11.67L8.16 11.75L8.15 11.82L8.15 11.90L8.15 13.20L8.23 13.63L8.44 14.00L8.78 14.28L9.18 14.43L9.62 14.43L10.03 14.28L10.36 14.00L10.57 13.63Z"/>
     <rect id="box" x="3.6" y="12.6" width="24.8" height="14.4" rx="2.6"/>

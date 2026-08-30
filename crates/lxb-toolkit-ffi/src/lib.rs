@@ -9,6 +9,7 @@ use lxb_toolkit::material::{Overlay, OverlayMaterial, Surface};
 use lxb_toolkit::menu::Menu;
 use lxb_toolkit::metrics::Metric;
 use lxb_toolkit::palette::{Role, PALETTES};
+use lxb_toolkit::picker::{EntryKind, Picker, Selection};
 use lxb_toolkit::settings::{IconStyle, ShellTheme, WallpaperStyle};
 use lxb_toolkit::sound::Sound;
 use lxb_toolkit::typography::{Face, Text};
@@ -288,7 +289,10 @@ names!(ROLE_NAMES: Role {
     Role::SkyBottomAlt => "sky-bottom-alt",
 });
 
-static PALETTE_NAMES: &[&str] = &["Purple\0", "Blue\0", "Green\0", "Yellow\0", "Red\0"];
+static PALETTE_NAMES: &[&str] = &[
+    "Purple\0", "Blue\0", "Green\0", "Yellow\0", "Red\0", "Teal\0", "Indigo\0", "Pink\0",
+    "Orange\0", "White\0", "Silver\0", "Black\0",
+];
 
 static ICON_STYLE_NAMES: &[&str] = &["Default\0", "Simple\0"];
 static WALLPAPER_STYLE_NAMES: &[&str] = &["Default\0", "Simple\0", "Custom\0"];
@@ -1258,6 +1262,258 @@ pub unsafe extern "C" fn lxb_wheel_notches(carried: *mut c_float, notches: c_flo
     steps
 }
 
+struct LxbPickerEntry {
+    name: CString,
+    path: CString,
+    kind: EntryKind,
+}
+
+pub struct LxbPicker {
+    picker: Picker,
+    location: CString,
+    note: CString,
+    query: CString,
+    entries: Vec<LxbPickerEntry>,
+    choice: Option<CString>,
+}
+
+impl LxbPicker {
+    fn new(selection: Selection, directory: &str) -> Self {
+        let picker = Picker::new(selection, directory);
+        let mut wrapped = Self {
+            picker,
+            location: empty_c_string(),
+            note: empty_c_string(),
+            query: empty_c_string(),
+            entries: Vec::new(),
+            choice: None,
+        };
+        wrapped.sync();
+        wrapped
+    }
+
+    fn sync(&mut self) {
+        self.location = path_c_string(self.picker.location());
+        self.note = c_string(self.picker.note());
+        self.query = c_string(self.picker.query());
+        self.entries = self
+            .picker
+            .entries()
+            .iter()
+            .map(|entry| LxbPickerEntry {
+                name: c_string(&entry.name),
+                path: path_c_string(&entry.path),
+                kind: entry.kind,
+            })
+            .collect();
+        self.choice = None;
+    }
+}
+
+fn empty_c_string() -> CString {
+    CString::new("").expect("an empty C string is valid")
+}
+
+fn c_string(text: &str) -> CString {
+    CString::new(text).expect("picker strings never contain a NUL")
+}
+
+fn path_c_string(path: &std::path::Path) -> CString {
+    c_string(path.to_string_lossy().as_ref())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_new(
+    selection: Size,
+    directory: *const c_char,
+) -> *mut LxbPicker {
+    let (Some(selection), Some(directory)) = (
+        Selection::ALL.get(selection as usize).copied(),
+        as_str(directory),
+    ) else {
+        return std::ptr::null_mut();
+    };
+    Box::into_raw(Box::new(LxbPicker::new(selection, directory)))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_free(picker: *mut LxbPicker) {
+    if !picker.is_null() {
+        drop(Box::from_raw(picker));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_location(picker: *const LxbPicker) -> *const c_char {
+    picker
+        .as_ref()
+        .map_or(std::ptr::null(), |picker| picker.location.as_ptr())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_note(picker: *const LxbPicker) -> *const c_char {
+    picker
+        .as_ref()
+        .map_or(std::ptr::null(), |picker| picker.note.as_ptr())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_query(picker: *const LxbPicker) -> *const c_char {
+    picker
+        .as_ref()
+        .map_or(std::ptr::null(), |picker| picker.query.as_ptr())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_selection(picker: *const LxbPicker) -> Size {
+    picker
+        .as_ref()
+        .map_or(0, |picker| picker.picker.selection() as Size)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_can_search(picker: *const LxbPicker) -> c_int {
+    c_int::from(
+        picker
+            .as_ref()
+            .is_some_and(|picker| picker.picker.can_search()),
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_can_choose(picker: *const LxbPicker) -> c_int {
+    c_int::from(
+        picker
+            .as_ref()
+            .is_some_and(|picker| picker.picker.can_choose()),
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_entry_count(picker: *const LxbPicker) -> Size {
+    picker
+        .as_ref()
+        .map_or(0, |picker| picker.entries.len() as Size)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_entry_name(
+    picker: *const LxbPicker,
+    index: Size,
+) -> *const c_char {
+    picker
+        .as_ref()
+        .and_then(|picker| picker.entries.get(index as usize))
+        .map_or(std::ptr::null(), |entry| entry.name.as_ptr())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_entry_path(
+    picker: *const LxbPicker,
+    index: Size,
+) -> *const c_char {
+    picker
+        .as_ref()
+        .and_then(|picker| picker.entries.get(index as usize))
+        .map_or(std::ptr::null(), |entry| entry.path.as_ptr())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_entry_kind(picker: *const LxbPicker, index: Size) -> c_int {
+    picker
+        .as_ref()
+        .and_then(|picker| picker.entries.get(index as usize))
+        .map_or(-1, |entry| entry.kind as c_int)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_selected(picker: *const LxbPicker) -> c_int {
+    picker
+        .as_ref()
+        .and_then(|picker| picker.picker.selected())
+        .and_then(|index| c_int::try_from(index).ok())
+        .unwrap_or(-1)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_select(picker: *mut LxbPicker, index: Size) -> c_int {
+    let Some(picker) = picker.as_mut() else {
+        return 0;
+    };
+    let changed = picker.picker.select(index as usize);
+    if changed {
+        picker.sync();
+    }
+    c_int::from(changed)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_move(picker: *mut LxbPicker, delta: c_int) -> c_int {
+    let Some(picker) = picker.as_mut() else {
+        return 0;
+    };
+    let changed = picker.picker.move_selection(delta as isize);
+    if changed {
+        picker.sync();
+    }
+    c_int::from(changed)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_enter(picker: *mut LxbPicker) -> c_int {
+    let Some(picker) = picker.as_mut() else {
+        return 0;
+    };
+    let changed = picker.picker.enter();
+    if changed {
+        picker.sync();
+    }
+    c_int::from(changed)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_leave(picker: *mut LxbPicker) -> c_int {
+    let Some(picker) = picker.as_mut() else {
+        return 0;
+    };
+    let changed = picker.picker.leave();
+    if changed {
+        picker.sync();
+    }
+    c_int::from(changed)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_refresh(picker: *mut LxbPicker) {
+    if let Some(picker) = picker.as_mut() {
+        picker.picker.refresh();
+        picker.sync();
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_search(picker: *mut LxbPicker, query: *const c_char) {
+    if let (Some(picker), Some(query)) = (picker.as_mut(), as_str(query)) {
+        picker.picker.search(query);
+        picker.sync();
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_picker_choose(picker: *mut LxbPicker) -> *const c_char {
+    let Some(picker) = picker.as_mut() else {
+        return std::ptr::null();
+    };
+    let choice = picker.picker.choose().map(|path| path_c_string(&path));
+    if picker.choice.as_ref().map(CString::as_bytes) != choice.as_ref().map(CString::as_bytes) {
+        picker.choice = choice;
+    }
+    picker
+        .choice
+        .as_ref()
+        .map_or(std::ptr::null(), |choice| choice.as_ptr())
+}
+
 #[no_mangle]
 pub extern "C" fn lxb_font(bold: c_int) -> LxbBytes {
     LxbBytes::of(if bold != 0 {
@@ -2084,6 +2340,101 @@ mod tests {
     }
 
     #[test]
+    fn a_picker_walks_and_answers_across_the_abi() {
+        struct Scratch(std::path::PathBuf);
+
+        impl Drop for Scratch {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("the clock has an epoch")
+            .as_nanos();
+        let scratch = Scratch(
+            std::env::temp_dir().join(format!("lxb-picker-ffi-{}-{unique}", std::process::id())),
+        );
+        std::fs::create_dir_all(scratch.0.join("inside")).unwrap();
+        std::fs::write(scratch.0.join("note.txt"), b"x").unwrap();
+        std::fs::write(scratch.0.join("inside/picked.txt"), b"x").unwrap();
+        let directory = CString::new(scratch.0.to_string_lossy().as_bytes()).unwrap();
+
+        unsafe {
+            let picker = lxb_picker_new(Selection::File as Size, directory.as_ptr());
+            assert!(!picker.is_null());
+            assert_eq!(lxb_picker_selection(picker), Selection::File as Size);
+            assert_eq!(lxb_picker_can_search(picker), 1);
+            assert_eq!(lxb_picker_can_choose(picker), 0);
+            assert_eq!(
+                CStr::from_ptr(lxb_picker_location(picker)).to_bytes(),
+                scratch.0.to_string_lossy().as_bytes()
+            );
+            assert_eq!(lxb_picker_entry_count(picker), 2);
+            assert_eq!(
+                CStr::from_ptr(lxb_picker_entry_name(picker, 0)).to_bytes(),
+                b"inside"
+            );
+            assert_eq!(lxb_picker_entry_kind(picker, 0), EntryKind::Folder as c_int);
+            assert_eq!(lxb_picker_selected(picker), 0);
+            assert!(lxb_picker_choose(picker).is_null());
+
+            assert_eq!(lxb_picker_select(picker, 1), 1);
+            assert_eq!(lxb_picker_can_choose(picker), 1);
+            let first_choice = lxb_picker_choose(picker);
+            assert_eq!(
+                CStr::from_ptr(first_choice).to_bytes(),
+                scratch.0.join("note.txt").to_string_lossy().as_bytes()
+            );
+            assert_eq!(
+                lxb_picker_choose(picker),
+                first_choice,
+                "a read-only repeat keeps a borrowed answer alive"
+            );
+            assert_eq!(lxb_picker_select(picker, 0), 1);
+            assert_eq!(lxb_picker_enter(picker), 1);
+            assert_eq!(
+                CStr::from_ptr(lxb_picker_entry_name(picker, 0)).to_bytes(),
+                b"picked.txt"
+            );
+            lxb_picker_search(picker, c"PICK".as_ptr());
+            assert_eq!(CStr::from_ptr(lxb_picker_query(picker)).to_bytes(), b"PICK");
+            assert_eq!(lxb_picker_entry_count(picker), 1);
+            assert_eq!(
+                CStr::from_ptr(lxb_picker_choose(picker)).to_bytes(),
+                scratch
+                    .0
+                    .join("inside/picked.txt")
+                    .to_string_lossy()
+                    .as_bytes()
+            );
+            assert_eq!(lxb_picker_leave(picker), 1);
+            assert!(CStr::from_ptr(lxb_picker_query(picker))
+                .to_bytes()
+                .is_empty());
+            lxb_picker_free(picker);
+
+            let folders = lxb_picker_new(Selection::Folder as Size, directory.as_ptr());
+            assert!(!folders.is_null());
+            assert_eq!(lxb_picker_can_search(folders), 0);
+            assert_eq!(lxb_picker_can_choose(folders), 1);
+            lxb_picker_search(folders, c"inside".as_ptr());
+            assert!(CStr::from_ptr(lxb_picker_query(folders))
+                .to_bytes()
+                .is_empty());
+            assert_eq!(
+                CStr::from_ptr(lxb_picker_choose(folders)).to_bytes(),
+                scratch.0.to_string_lossy().as_bytes()
+            );
+            lxb_picker_free(folders);
+
+            assert!(lxb_picker_new(99, directory.as_ptr()).is_null());
+            assert!(lxb_picker_new(0, std::ptr::null()).is_null());
+        }
+    }
+
+    #[test]
     fn the_sound_curves_cross_the_abi() {
         assert_eq!(lxb_sound_amplitude(0.0), 0.0);
         assert!((lxb_sound_amplitude(1.0) - 1.0).abs() < 1e-5);
@@ -2234,6 +2585,24 @@ mod tests {
             lxb_accent_restore(std::ptr::null_mut());
             assert_eq!(lxb_accent_advance(std::ptr::null_mut(), 0.1), 0);
             assert!(lxb_accent_applied(std::ptr::null_mut()).is_null());
+            lxb_picker_free(std::ptr::null_mut());
+            assert!(lxb_picker_location(std::ptr::null()).is_null());
+            assert!(lxb_picker_note(std::ptr::null()).is_null());
+            assert!(lxb_picker_query(std::ptr::null()).is_null());
+            assert_eq!(lxb_picker_can_search(std::ptr::null()), 0);
+            assert_eq!(lxb_picker_can_choose(std::ptr::null()), 0);
+            assert_eq!(lxb_picker_entry_count(std::ptr::null()), 0);
+            assert!(lxb_picker_entry_name(std::ptr::null(), 0).is_null());
+            assert!(lxb_picker_entry_path(std::ptr::null(), 0).is_null());
+            assert_eq!(lxb_picker_entry_kind(std::ptr::null(), 0), -1);
+            assert_eq!(lxb_picker_selected(std::ptr::null()), -1);
+            assert_eq!(lxb_picker_select(std::ptr::null_mut(), 0), 0);
+            assert_eq!(lxb_picker_move(std::ptr::null_mut(), 1), 0);
+            assert_eq!(lxb_picker_enter(std::ptr::null_mut()), 0);
+            assert_eq!(lxb_picker_leave(std::ptr::null_mut()), 0);
+            lxb_picker_refresh(std::ptr::null_mut());
+            lxb_picker_search(std::ptr::null_mut(), std::ptr::null());
+            assert!(lxb_picker_choose(std::ptr::null_mut()).is_null());
             lxb_key_light(std::ptr::null_mut());
             lxb_spring(std::ptr::null_mut(), std::ptr::null_mut(), 1.0, 1.0, 1.0);
             lxb_glide(std::ptr::null_mut(), std::ptr::null_mut(), 1.0, 0.1);
@@ -2348,21 +2717,20 @@ mod tests {
     fn header_enum(kind: &str) -> Vec<(usize, String)> {
         const HEADER: &str = include_str!("../include/lxb_toolkit.h");
 
-        let marker = format!("/* lxb_{kind}:");
+        let prefix = format!("LXB_{}_", kind.to_uppercase());
+        let marker = format!("\n    {prefix}");
         let introduced = HEADER
             .find(&marker)
-            .unwrap_or_else(|| panic!("the header introduces no lxb_{kind} block"));
+            .unwrap_or_else(|| panic!("the header declares no lxb_{kind} values"));
         let open = "enum {";
-        let start = introduced
-            + HEADER[introduced..]
-                .find(open)
-                .unwrap_or_else(|| panic!("lxb_{kind} is not an enum"))
+        let start = HEADER[..introduced]
+            .rfind(open)
+            .unwrap_or_else(|| panic!("lxb_{kind} is not an enum"))
             + open.len();
         let end = start
             + HEADER[start..]
                 .find("};")
                 .unwrap_or_else(|| panic!("lxb_{kind} is never closed"));
-        let prefix = format!("LXB_{}_", kind.to_uppercase());
         HEADER[start..end]
             .lines()
             .filter_map(|line| line.trim().strip_prefix(&prefix))

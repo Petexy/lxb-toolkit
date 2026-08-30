@@ -1,20 +1,4 @@
-<!--
-  The clipboard, at the head of every column of the folder the user is choosing
-  to put something in.
-
-  A board with a clip standing in front of it, which is two bodies and a crevice
-  between them — a clip that had run into the board it holds would be a tombstone
-  with a bite out of the top.
-
-  The two lines across it are openings, exactly as the sheet's are: they say the
-  board is a board and not a slab, and each takes the ring of water a hole
-  displaces.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <rect id="board" x="6.4" y="7.0" width="19.2" height="20.6" rx="2.4"/>
     <rect id="clip" x="11.4" y="3.6" width="9.2" height="6.4" rx="2.0"/>

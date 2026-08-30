@@ -2,7 +2,7 @@
 #
 #     cargo build --release      # from the repository root, first
 #     make hello && ./hello      # the greeting, in a window
-#     make tour && ./tour        # the whole language, seven pages of it
+#     make tour && ./tour        # the whole language, eight pages of it
 #     make && ./swatch           # the same, as a picture, on the processor
 #
 # Against an installed toolkit instead, drop the two paths:
@@ -22,10 +22,11 @@ APP_CFLAGS := -I$(ROOT)/crates/lxb-app-ffi/include
 hello: hello.c
 	$(CC) $(CFLAGS) $(APP_CFLAGS) $< $(LDFLAGS) -llxb_app $(LDLIBS) -o $@
 
-# The seven-page tour, drawn by the same renderer. It is the transcription of
+# The eight-page tour, drawn by the same renderer. It is the transcription of
 # examples/python/tour.py, and the two are compared frame for frame.
 tour: tour.c
-	$(CC) $(CFLAGS) $(APP_CFLAGS) $< $(LDFLAGS) -llxb_app $(LDLIBS) -lm -o $@
+	$(CC) $(CFLAGS) $(APP_CFLAGS) -DLXB_TOUR_FILES_DEFAULT=\"$(abspath ../tour-files)\" \
+		$< $(LDFLAGS) -llxb_app $(LDLIBS) -lm -o $@
 
 # The static archive, for a binary with nothing to find at run time. It carries
 # the marks, the recordings and the faces with it, so it is not small.

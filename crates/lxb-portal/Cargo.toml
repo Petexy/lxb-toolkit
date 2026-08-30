@@ -1,0 +1,15 @@
+[package]
+name = "lxb-portal"
+description = "Ask the desktop for a file: the xdg-desktop-portal FileChooser, spoken directly"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.87"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# The file question itself — what is being asked for, and which kinds of file
+# will be accepted. Nothing else: this crate opens a socket and marshals bytes,
+# so it must not drag a window, a GPU or an async runtime behind it.
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.0" }

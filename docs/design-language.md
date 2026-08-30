@@ -33,6 +33,18 @@ naming what the thing is **for**, and letting the palette answer:
 | `glow` | the soft lift behind whatever the interface is anchored on |
 | `sky-*` | the background's own gradient, as two pairs the mood drifts between |
 
+**`text-soft` is a tint, not a dimmer, and it is only for a ground you know.**
+Every palette cuts it as a pale cast of the accent — `#D6CBEF` under Purple —
+which over the shell's own dark surfaces passes for a soft white and over
+anything lighter comes back as what it really is: lavender on grey, at almost
+no contrast. Use it where the surface underneath is the language's own. Where
+it is not — over a photograph, a screenshot, a page an application drew, or
+anywhere a pane is clear enough to show one — quiet the ink with **`text` at
+less alpha** instead. A dialog's body is the case that taught this: it was
+`text-soft`, and half of each line vanished wherever a bright picture showed
+through the pane behind it. Nothing here should say the same word in two
+legibilities depending on what is behind it.
+
 Five palettes answer all fourteen. There is no fifteenth role, and adding one
 is a decision about the language rather than about the screen you are on: the
 whole value of a role vocabulary is that an application drawn in it cannot find
@@ -136,6 +148,38 @@ dialog is wider, centred, and dims the scene further; those are layout and
 staging differences, never permission to substitute the dense `Surface::Panel`
 cut. That cut belongs to the compact Power question.
 
+A dialog also frosts the page it covers. Dimming alone is enough over the
+shell's own quiet surfaces; it is not enough over an application's page,
+because a page is free to be a photograph, and a dialog's words then sit on top
+of one. So the whole window is taken back out of the blur pyramid at
+`material::modal::FROST` — a panel's own 0.95, the cut that carries text over
+anything — with `material::modal::STAIN`, 0.55 of Glass, mixed into what comes
+back. This is staging, not material: the dialog's own pane is still the Sidebar
+cut, and what changed is what it is looking at. Context menus do not do this —
+they are not modal, and the page behind one is still in play.
+
+**Most of that is the stain, and it has to be.** A pyramid takes away detail
+and leaves brightness: a screenshot of an ordinary light desktop window blurred
+to the last level is still a white slab, and white letters over a white slab
+cannot be read at any depth of frost. Blur says *out of reach*; the stain is
+what makes the words legible.
+
+**A context menu frosts what is under its own pane, and nothing outside it.** It is
+not modal — the page around one is still in play and must stay legible — but
+its rows are read over whatever the page happens to have put beneath them, and
+on an application's page that is anything at all. The frost follows the pane's
+own growth rather than its final rectangle, because the pane is drawn at the
+final one and flown to the growing one. It may not be grown past the pane to
+catch the refraction at its edges: the stain is nearly black, and a ring of it
+hanging outside the pane is a shadow. This language does not draw shadows.
+
+**It is laid on SOFTEN, not on the overlay layer.** A pane of glass fetches
+what is behind it out of the source texture, not out of the picture being
+painted, so a frost drawn beside the dialog on its own layer frosts the whole
+window *except* the rectangle it was for — the pane reads the page from the
+source, sharp and bright, and lays it back over the frost. On SOFTEN the frost
+is in that source, and the pane refracts a page already calm.
+
 A surface that is only somewhere to put things, rather than something to act on,
 takes gloss 0.45. Light belongs to what you can press.
 
@@ -192,7 +236,7 @@ so each of them draws on every core the machine has, and a program that wants
 the scene cheaply should fill a smaller surface and scale that up with its own
 painter. Every term in the scene is broad enough to survive that; the glass and
 the type are drawn at the real size. `examples/c` and `examples/python` are the
-same seven pages as `examples/rust`, drawn this way rather than on a GPU.
+same eight pages as `examples/rust`, drawn this way rather than on a GPU.
 
 ### Standing on the background
 
@@ -488,7 +532,23 @@ rather than three. What decides that is not the device. It is one table, in
   was only crossing the screen.
 * **A part-turned wheel is carried rather than lost.** A touchpad reports
   fractions of a notch, and rounding each of them away is a list that never
-  moves under a slow drag.
+  moves under a slow drag. In a screen with independent panes, it belongs to
+  the pane under the pointer rather than to the selection another control last
+  moved.
+* **A finger is a gesture, not a fifth device.** A drag becomes the same
+  directions a wheel sends, so a page that already scrolls scrolls under a
+  finger without knowing a finger exists, and a finger that stayed where it was
+  put is a tap and presses what it is on — the same act as a left click, and it
+  reaches the same places. Pulled down is the list coming back up: what a
+  finger does is move the page under it. One finger, the first one down, and a
+  drag the height of a row moves a row, so what is under the fingertip stays
+  roughly under it.
+* **A bar down the edge of a list is for the hands that are not on a pad.** A
+  controller is already saying where in a list it is, with the light, and a bar
+  beside that would be a control nothing on the pad can reach. What the page
+  keeps room for does not change with it: the channel the bar stands in is
+  reserved whether or not one is drawn, or a grid would relayout the moment
+  somebody put a pad down.
 * **The guide button is the shell's, always.** It is how somebody gets back out
   of an application, so an application that could act on it could swallow the
   way out of itself. The left-hand face button is left free for the

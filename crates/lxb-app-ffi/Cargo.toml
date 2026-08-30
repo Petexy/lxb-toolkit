@@ -10,12 +10,7 @@ authors.workspace = true
 
 [lib]
 name = "lxb_app"
-# Its own shared object rather than more of `liblxb_toolkit.so`, deliberately.
-# The toolkit answers what the language is and has no dependencies at all,
-# which is the point of it; this one carries a GPU stack, a window system, a
-# controller library and an audio device. A program that only wants the answers
-# should not have to link any of that.
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-lxb-app = { path = "../lxb-app", version = "0.2.0" }
+lxb-app = { path = "../lxb-app", version = "0.9.0" }

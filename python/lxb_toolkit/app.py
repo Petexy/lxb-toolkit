@@ -37,9 +37,10 @@ controller's bottom face button or a click.
 from __future__ import annotations
 
 import ctypes
+from pathlib import Path
 from typing import Callable, Sequence
 
-from . import SOUNDS, Action, Metric, Role, Sound, Text, _load
+from . import SOUNDS, Action, Metric, Role, Selection, Sound, Text, _load, _picker_string
 
 __all__ = ["App", "Page", "Align", "Press", "AppNotFound"]
 
@@ -102,6 +103,7 @@ _SIGNATURES = [
     ("lxb_page_height", [ctypes.c_void_p], ctypes.c_float),
     ("lxb_page_seconds", [ctypes.c_void_p], ctypes.c_float),
     ("lxb_page_action", [ctypes.c_void_p], ctypes.c_int),
+    ("lxb_page_scrolled", [ctypes.c_void_p, ctypes.c_uint], ctypes.c_int),
     ("lxb_page_focus", [ctypes.c_void_p, ctypes.c_ulong], None),
     ("lxb_page_focused", [ctypes.c_void_p], ctypes.c_ulong),
     ("lxb_page_glide",
@@ -112,6 +114,9 @@ _SIGNATURES = [
       ctypes.POINTER(ctypes.c_float)], None),
     ("lxb_page_press", [ctypes.c_void_p, ctypes.c_int], ctypes.c_ulong),
     ("lxb_page_pressed", [ctypes.c_void_p, ctypes.c_uint], ctypes.c_int),
+    ("lxb_page_dragging",
+     [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_float)],
+     ctypes.c_int),
     ("lxb_page_quit", [ctypes.c_void_p], None),
     ("lxb_page_play", [ctypes.c_void_p, ctypes.c_ulong], None),
     ("lxb_page_volume", [ctypes.c_void_p, ctypes.c_float, ctypes.c_int], None),
@@ -130,14 +135,28 @@ _SIGNATURES = [
     ("lxb_page_item", [ctypes.c_void_p, ctypes.c_char_p], ctypes.c_int),
     ("lxb_page_row_value",
      [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p], ctypes.c_int),
+    ("lxb_page_light_at",
+     [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)], None),
     ("lxb_page_menu",
      [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p),
       ctypes.c_ulong], None),
+    ("lxb_page_menu_marked",
+     [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p),
+      ctypes.c_ulong, ctypes.c_ulong], None),
     ("lxb_page_chose", [ctypes.c_void_p], ctypes.c_int),
     ("lxb_page_ask",
      [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p,
       ctypes.POINTER(ctypes.c_char_p), ctypes.c_ulong], None),
     ("lxb_page_answered", [ctypes.c_void_p], ctypes.c_int),
+    ("lxb_page_pick",
+     [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_char_p], ctypes.c_int),
+    ("lxb_page_pick_many",
+     [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_char_p], ctypes.c_int),
+    ("lxb_page_save",
+     [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p], ctypes.c_int),
+    ("lxb_page_picked", [ctypes.c_void_p], ctypes.c_void_p),
+    ("lxb_page_picked_next", [ctypes.c_void_p], ctypes.c_void_p),
+    ("lxb_app_string_free", [ctypes.c_void_p], None),
     ("lxb_draw_pane",
      [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float), ctypes.c_ulong], None),
     ("lxb_draw_card",
@@ -163,6 +182,9 @@ _SIGNATURES = [
      [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float), ctypes.c_float], None),
     ("lxb_draw_spot",
      [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_float)], None),
+    ("lxb_draw_soft_edges",
+     [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float), ctypes.c_float,
+      ctypes.c_float, ctypes.c_float], None),
     ("lxb_page_at",
      [ctypes.c_void_p, ctypes.c_float, ctypes.c_float], ctypes.c_int),
     ("lxb_page_metric", [ctypes.c_void_p, ctypes.c_ulong], ctypes.c_float),
@@ -177,6 +199,7 @@ for _name, _argtypes, _restype in _SIGNATURES:
     _function.argtypes = _argtypes
     _function.restype = _restype
 
+_TWO = ctypes.c_float * 2
 _FOUR = ctypes.c_float * 4
 
 
@@ -255,6 +278,17 @@ class Page:
             # frame half-drawn, which reads as the window blinking black.
             yield action
 
+    def scrolled(self, ident: int) -> int:
+        """How far a wheel or touchpad moved over one of the spots this page
+        drew, counted in directions and signed downwards.
+
+        The directions themselves are already in :meth:`actions`, so a page
+        that never asks this still scrolls. Ask it to decide *which* of the
+        page's lists this frame's Up and Down are moving — the one question a
+        pointer raises and an action cannot answer.
+        """
+        return int(_lib.lxb_page_scrolled(self._page, ident))
+
     @property
     def focus(self) -> int:
         """Which control the light is on, by the order it is drawn in."""
@@ -311,6 +345,21 @@ class Page:
         by no other. Only a page that asked for ``driven=True`` gets these.
         """
         return bool(_lib.lxb_page_pressed(self._page, id))
+
+    def dragging(self, id: int) -> tuple[float, float] | None:
+        """Where the pointer is while a press that began on ``id`` is held.
+
+        The one gesture a press and a release cannot describe between them: a
+        bar taken hold of and moved. ``None`` while nothing is being dragged
+        from that spot.
+
+        Only a pointer drags. A finger on the same control moves the list
+        instead, which is what a finger does everywhere else on the page.
+        """
+        at = _TWO()
+        if not _lib.lxb_page_dragging(self._page, id, at):
+            return None
+        return (at[0], at[1])
 
     def quit(self) -> None:
         """Close the window at the end of this frame."""
@@ -408,11 +457,27 @@ class Page:
 
     # -- the panels --------------------------------------------------------
 
-    def menu(self, commands: Sequence[str], title: str | None = None) -> None:
+    def light_at(self, rect: Sequence[float]) -> None:
+        """Say where the light is standing, for a page that draws its own
+        controls. A menu grows out of it; without it one raised over a card a
+        page laid out itself grows out of the corner of the window."""
+        _lib.lxb_page_light_at(self._page, _FOUR(*rect))
+
+    def menu(self, commands: Sequence[str], title: str | None = None,
+             marked: int | None = None) -> None:
         """Raise a context menu over the control the light is on. Nothing
-        happens if one is already up; read it back with :meth:`chose`."""
+        happens if one is already up; read it back with :meth:`chose`.
+
+        `marked` is which command is the answer already in force: it wears the
+        language's own chosen mark, so a menu of alternatives says which one
+        you are on without anybody having to press to find out.
+        """
         array, count = _list(commands)
-        _lib.lxb_page_menu(self._page, _utf8(title), array, count)
+        if marked is None:
+            _lib.lxb_page_menu(self._page, _utf8(title), array, count)
+            return
+        _lib.lxb_page_menu_marked(
+            self._page, _utf8(title), array, count, marked)
 
     def chose(self) -> int | None:
         """Which command was pressed, on the frame it was pressed."""
@@ -429,6 +494,87 @@ class Page:
         """Which answer was given, on the frame it was given."""
         index = _lib.lxb_page_answered(self._page)
         return None if index < 0 else index
+
+    def pick(self, selection: Selection, directory) -> bool:
+        """Ask for one file, or for a folder.
+
+        The desktop is asked first: where a session runs an
+        ``org.freedesktop.portal.FileChooser`` — every desktop does — the
+        question is put through it, so the answer comes from the chooser the
+        rest of the machine uses and the application is handed a path it was
+        given permission to. Where there is no portal, the toolkit draws the
+        question itself: a centred Lattice glass window covering roughly
+        seventy percent of the application, whose directory columns recede
+        while strong frost and depth keep the page behind it, and which owns
+        input until it is answered. Set ``LXB_FILE_PORTAL=0`` to use that one
+        always.
+
+        ``selection`` is one of :class:`lxb.Selection`, and decides both what
+        is listed and — where the desktop is asked — which kinds of file the
+        chooser offers; ``directory`` is any UTF-8 :class:`os.PathLike` or
+        string to open in. Read an accepted answer once with :meth:`picked`.
+        In the toolkit's own window Escape and Back close it without an
+        answer, and controller Accept on Search opens its local keyboard:
+        D-pad/left stick moves, A enters, Start finishes, and its hide key
+        returns with the query intact. B does the same from anywhere on the
+        board.
+        """
+        return self._ask(_lib.lxb_page_pick, selection, directory)
+
+    def pick_many(self, selection: Selection, directory) -> bool:
+        """Ask for any number of files at once.
+
+        As :meth:`pick`, with an answer that may be several paths — read it
+        with :meth:`picked_files`. In the toolkit's own window each file is
+        ticked with Accept and the head row at the top of the column ends the
+        question.
+        """
+        return self._ask(_lib.lxb_page_pick_many, selection, directory)
+
+    def save(self, name: str, directory) -> bool:
+        """Ask where to write a file, and what to call it.
+
+        ``name`` is what it is called to begin with and may be empty. The
+        answer is a path that need not exist yet; read it with :meth:`picked`.
+        """
+        return bool(_lib.lxb_page_save(
+            self._page, _utf8(name), _picker_string(directory, "directory")
+        ))
+
+    def _ask(self, call, selection: Selection, directory) -> bool:
+        try:
+            selection = Selection(selection)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"unknown picker selection: {selection!r}") from error
+        return bool(call(
+            self._page, int(selection), _picker_string(directory, "directory")
+        ))
+
+    def picked(self) -> Path | None:
+        """The answer given since the last frame, once.
+
+        The whole answer is taken: where several files were chosen this is the
+        first of them and the rest are dropped. Use :meth:`picked_files` for a
+        question that may be answered with more than one.
+        """
+        return self._path(_lib.lxb_page_picked(self._page))
+
+    def picked_files(self) -> list[Path]:
+        """Every file of the answer given since the last frame, once."""
+        found: list[Path] = []
+        while True:
+            path = self._path(_lib.lxb_page_picked_next(self._page))
+            if path is None:
+                return found
+            found.append(path)
+
+    def _path(self, raw) -> Path | None:
+        if not raw:
+            return None
+        try:
+            return Path(ctypes.string_at(raw).decode("utf-8"))
+        finally:
+            _lib.lxb_app_string_free(raw)
 
     # -- the renderer itself -----------------------------------------------
 
@@ -481,6 +627,17 @@ class Page:
         """Write down where something you drew yourself went, so a pointer over
         it can be answered."""
         _lib.lxb_draw_spot(self._page, ident, _FOUR(*rect))
+
+    def draw_soft_edges(self, rect, band: float, top: float = 1.0,
+                        bottom: float = 1.0) -> None:
+        """Blur and fade the top and bottom edges of a scrolling area, after
+        everything inside it has been drawn.
+
+        ``band`` is the feather in points; ``top`` and ``bottom`` are how
+        strongly each edge is there, which is how a list says whether anything
+        really continues past it.
+        """
+        _lib.lxb_draw_soft_edges(self._page, _FOUR(*rect), band, top, bottom)
 
     def at(self, x: float, y: float) -> int | None:
         """What is at a point of the frame that is on screen."""
@@ -549,13 +706,28 @@ class App:
 
         frame = Page()
         draw_page = self._draw
+        failure = None
 
         def trampoline(page, _data):
+            nonlocal failure
             frame._page = page
-            draw_page(frame)
+            if failure is not None:
+                return
+            try:
+                draw_page(frame)
+            except BaseException as error:
+                # ctypes cannot carry an exception through the native frame
+                # callback.  Without retaining it, a live window would carry
+                # on drawing only its wallpaper after Python stopped drawing
+                # its page.  Ask the runtime to leave, then raise normally
+                # once control is back in Python.
+                failure = error
+                _lib.lxb_page_quit(page)
 
         self._trampoline = _PAGE_FN(trampoline)
         code = _lib.lxb_app_run(self._app, self._trampoline, None)
+        if failure is not None:
+            raise failure
         if code != 0:
             trouble = _lib.lxb_app_trouble(self._app)
             raise RuntimeError(
@@ -579,14 +751,24 @@ class App:
 
         frame = Page()
         draw_page = self._draw
+        failure = None
 
         def trampoline(page, _data):
+            nonlocal failure
             frame._page = page
-            draw_page(frame)
+            if failure is not None:
+                return
+            try:
+                draw_page(frame)
+            except BaseException as error:
+                failure = error
+                _lib.lxb_page_quit(page)
 
         self._trampoline = _PAGE_FN(trampoline)
         code = _lib.lxb_app_shot(self._app, _utf8(str(path)), width, height,
                                  seconds, self._trampoline, None)
+        if failure is not None:
+            raise failure
         if code != 0:
             trouble = _lib.lxb_app_trouble(self._app)
             raise RuntimeError(

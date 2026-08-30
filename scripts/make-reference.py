@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Write docs/api-reference.md out of the two C headers.
+"""Refresh the C signatures in docs/api-reference.md from the two headers.
 
-    python3 scripts/make-reference.py            # write it
-    python3 scripts/make-reference.py --check    # fail if it is out of date
-
-Generated rather than written, for the same reason examples/css/lxb.css is:
-a copied signature is a signature that goes stale. The headers carry the
-prose; this only arranges it.
+The reference owns its prose and ordering. The headers own declarations. A
+missing, extra, or reordered entry is an error so every public function must be
+documented deliberately before this script will update copied signatures.
 """
 from __future__ import annotations
 
@@ -18,144 +15,103 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "api-reference.md"
 
 HEADERS = [
-    ("lxb_toolkit.h", ROOT / "crates/lxb-toolkit-ffi/include/lxb_toolkit.h",
-     "What the language answers: colours, sizes, motion, type, marks, "
-     "recordings and the shapes of its panels. Links nothing."),
-    ("lxb_app.h", ROOT / "crates/lxb-app-ffi/include/lxb_app.h",
-     "The window, the frame loop, the controls and the sounds — and the page "
-     "an application draws into. Carries the GPU stack."),
+    ("lxb_toolkit.h", ROOT / "crates/lxb-toolkit-ffi/include/lxb_toolkit.h"),
+    ("lxb_app.h", ROOT / "crates/lxb-app-ffi/include/lxb_app.h"),
 ]
 
-BANNER = re.compile(r"^/\*\s*-+\s*(.*?)\s*-+\s*\*/\s*$")
 DECL = re.compile(r"^[A-Za-z_][A-Za-z_0-9 *]*\**\s*(lxb_[a-z_0-9]+)\s*\(")
-ENUM_DOC = re.compile(r"^/\*\s*(lxb_[a-z_0-9]+):\s*(.*)$")
+ENTRY = re.compile(r"(?ms)^`(lxb_[a-z_0-9]+)`\n\n```c\n(.*?)\n```")
 
 
-def unwrap(block: list[str]) -> str:
-    """One C block comment as a paragraph of Markdown."""
-    text = []
-    for line in block:
-        line = line.strip()
-        line = re.sub(r"^/\*+", "", line)
-        line = re.sub(r"\*+/$", "", line)
-        line = re.sub(r"^\*\s?", "", line)
-        text.append(line.rstrip())
-    out, para = [], []
-    for line in text:
-        if not line.strip():
-            if para:
-                out.append(" ".join(para))
-                para = []
-        else:
-            para.append(line.strip())
-    if para:
-        out.append(" ".join(para))
-    return "\n\n".join(p for p in out if p)
-
-
-def parse(path: Path):
-    """(section, [(prose, [(name, signature)])]) in the header's own order.
-
-    A comment in these headers often stands over a run of related
-    declarations rather than over one, so consecutive functions sharing a
-    comment are kept together and the prose is printed once above them.
-    """
-    lines = path.read_text().split("\n")
-    sections: list[tuple[str, list]] = [("", [])]
-    block: list[str] = []
-    i, n = 0, len(lines)
-    while i < n:
-        line = lines[i]
-        banner = BANNER.match(line)
-        if banner:
-            sections.append((banner.group(1), []))
-            block = []
-            i += 1
+def declarations(path: Path) -> list[tuple[str, str]]:
+    lines = path.read_text().splitlines()
+    found: list[tuple[str, str]] = []
+    index = 0
+    while index < len(lines):
+        match = DECL.match(lines[index])
+        if match is None:
+            index += 1
             continue
-        if line.startswith("/*"):
-            start = i
-            while i < n and "*/" not in lines[i]:
-                i += 1
-            block = lines[start:i + 1]
-            i += 1
-            continue
-        decl = DECL.match(line)
-        if decl:
-            signature = [line]
-            while i < n and ";" not in lines[i]:
-                i += 1
-                signature.append(lines[i])
-            text = unwrap(block)
-            entry = (decl.group(1),
-                     "\n".join(s.rstrip() for s in signature).strip())
-            groups = sections[-1][1]
-            if block or not groups:
-                groups.append([text, [entry]])
-            else:
-                groups[-1][1].append(entry)
-            block = []
-            i += 1
-            continue
-        if line.strip() and not line.startswith(("#", " ", "}")):
-            block = []
-        i += 1
-    return [(name, items) for name, items in sections if items]
+        signature = [lines[index].rstrip()]
+        while ";" not in lines[index]:
+            index += 1
+            if index == len(lines):
+                raise SystemExit(f"unterminated declaration for {match.group(1)}")
+            signature.append(lines[index].rstrip())
+        found.append((match.group(1), "\n".join(signature)))
+        index += 1
+    return found
 
 
-def render() -> str:
-    out = [
-        "# API reference",
-        "",
-        "Every function the toolkit answers, in the order its headers declare "
-        "them.",
-        "",
-        "**Generated** by `scripts/make-reference.py` from the two C headers, "
-        "which are the authoritative surface: a signature copied by hand is a "
-        "signature that goes stale. Edit the header, then run the script.",
-        "",
-        "The three languages are one API. A C function `lxb_page_button` is "
-        "`page.button` in Python and `Page::button` in Rust; `lxb_glyph_count` "
-        "is `lxb.GLYPHS` and `glyph::ALL`. Where a C call takes an out "
-        "parameter, the other two return the value. Enumerations cross as "
-        "indices into this library's own lists, so the two shared objects "
-        "agree by construction.",
-        "",
-        "Three shapes repeat and are not written out each time. `X_count` "
-        "answers how many of a thing there are; `X_name(index)` answers the "
-        "name of one, which is the name the shell itself calls it; and "
-        "`X_index(name)` answers the number of a name, however capitalised, "
-        "or -1 for a name nobody has. The number is what crosses the ABI, so "
-        "walking a list means counting to `X_count` and asking for each.",
-        "",
-    ]
+def section(text: str, title: str) -> tuple[int, int]:
+    marker = f"## `{title}`\n"
+    start = text.find(marker)
+    if start < 0:
+        raise SystemExit(f"docs/api-reference.md has no {title} section")
+    end = text.find("\n## `", start + len(marker))
+    return start, len(text) if end < 0 else end + 1
+
+
+def refresh(original: str) -> str:
+    text = original
     total = 0
-    for title, path, blurb in HEADERS:
-        sections = parse(path)
-        count = sum(len(fns) for _, groups in sections for _, fns in groups)
-        total += count
-        out += [f"## `{title}`", "", blurb, "", f"{count} functions.", ""]
-        for name, groups in sections:
-            if name:
-                out += [f"### {name}", ""]
-            for prose, fns in groups:
-                if prose:
-                    out += [prose, ""]
-                for fn, signature in fns:
-                    out += [f"`{fn}`", "", "```c", signature, "```", ""]
-    out.insert(4, f"{total} functions in all.")
-    out.insert(5, "")
-    return "\n".join(out).rstrip("\n") + "\n"
+    for title, path in HEADERS:
+        declared = declarations(path)
+        total += len(declared)
+        start, end = section(text, title)
+        body = text[start:end]
+        entries = list(ENTRY.finditer(body))
+        documented = [match.group(1) for match in entries]
+        names = [name for name, _ in declared]
+        if documented != names:
+            missing = [name for name in names if name not in documented]
+            extra = [name for name in documented if name not in names]
+            raise SystemExit(
+                f"{title} documentation differs from its declarations; "
+                f"missing={missing}, extra={extra}, or entries are reordered"
+            )
+        replacements = dict(declared)
+        for match in reversed(entries):
+            signature_start, signature_end = match.span(2)
+            signature = replacements[match.group(1)]
+            annotation = match.group(2).find("/*")
+            if annotation >= 0:
+                while annotation > 0 and match.group(2)[annotation - 1] in " \t":
+                    annotation -= 1
+                signature += match.group(2)[annotation:]
+            body = (
+                body[:signature_start]
+                + signature
+                + body[signature_end:]
+            )
+        body = re.sub(
+            r"(?m)^\d+ functions\.$",
+            f"{len(declared)} functions.",
+            body,
+            count=1,
+        )
+        text = text[:start] + body + text[end:]
+    text = re.sub(
+        r"(?m)^\d+ functions in all\.$",
+        f"{total} functions in all.",
+        text,
+        count=1,
+    )
+    return text
 
 
 if __name__ == "__main__":
-    text = render()
+    original = OUT.read_text()
+    updated = refresh(original)
     if "--check" in sys.argv:
-        if not OUT.exists() or OUT.read_text() != text:
-            print(f"{OUT.relative_to(ROOT)} is out of date: "
-                  "run python3 scripts/make-reference.py", file=sys.stderr)
+        if updated != original:
+            print(
+                "docs/api-reference.md is out of date: "
+                "run python3 scripts/make-reference.py",
+                file=sys.stderr,
+            )
             raise SystemExit(1)
-        print(f"{OUT.relative_to(ROOT)} is current")
+        print("docs/api-reference.md is current")
     else:
-        OUT.write_text(text)
-        print(f"wrote {OUT.relative_to(ROOT)}: "
-              f"{text.count(chr(10))} lines")
+        OUT.write_text(updated)
+        print(f"wrote docs/api-reference.md: {updated.count(chr(10))} lines")

@@ -4,9 +4,20 @@ use glyphon::{
     TextArea, TextAtlas, TextBounds, TextRenderer, Viewport, Weight,
 };
 use lxb_toolkit::{assets, glyph_material};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{mpsc, Arc, Mutex},
+    time::UNIX_EPOCH,
+};
 
 const BLUR_LEVELS: u32 = lxb_toolkit::material::optics::BLUR_LEVELS as u32;
 const MIP_LEVELS: u32 = BLUR_LEVELS + 1;
+const THUMBNAIL_SIZE: u32 = 512;
+const THUMBNAIL_COLUMNS: u32 = 8;
+const THUMBNAIL_ROWS: u32 = 4;
+const THUMBNAIL_COUNT: usize = (THUMBNAIL_COLUMNS * THUMBNAIL_ROWS) as usize;
+pub(crate) const NO_CUT: [f32; 4] = [-1_000_000.0, -1_000_000.0, 1_000_000.0, 1_000_000.0];
 
 pub(crate) const TARGET: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
@@ -16,6 +27,12 @@ pub(crate) const KIND_SOLID: f32 = 2.0;
 pub(crate) const KIND_LIGHT: f32 = 3.0;
 pub(crate) const KIND_GLASS: f32 = 4.0;
 pub(crate) const KIND_GLYPH: f32 = 5.0;
+pub(crate) const KIND_IMAGE: f32 = 6.0;
+pub(crate) const KIND_SOFT_EDGE: f32 = 7.0;
+pub(crate) const KIND_FROST: f32 = 8.0;
+
+/// How far into the blur pyramid the deepest part of a soft edge reaches.
+const SOFT_EDGE_LOD: f32 = 3.6;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -29,6 +46,8 @@ pub(crate) struct Quad {
     pub material: [f32; 4],
 
     pub cell: [f32; 4],
+
+    pub cut: [f32; 4],
 }
 
 impl Quad {
@@ -39,6 +58,7 @@ impl Quad {
             tint,
             material: [0.0; 4],
             cell: [0.0; 4],
+            cut: NO_CUT,
         }
     }
 
@@ -49,6 +69,7 @@ impl Quad {
             tint,
             material: [width.max(1.0), 0.0, 0.0, 0.0],
             cell: [0.0; 4],
+            cut: NO_CUT,
         }
     }
 
@@ -59,6 +80,7 @@ impl Quad {
             tint,
             material: [0.0; 4],
             cell: [0.0; 4],
+            cut: NO_CUT,
         }
     }
 
@@ -76,7 +98,59 @@ impl Quad {
 
             material: [glass.depth * scale, glass.frost, glass.gloss, glass.curve],
             cell: [0.0; 4],
+            cut: NO_CUT,
         }
+    }
+
+    pub fn image(rect: [f32; 4], radius: f32, cell: [f32; 4], opacity: f32) -> Self {
+        Self {
+            rect,
+            shape: [radius, KIND_IMAGE, 0.0, opacity.clamp(0.0, 1.0)],
+            tint: [1.0; 4],
+            material: [0.0; 4],
+            cell,
+            cut: NO_CUT,
+        }
+    }
+
+    /// The page taken out of the blur pyramid and laid back over itself.
+    ///
+    /// `lod` is how deep into the pyramid it reaches, and the tint's own alpha
+    /// is how much of the tint is mixed into what comes back — nought leaves
+    /// the picture its own colour.
+    pub fn frost(rect: [f32; 4], radius: f32, lod: f32, tint: [f32; 4]) -> Self {
+        Self {
+            rect,
+            shape: [radius, KIND_FROST, 0.0, 1.0],
+            tint,
+            material: [lod.max(0.0), 0.0, 0.0, 0.0],
+            cell: [0.0; 4],
+            cut: NO_CUT,
+        }
+    }
+
+    pub fn soft_vertical_edges(rect: [f32; 4], band: f32, top: f32, bottom: f32) -> Self {
+        Self {
+            rect,
+            shape: [0.0, KIND_SOFT_EDGE, 0.0, 1.0],
+            tint: [1.0; 4],
+            // The feather in points, and how deep into the blur pyramid its
+            // far end reaches.
+            material: [band, SOFT_EDGE_LOD, 0.0, 0.0],
+            cell: [top.clamp(0.0, 1.0), bottom.clamp(0.0, 1.0), 0.0, 0.0],
+            cut: NO_CUT,
+        }
+    }
+
+    pub fn clipped(mut self, [x, y, width, height]: [f32; 4]) -> Self {
+        let requested = [x, y, x + width, y + height];
+        self.cut = [
+            self.cut[0].max(requested[0]),
+            self.cut[1].max(requested[1]),
+            self.cut[2].min(requested[2]),
+            self.cut[3].min(requested[3]),
+        ];
+        self
     }
 
     pub fn faded(mut self, fade: f32) -> Self {
@@ -91,6 +165,7 @@ impl Quad {
             tint: [1.0; 4],
             material: [0.0; 4],
             cell: [0.0; 4],
+            cut: NO_CUT,
         }
     }
 }
@@ -142,7 +217,7 @@ pub(crate) struct Scene {
     pub sky: [[f32; 4]; 4],
     pub accent: [[f32; 4]; 3],
     pub glow: [f32; 4],
-    pub layers: [Layer; 4],
+    pub layers: [Layer; 5],
 }
 
 #[repr(C)]
@@ -236,9 +311,21 @@ pub struct Ui {
     sampler: wgpu::Sampler,
     atlas_texture: wgpu::TextureView,
     atlas_size: [f32; 2],
+    thumbnail_texture: wgpu::Texture,
+    thumbnail_view: wgpu::TextureView,
+    thumbnail_requests: mpsc::Sender<ThumbnailRequest>,
+    thumbnail_results: mpsc::Receiver<ThumbnailResult>,
+    thumbnail_pending: HashMap<PathBuf, ThumbnailFingerprint>,
+    thumbnail_failures: HashMap<PathBuf, ThumbnailFingerprint>,
+    thumbnails: HashMap<PathBuf, ResidentThumbnail>,
+    thumbnail_slots: [Option<PathBuf>; THUMBNAIL_COUNT],
+    thumbnail_frame: u64,
+    headless: bool,
 
     cells: Vec<[f32; 4]>,
 
+    // The final OVER layer writes straight to the output. Every earlier layer
+    // needs a texture for the one after it to sample, including SOFTEN.
     chain: [Target; 4],
 
     font_system: FontSystem,
@@ -275,6 +362,7 @@ impl Ui {
         width: u32,
         height: u32,
     ) -> Result<Self, String> {
+        let headless = surface.is_none();
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 compatible_surface: surface,
@@ -333,6 +421,22 @@ impl Ui {
             },
         );
         let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let thumbnail_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("file thumbnails"),
+            size: wgpu::Extent3d {
+                width: THUMBNAIL_COLUMNS * THUMBNAIL_SIZE,
+                height: THUMBNAIL_ROWS * THUMBNAIL_SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let thumbnail_view = thumbnail_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let (thumbnail_requests, thumbnail_results) = thumbnail_workers();
 
         let text =
             |wgsl: &'static [u8]| std::str::from_utf8(wgsl).expect("the shipped shaders are UTF-8");
@@ -365,6 +469,8 @@ impl Ui {
                 sampler_entry(2),
                 texture_entry(3),
                 sampler_entry(4),
+                texture_entry(5),
+                texture_entry(6),
             ],
         });
 
@@ -375,7 +481,8 @@ impl Ui {
         });
 
         let attributes = wgpu::vertex_attr_array![
-            0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4];
+            0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4,
+            5 => Float32x4];
         let buffers = [Some(wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Quad>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
@@ -475,7 +582,7 @@ impl Ui {
                 Target::new(&device, width, height, "ground"),
                 Target::new(&device, width, height, "panes"),
                 Target::new(&device, width, height, "page"),
-                Target::new(&device, width, height, "receded"),
+                Target::new(&device, width, height, "soft edges"),
             ],
             device,
             queue,
@@ -492,6 +599,16 @@ impl Ui {
             sampler,
             atlas_texture: atlas_view,
             atlas_size: [atlas_width as f32, atlas_height as f32],
+            thumbnail_texture,
+            thumbnail_view,
+            thumbnail_requests,
+            thumbnail_results,
+            thumbnail_pending: HashMap::new(),
+            thumbnail_failures: HashMap::new(),
+            thumbnails: HashMap::new(),
+            thumbnail_slots: std::array::from_fn(|_| None),
+            thumbnail_frame: 0,
+            headless,
             cells,
             font_system,
             swash: SwashCache::new(),
@@ -524,7 +641,7 @@ impl Ui {
             Target::new(&self.device, self.width, self.height, "ground"),
             Target::new(&self.device, self.width, self.height, "panes"),
             Target::new(&self.device, self.width, self.height, "page"),
-            Target::new(&self.device, self.width, self.height, "receded"),
+            Target::new(&self.device, self.width, self.height, "soft edges"),
         ];
     }
 }
@@ -593,6 +710,166 @@ struct Atlas {
     cells: Vec<[f32; 4]>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ThumbnailFingerprint {
+    bytes: u64,
+    modified_seconds: u64,
+    modified_nanos: u32,
+}
+
+impl ThumbnailFingerprint {
+    fn of(path: &Path) -> Option<Self> {
+        let facts = std::fs::metadata(path).ok()?;
+        let modified = facts.modified().ok()?.duration_since(UNIX_EPOCH).ok()?;
+        Some(Self {
+            bytes: facts.len(),
+            modified_seconds: modified.as_secs(),
+            modified_nanos: modified.subsec_nanos(),
+        })
+    }
+}
+
+#[derive(Debug)]
+struct ThumbnailRequest {
+    path: PathBuf,
+    fingerprint: ThumbnailFingerprint,
+}
+
+#[derive(Debug)]
+struct ThumbnailResult {
+    path: PathBuf,
+    fingerprint: ThumbnailFingerprint,
+    picture: Option<ThumbnailPicture>,
+}
+
+#[derive(Debug)]
+struct ThumbnailPicture {
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Thumbnail {
+    pub cell: [f32; 4],
+    pub aspect: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResidentThumbnail {
+    slot: usize,
+    fingerprint: ThumbnailFingerprint,
+    shown: Thumbnail,
+    used: u64,
+}
+
+fn thumbnail_workers() -> (
+    mpsc::Sender<ThumbnailRequest>,
+    mpsc::Receiver<ThumbnailResult>,
+) {
+    let (request_tx, request_rx) = mpsc::channel::<ThumbnailRequest>();
+    let (result_tx, result_rx) = mpsc::channel::<ThumbnailResult>();
+    let requests = Arc::new(Mutex::new(request_rx));
+    for number in 0..2 {
+        let requests = Arc::clone(&requests);
+        let results = result_tx.clone();
+        let _ = std::thread::Builder::new()
+            .name(format!("lxb-thumbnail-{number}"))
+            .spawn(move || loop {
+                let request = {
+                    let Ok(requests) = requests.lock() else {
+                        break;
+                    };
+                    requests.recv()
+                };
+                let Ok(request) = request else {
+                    break;
+                };
+                let picture = decode_thumbnail(&request.path);
+                if results
+                    .send(ThumbnailResult {
+                        path: request.path,
+                        fingerprint: request.fingerprint,
+                        picture,
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            });
+    }
+    (request_tx, result_rx)
+}
+
+fn decode_thumbnail(path: &Path) -> Option<ThumbnailPicture> {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"))
+    {
+        return decode_svg_thumbnail(path);
+    }
+
+    let data = std::fs::read(path).ok()?;
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(data))
+        .with_guessed_format()
+        .ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(256 * 1024 * 1024);
+    reader.limits(limits);
+    let image = reader.decode().ok()?;
+    let scaled = if image.width() > THUMBNAIL_SIZE || image.height() > THUMBNAIL_SIZE {
+        image.resize(
+            THUMBNAIL_SIZE,
+            THUMBNAIL_SIZE,
+            image::imageops::FilterType::Lanczos3,
+        )
+    } else {
+        image
+    };
+    let rgba = scaled.to_rgba8();
+    Some(ThumbnailPicture {
+        width: rgba.width(),
+        height: rgba.height(),
+        rgba: rgba.into_raw(),
+    })
+}
+
+fn decode_svg_thumbnail(path: &Path) -> Option<ThumbnailPicture> {
+    let data = std::fs::read(path).ok()?;
+    let options = resvg::usvg::Options {
+        resources_dir: path.parent().map(Path::to_path_buf),
+        ..Default::default()
+    };
+    let tree = resvg::usvg::Tree::from_data(&data, &options).ok()?;
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(THUMBNAIL_SIZE, THUMBNAIL_SIZE)?;
+    let size = tree.size();
+    let scale = (THUMBNAIL_SIZE as f32 / size.width()).min(THUMBNAIL_SIZE as f32 / size.height());
+    let x = (THUMBNAIL_SIZE as f32 - size.width() * scale) * 0.5;
+    let y = (THUMBNAIL_SIZE as f32 - size.height() * scale) * 0.5;
+    let transform = resvg::tiny_skia::Transform::from_translate(x, y).pre_scale(scale, scale);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+    let mut rgba = pixmap.take();
+    unpremultiply_rgba(&mut rgba);
+    Some(ThumbnailPicture {
+        width: THUMBNAIL_SIZE,
+        height: THUMBNAIL_SIZE,
+        rgba,
+    })
+}
+
+fn unpremultiply_rgba(rgba: &mut [u8]) {
+    for pixel in rgba.chunks_exact_mut(4) {
+        let alpha = u16::from(pixel[3]);
+        if alpha == 0 || alpha == 255 {
+            continue;
+        }
+        for channel in &mut pixel[..3] {
+            *channel = ((u16::from(*channel) * 255 + alpha / 2) / alpha).min(255) as u8;
+        }
+    }
+}
+
 fn build_atlas() -> Result<Atlas, String> {
     let cell = glyph_material::CELL;
     let fine = cell * glyph_material::SDF_SUPERSAMPLE;
@@ -648,7 +925,162 @@ fn build_atlas() -> Result<Atlas, String> {
 }
 
 impl Ui {
-    fn bind(&self, source: &wgpu::TextureView) -> wgpu::BindGroup {
+    fn sync_thumbnail_results(&mut self) {
+        while let Ok(result) = self.thumbnail_results.try_recv() {
+            if self.thumbnail_pending.get(&result.path).copied() != Some(result.fingerprint) {
+                continue;
+            }
+            self.thumbnail_pending.remove(&result.path);
+            match result.picture {
+                Some(picture) => {
+                    self.thumbnail_failures.remove(&result.path);
+                    let _ = self.install_thumbnail(result.path, result.fingerprint, picture);
+                }
+                None => {
+                    self.thumbnail_failures
+                        .insert(result.path, result.fingerprint);
+                }
+            }
+        }
+    }
+
+    fn install_thumbnail(
+        &mut self,
+        path: PathBuf,
+        fingerprint: ThumbnailFingerprint,
+        picture: ThumbnailPicture,
+    ) -> Option<Thumbnail> {
+        if picture.width == 0
+            || picture.height == 0
+            || picture.width > THUMBNAIL_SIZE
+            || picture.height > THUMBNAIL_SIZE
+            || picture.rgba.len() != (picture.width * picture.height * 4) as usize
+        {
+            return None;
+        }
+
+        if let Some(old) = self.thumbnails.remove(&path) {
+            self.thumbnail_slots[old.slot] = None;
+        }
+        let slot = self
+            .thumbnail_slots
+            .iter()
+            .position(Option::is_none)
+            .or_else(|| {
+                let oldest = self
+                    .thumbnails
+                    .iter()
+                    .min_by_key(|(_, resident)| resident.used)
+                    .map(|(path, resident)| (path.clone(), resident.slot))?;
+                self.thumbnails.remove(&oldest.0);
+                self.thumbnail_slots[oldest.1] = None;
+                Some(oldest.1)
+            })?;
+
+        let mut square = vec![0u8; (THUMBNAIL_SIZE * THUMBNAIL_SIZE * 4) as usize];
+        let source_row = (picture.width * 4) as usize;
+        let target_row = (THUMBNAIL_SIZE * 4) as usize;
+        for y in 0..picture.height as usize {
+            let source = y * source_row;
+            let target = y * target_row;
+            square[target..target + source_row]
+                .copy_from_slice(&picture.rgba[source..source + source_row]);
+        }
+
+        let column = slot as u32 % THUMBNAIL_COLUMNS;
+        let row = slot as u32 / THUMBNAIL_COLUMNS;
+        let x = column * THUMBNAIL_SIZE;
+        let y = row * THUMBNAIL_SIZE;
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.thumbnail_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x, y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            &square,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(THUMBNAIL_SIZE * 4),
+                rows_per_image: Some(THUMBNAIL_SIZE),
+            },
+            wgpu::Extent3d {
+                width: THUMBNAIL_SIZE,
+                height: THUMBNAIL_SIZE,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        let atlas_width = (THUMBNAIL_COLUMNS * THUMBNAIL_SIZE) as f32;
+        let atlas_height = (THUMBNAIL_ROWS * THUMBNAIL_SIZE) as f32;
+        let shown = Thumbnail {
+            cell: [
+                x as f32 / atlas_width,
+                y as f32 / atlas_height,
+                (x + picture.width) as f32 / atlas_width,
+                (y + picture.height) as f32 / atlas_height,
+            ],
+            aspect: picture.width as f32 / picture.height as f32,
+        };
+        self.thumbnail_slots[slot] = Some(path.clone());
+        self.thumbnails.insert(
+            path,
+            ResidentThumbnail {
+                slot,
+                fingerprint,
+                shown,
+                used: self.thumbnail_frame,
+            },
+        );
+        Some(shown)
+    }
+
+    pub(crate) fn thumbnail(&mut self, path: &Path) -> Option<Thumbnail> {
+        let fingerprint = ThumbnailFingerprint::of(path)?;
+        if let Some(resident) = self.thumbnails.get(path).copied() {
+            if resident.fingerprint == fingerprint {
+                if let Some(resident) = self.thumbnails.get_mut(path) {
+                    resident.used = self.thumbnail_frame;
+                }
+                return Some(resident.shown);
+            }
+            self.thumbnails.remove(path);
+            self.thumbnail_slots[resident.slot] = None;
+        }
+        if self.thumbnail_failures.get(path).copied() == Some(fingerprint) {
+            return None;
+        }
+
+        if self.headless {
+            return match decode_thumbnail(path) {
+                Some(picture) => {
+                    self.thumbnail_failures.remove(path);
+                    self.install_thumbnail(path.to_path_buf(), fingerprint, picture)
+                }
+                None => {
+                    self.thumbnail_failures
+                        .insert(path.to_path_buf(), fingerprint);
+                    None
+                }
+            };
+        }
+
+        if self.thumbnail_pending.get(path).copied() != Some(fingerprint) {
+            let request = ThumbnailRequest {
+                path: path.to_path_buf(),
+                fingerprint,
+            };
+            if self.thumbnail_requests.send(request).is_ok() {
+                self.thumbnail_pending
+                    .insert(path.to_path_buf(), fingerprint);
+            }
+        }
+        None
+    }
+}
+
+impl Ui {
+    fn bind(&self, source: &wgpu::TextureView, beneath: &wgpu::TextureView) -> wgpu::BindGroup {
         self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("frame"),
             layout: &self.bind_layout,
@@ -672,6 +1104,14 @@ impl Ui {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&self.thumbnail_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(beneath),
                 },
             ],
         })
@@ -776,6 +1216,8 @@ impl Ui {
             })
             .collect();
 
+        let panes = passes.contains(&PANE);
+
         let mut sky = Quad::full(scene.width, scene.height, KIND_WALLPAPER);
 
         sky.material[0] = lxb_toolkit::wallpaper::SOFTEN;
@@ -834,12 +1276,21 @@ impl Ui {
                 left: run.left,
                 top: run.top,
                 scale: 1.0,
+                // **Rounded inwards, every side.** A clip on a quad is tested
+                // against the pixel's own centre, in floats; a clip on a word
+                // is a whole number of pixels handed to the text renderer.
+                // Rounded outwards, the two disagree by up to a pixel — and
+                // where a list is cut, that pixel is a row of letter-tips
+                // surviving below everything else, sharp, under a boundary
+                // that has already dissolved. Rounded inwards they cannot:
+                // the worst it costs is the outermost pixel of a glyph that
+                // was being cut in half anyway.
                 bounds: match run.clip {
                     Some([x, y, w, h]) => TextBounds {
-                        left: x.floor() as i32,
-                        top: y.floor() as i32,
-                        right: (x + w).ceil() as i32,
-                        bottom: (y + h).ceil() as i32,
+                        left: x.ceil() as i32,
+                        top: y.ceil() as i32,
+                        right: (x + w).floor() as i32,
+                        bottom: (y + h).floor() as i32,
                     },
                     None => whole,
                 },
@@ -879,7 +1330,20 @@ impl Ui {
             } else {
                 &self.chain[passes[order - 1]].view
             };
-            let bind = self.bind(source);
+            // What is behind a page's own content: its panes over the ground,
+            // or the bare ground where it drew no panes. It is what a soft
+            // edge dissolves into, and the one thing a pass cannot sample is
+            // the texture it is drawing into — so a layer at or below the one
+            // it would name is given the source it already has, which no
+            // effect on those layers reads.
+            let beneath = if index <= PANE {
+                source
+            } else if panes {
+                &self.chain[PANE].view
+            } else {
+                &self.chain[GROUND].view
+            };
+            let bind = self.bind(source, beneath);
             let output_pass = index == last;
             let into = if output_pass {
                 output
@@ -1087,7 +1551,22 @@ pub(crate) const PANE: usize = 1;
 
 pub(crate) const CONTROL: usize = 2;
 
-pub(crate) const OVER: usize = 3;
+/// Post-composite effects that need to sample the complete page — including
+/// its words — but must remain behind menus and dialogs.
+pub(crate) const SOFTEN: usize = 3;
+
+pub(crate) const OVER: usize = 4;
+
+/// How much of the scene had been written when this was taken.
+///
+/// Opaque on purpose: it means nothing except to the [`Ui`] that gave it out,
+/// and only until that frame ends. See [`Ui::written`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Written {
+    layer: usize,
+    quads: usize,
+    runs: usize,
+}
 
 impl Ui {
     pub fn begin(
@@ -1099,6 +1578,8 @@ impl Ui {
         wallpaper: lxb_toolkit::settings::WallpaperStyle,
         icons: lxb_toolkit::settings::IconStyle,
     ) {
+        self.thumbnail_frame = self.thumbnail_frame.wrapping_add(1);
+        self.sync_thumbnail_results();
         self.icons = icons;
 
         self.spots.clear();
@@ -1151,6 +1632,43 @@ impl Ui {
         )
     }
 
+    /// Where the scene had got to, so that what is drawn after it can be
+    /// treated as one thing.
+    ///
+    /// See [`Ui::cut_between`]. Quads and words are counted apart because they
+    /// are drawn apart: every quad of a layer goes down before any of that
+    /// layer's words, so a list's cards and a list's names are two ranges of
+    /// the scene and not one.
+    pub fn written(&self) -> Written {
+        let layer = self.layer();
+        let (quads, runs) = self.mark(layer);
+        Written { layer, quads, runs }
+    }
+
+    /// Cut everything drawn between two marks down to a rectangle.
+    ///
+    /// **This is what lets a list end at an edge instead of at a whole row.**
+    /// Without it a row shown in part is a row drawn in full somewhere, and
+    /// the somewhere is whatever the list was supposed to stop short of: a
+    /// heading, a legend, the far side of a panel. A quad outside the
+    /// rectangle is discarded by the pixel; a word is bounded to it.
+    ///
+    /// Both marks have to have been taken on the same layer — one inside an
+    /// overlay and one outside it describe two different scenes — and `to`
+    /// cannot be before `from`. Either mistake cuts nothing rather than
+    /// cutting the wrong thing.
+    pub fn cut_between(&mut self, from: Written, to: Written, rect: [f32; 4]) {
+        if from.layer != to.layer || to.quads < from.quads || to.runs < from.runs {
+            return;
+        }
+        self.clipped(
+            from.layer,
+            (from.quads, from.runs),
+            Some((to.quads, to.runs)),
+            rect,
+        );
+    }
+
     pub(crate) fn flew(
         &mut self,
         layer: usize,
@@ -1165,6 +1683,12 @@ impl Ui {
             quad.rect[3] *= factor;
             quad.shape[0] *= factor;
             quad.material[0] *= factor;
+            if quad.cut != NO_CUT {
+                quad.cut[0] = quad.cut[0] * factor + offset[0];
+                quad.cut[1] = quad.cut[1] * factor + offset[1];
+                quad.cut[2] = quad.cut[2] * factor + offset[0];
+                quad.cut[3] = quad.cut[3] * factor + offset[1];
+            }
         }
         for run in &mut self.scene.layers[layer].runs[mark.1..] {
             run.left = run.left * factor + offset[0];
@@ -1201,6 +1725,27 @@ impl Ui {
         }
     }
 
+    pub(crate) fn clipped(
+        &mut self,
+        layer: usize,
+        from: (usize, usize),
+        to: Option<(usize, usize)>,
+        clip: [f32; 4],
+    ) {
+        let layer = &mut self.scene.layers[layer];
+        let quads_to = to.map_or(layer.quads.len(), |mark| mark.0);
+        let runs_to = to.map_or(layer.runs.len(), |mark| mark.1);
+        for quad in &mut layer.quads[from.0..quads_to] {
+            *quad = quad.clipped(clip);
+        }
+        for run in &mut layer.runs[from.1..runs_to] {
+            let cut = run
+                .clip
+                .map_or(clip, |existing| intersection(existing, clip));
+            run.clip = Some([cut[0], cut[1], cut[2].max(0.0), cut[3].max(0.0)]);
+        }
+    }
+
     pub fn recede(&mut self, depth: f32, about: [f32; 4]) {
         let depth = depth.clamp(0.0, 1.0);
         if depth <= 0.0 {
@@ -1212,25 +1757,29 @@ impl Ui {
             (about[0] + about[2] * 0.5) * (1.0 - factor),
             (about[1] + about[3] * 0.5) * (1.0 - factor),
         ];
-        for layer in [PANE, CONTROL] {
+        for layer in [PANE, CONTROL, SOFTEN] {
             self.flew(layer, (0, 0), factor, offset);
         }
     }
 
     pub fn recede_behind(&mut self, panel: [f32; 4], dim: f32, amount: f32) {
-        for layer in [PANE, CONTROL] {
+        for layer in [PANE, CONTROL, SOFTEN] {
             self.faded(layer, (0, 0), None, dim);
         }
         self.cut_text_behind(panel, amount.clamp(0.0, 1.0));
     }
 
     fn cut_text_behind(&mut self, rect: [f32; 4], amount: f32) {
+        self.cut_text_under(&[PANE, CONTROL], rect, amount);
+    }
+
+    pub fn cut_text_under(&mut self, layers: &[usize], rect: [f32; 4], amount: f32) {
         let [x, _, w, _] = rect;
         if w <= 0.0 || amount <= 0.0 {
             return;
         }
         let panel = [x, w];
-        for layer in [PANE, CONTROL] {
+        for &layer in layers {
             let runs = std::mem::take(&mut self.scene.layers[layer].runs);
             let mut kept = Vec::with_capacity(runs.len());
             for run in runs {

@@ -1,5 +1,5 @@
 Name:           lxb-toolkit
-Version:        0.2.0
+Version:        0.9.0
 Release:        1%{?dist}
 Summary:        The LineXinBar design language, for applications built to sit beside it
 
@@ -116,6 +116,128 @@ cargo test --offline --locked -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lx
 %{python3_sitelib}/lxb_toolkit-%{version}.dist-info/
 
 %changelog
+* Sun Aug 30 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.9.0-1
+- One number, across four projects. LineXinBar, this toolkit, the greeter and
+  the store now release under the same version, so that what somebody has
+  installed can be read off one number instead of four that move apart. Nothing
+  else changed: this is 0.3.11's code, and the API, the ABI and the payload are
+  what they were. An application asking for lxb-app 0.3.11 has to be moved to
+  0.9.0 to build against it, because a caret requirement on a 0.x version pins
+  the minor.
+
+* Sun Aug 30 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.11-1
+- A touchscreen, and a bar for the hands that are not on a pad. A finger was
+  the one thing an application could not be worked with at all: no press
+  reached it and no list moved under it. A drag is now turned into the same
+  directions a wheel sends, so every page that already scrolled scrolls under a
+  finger without knowing a finger exists — pulled down is the list coming back
+  up, the way every touchscreen agrees it is — and a finger that stayed where
+  it was put is a tap and presses what it is on. Ui::scroll_bar draws a bar
+  down the edge of a list, and Page::dragging is the one gesture a press and a
+  release cannot describe between them: a bar taken hold of and moved.
+
+* Sun Aug 30 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.10-1
+- A plus, transcribed from the shell. The set had every verb for a thing that
+  already exists — copy it, move it, rename it, throw it away — and no mark at
+  all for the one that brings a new one into being, so a row that adds wore
+  whatever was nearest and said something else by it. Like every other mark it
+  is a shape the material is computed from, so it takes the bead and the gloss
+  under theme-icons = "Default" and comes out flat under "Simple". 109 marks.
+
+* Sun Aug 30 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.9-1
+- Escape reaches a page that steers itself. It closed the window, which on any
+  application with more than one screen made going back impossible: every
+  screen behind a press read Action::Back and not one of them ever saw it. A
+  page the toolkit walks the controls for has no screen to go back to, so
+  there Escape is still the way out, and a dialog, a menu or the file chooser
+  still takes it for itself.
+- A menu's frost no longer reaches outside its own pane. It was grown a little
+  so that the refraction at the pane's edges would find frost rather than the
+  sharp page; the stain is nearly black, so what that really drew was a dark
+  ring hanging outside the pane with nothing over it. This language does not
+  draw shadows.
+
+* Sun Aug 30 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.8-1
+- A context menu frosts what is under its own pane. The dialog has done this
+  since 0.3.5; a menu had not, and over an application's page — which is free
+  to be a grid of icons and screenshots — its rows were being read over
+  whatever happened to be beneath them. Under the pane and no further: a menu
+  is not modal, and the page around one is still in play. It follows the
+  pane's own growth, because the pane is drawn at its final rectangle and
+  flown to the growing one, and a frost left where the pane was going would
+  sit off to one side for the whole of the opening.
+
+* Sun Aug 30 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.7-1
+- Page::light_at / lxb_page_light_at, so a page that lays out its own controls
+  can say where the light is standing. A menu grows out of that rectangle, and
+  lxb_page only recorded it for the rows and buttons it draws itself — so a
+  menu raised over a card a page laid out itself grew out of the corner of the
+  window rather than out of the thing it was raised over.
+- Page::menu_marked / lxb_page_menu_marked, the same menu with the one command
+  already in force wearing the language's own chosen mark. A menu of
+  alternatives that does not say which one you are on is a menu somebody has to
+  press to find out. Both are mirrored in the C ABI and the Python binding.
+
+* Sun Aug 30 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.6-1
+- A dialog's body is white ink made quiet by its alpha, not by its hue. It was
+  Role::TextSoft, which every palette cuts as a pale cast of the accent: over
+  the shell's own dark surfaces that passes for a soft white, and over the
+  bright patch of somebody's screenshot showing through the pane it came back
+  as lavender on grey, at almost no contrast, in the middle of a sentence. The
+  answers below it already quieted themselves with Role::Text at
+  control::INK_QUIET; the body is the one part of a dialog that did not.
+
+* Sun Aug 30 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.5-1
+- The dialog's frost now reaches under the dialog. A pane of glass samples the
+  source texture rather than the picture being painted, so 0.3.4's frost — laid
+  beside the pane on the overlay layer — frosted the whole window except the
+  rectangle it was for: the pane read the page back out of the source, sharp
+  and bright. It is laid on SOFTEN now, where the pane can see it. The stain
+  goes from 0.12 to 0.55 and the frost to a panel's own 0.95: blur takes away
+  detail and leaves brightness, so a screenshot of a light desktop window was
+  still a white slab under the words however deep the pyramid went.
+
+* Sun Aug 30 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.4-1
+- A dialog frosts the page it covers. Page::ask already dimmed what was
+  behind it; over an application's own page that was not enough, because a
+  page is free to be a photograph and a dialog's words then sit on top of one.
+  The page now goes into the blur pyramid as well, far enough that nothing on
+  it can be read at body size and no further, so somebody asked to confirm a
+  removal can still see what they are removing. The dialog's own pane is
+  unchanged: it is still the clearer sidebar cut, and what changed is what it
+  is looking at.
+
+* Sat Aug 29 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.3-1
+- A wheel and a touchpad are directions like every other control: they arrive
+  as Up and Down in the ordinary action queue, in the order they happened, and
+  keep their fractions between events, so every application scrolls in all
+  three languages. Page::scrolls, Page::scrolled and lxb_page_scrolled say
+  where the pointer was, for a page with more than one list to move the one
+  under the hand. Ui::soft_edges and lxb_draw_soft_edges blur and dissolve
+  the ends of a scrolling area after its surfaces and its words have been
+  drawn together, leaving the controls around it sharp. Blur and translucency
+  grow together and end in whatever is behind the page's own content, so a
+  list stops without anything to stop at.
+
+* Sat Aug 29 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.2-1
+- Ui::written and Ui::cut_between, so a page can cut everything it drew
+  between two marks down to a rectangle. A list whose rows are taller than the
+  room it has can now end at an edge instead of at a whole row, which is what
+  a list needs to say that it runs on without drawing over whatever it stops
+  short of.
+
+* Fri Aug 28 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.1-1
+- A page can really be typed into: what it asks for is in force between one
+  frame and the next, which is when a key arrives, and the window is told so
+  through zwp_text_input_v3, which is what summons an on-screen keyboard.
+  Page::pad_in_hand says which control the user last reached for, watched the
+  way the shell watches it.
+
+* Fri Aug 28 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.3.0-1
+- Ui::picture and Fit, so an application can draw a picture of its own;
+  Page::taking_text and Page::typed, so a page can be typed into; and the
+  thumbnail cell at 512 px.
+
 * Fri Aug 21 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.2.0-1
 - The language corrected to the shell: neutral marks and their material,
   the theme and wallpaper surfaces, and the lxb-new application generator.

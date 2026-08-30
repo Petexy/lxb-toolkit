@@ -1,0 +1,10 @@
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <g id="bead">
+      <rect x="3.8" y="13.2" width="24.4" height="5.6" rx="2.8"/>
+      <rect x="13.2" y="3.8" width="5.6" height="24.4" rx="2.8"/>
+    </g>
+  </defs>
+
+  <use href="#bead" fill="#ffffff"/>
+</svg>

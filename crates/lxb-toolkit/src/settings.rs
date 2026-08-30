@@ -131,7 +131,41 @@ fn settings_path_from(xdg: Option<PathBuf>, home: Option<PathBuf>) -> Option<Pat
     Some(config.join("lxb").join("shell.toml"))
 }
 
+/// Which control the user last reached for, as the shell last wrote it down.
+///
+/// The shell watches for this — a stick or a button on the pad, any key on a
+/// keyboard — and keeps it in the same file the accent and the icon style come
+/// out of. An application built on this toolkit reads it so that what it says
+/// about its own buttons agrees with what the shell says about the shell's.
+///
+/// `None` where there is no such file, which is what running under GNOME or
+/// Plasma looks like: nothing has been written down, so nothing is claimed.
+pub fn controller_in_hand() -> Option<bool> {
+    controller_in_hand_from(&std::fs::read_to_string(settings_path()?).ok()?)
+}
+
+fn controller_in_hand_from(raw: &str) -> Option<bool> {
+    match top_level_word(raw, "controller-in-hand")?.as_str() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+/// A bare top-level value: a number, a boolean, anything not in quotes.
+fn top_level_word(raw: &str, wanted: &str) -> Option<String> {
+    top_level_value(raw, wanted).map(|value| value.to_string())
+}
+
 fn top_level_string(raw: &str, wanted: &str) -> Option<String> {
+    top_level_value(raw, wanted).and_then(toml_string)
+}
+
+/// The text after `wanted =`, at the top level of the file only.
+///
+/// TOML puts every key after a table header inside that table, so a key of the
+/// same name under `[media-sort]` is a different key and is not this one.
+fn top_level_value<'a>(raw: &'a str, wanted: &str) -> Option<&'a str> {
     let mut top_level = true;
     for line in raw.lines() {
         let line = without_comment(line).trim();
@@ -149,7 +183,7 @@ fn top_level_string(raw: &str, wanted: &str) -> Option<String> {
             continue;
         };
         if key.trim() == wanted {
-            return toml_string(value.trim());
+            return Some(value.trim());
         }
     }
     None
@@ -178,6 +212,7 @@ fn without_comment(line: &str) -> &str {
 }
 
 fn toml_string(value: &str) -> Option<String> {
+    let value = value.trim();
     let quote = value.chars().next()?;
     if !matches!(quote, '"' | '\'') {
         return None;
@@ -192,6 +227,25 @@ fn toml_string(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn which_control_is_in_hand_is_read_off_the_shell_s_own_file() {
+        assert_eq!(
+            controller_in_hand_from("accent = \"purple\"\ncontroller-in-hand = true\n"),
+            Some(true)
+        );
+        assert_eq!(
+            controller_in_hand_from("controller-in-hand = false  # watched, not chosen\n"),
+            Some(false)
+        );
+        assert_eq!(controller_in_hand_from("accent = 'jade'\n"), None);
+        // TOML puts everything after a header inside that table, so this one
+        // is `media-sort.controller-in-hand` and says nothing about hands.
+        assert_eq!(
+            controller_in_hand_from("[media-sort]\ncontroller-in-hand = true\n"),
+            None
+        );
+    }
 
     #[test]
     fn defaults_are_safe_without_a_file() {

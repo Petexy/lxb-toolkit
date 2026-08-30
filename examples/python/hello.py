@@ -11,6 +11,13 @@ a duration or a device.
 """
 
 import sys
+from pathlib import Path
+
+# Run the source checkout's binding when this example is invoked directly.
+# Otherwise an installed, older lxb_toolkit can be chosen before this project.
+_SOURCE_PYTHON = Path(__file__).resolve().parents[2] / "python"
+if _SOURCE_PYTHON.is_dir():
+    sys.path.insert(0, str(_SOURCE_PYTHON))
 
 import lxb_toolkit as lxb
 

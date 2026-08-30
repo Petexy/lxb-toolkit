@@ -6,6 +6,7 @@ use lxb_app::lxb_toolkit::{
     material::{Overlay, Surface},
     metrics::Metric,
     palette::Role,
+    picker::Selection as PickerSelection,
     sound::Sound,
     typography::Text,
 };
@@ -156,6 +157,18 @@ pub unsafe extern "C" fn lxb_page_action(page: *mut Page<'static>) -> c_int {
         .map_or(-1, |action| action as c_int)
 }
 
+/// How far a wheel or touchpad moved over one of this page's own spots,
+/// counted in directions and signed downwards.
+///
+/// The directions themselves are already in `lxb_page_action`, so a page that
+/// never calls this still scrolls. Call it to decide *which* of the page's
+/// lists this frame's Up and Down move — the one question a pointer asks and
+/// an action cannot answer.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_scrolled(page: *const Page<'static>, id: c_uint) -> c_int {
+    page.as_ref().map_or(0, |page| page.scrolled(id) as c_int)
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn lxb_page_focus(page: *mut Page<'static>, index: Size) {
     if let Some(page) = page.as_mut() {
@@ -219,6 +232,28 @@ pub unsafe extern "C" fn lxb_page_press(page: *const Page<'static>, lit: c_int) 
         },
         None => 0,
     }
+}
+
+/// Where the pointer is while a press that began on this control is still
+/// held down. Writes two floats — x and y — to `out` and answers 1, or answers
+/// 0 and writes nothing when nothing is being dragged from there.
+///
+/// The one gesture a press and a release cannot describe between them: a bar
+/// taken hold of and moved. Only a pointer drags; a finger on the same control
+/// moves the list instead.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_dragging(
+    page: *const Page<'static>,
+    id: c_uint,
+    out: *mut c_float,
+) -> c_int {
+    let Some(at) = page.as_ref().and_then(|page| page.dragging(id)) else {
+        return 0;
+    };
+    if !out.is_null() {
+        std::ptr::copy_nonoverlapping(at.as_ptr(), out, 2);
+    }
+    1
 }
 
 #[no_mangle]
@@ -359,6 +394,15 @@ pub unsafe extern "C" fn lxb_page_row_value(
     }
 }
 
+/// `rect` is four floats: x, y, width, height.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_light_at(page: *mut Page<'static>, rect: *const c_float) {
+    let (Some(page), Some(rect)) = (page.as_mut(), rectangle(rect)) else {
+        return;
+    };
+    page.light_at(rect);
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn lxb_page_menu(
     page: *mut Page<'static>,
@@ -372,6 +416,24 @@ pub unsafe extern "C" fn lxb_page_menu(
     let commands = strings(commands, count);
     let borrowed: Vec<&str> = commands.iter().map(String::as_str).collect();
     page.menu(borrow(title), &borrowed);
+}
+
+/// `marked` is an index into `commands`; anything past the end marks nothing,
+/// which is what `lxb_page_menu` passes.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_menu_marked(
+    page: *mut Page<'static>,
+    title: *const c_char,
+    commands: *const *const c_char,
+    count: Size,
+    marked: Size,
+) {
+    let Some(page) = page.as_mut() else {
+        return;
+    };
+    let commands = strings(commands, count);
+    let borrowed: Vec<&str> = commands.iter().map(String::as_str).collect();
+    page.menu_marked(borrow(title), &borrowed, marked as usize);
 }
 
 #[no_mangle]
@@ -406,6 +468,72 @@ pub unsafe extern "C" fn lxb_page_answered(page: *mut Page<'static>) -> c_int {
     page.as_mut()
         .and_then(Page::answered)
         .map_or(-1, |index| index as c_int)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_pick(
+    page: *mut Page<'static>,
+    selection: Size,
+    directory: *const c_char,
+) -> c_int {
+    let Some(selection) = PickerSelection::ALL.get(selection as usize).copied() else {
+        return 0;
+    };
+    match (page.as_mut(), borrow(directory)) {
+        (Some(page), Some(directory)) => c_int::from(page.pick(selection, directory)),
+        _ => 0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_pick_many(
+    page: *mut Page<'static>,
+    selection: Size,
+    directory: *const c_char,
+) -> c_int {
+    let Some(selection) = PickerSelection::ALL.get(selection as usize).copied() else {
+        return 0;
+    };
+    match (page.as_mut(), borrow(directory)) {
+        (Some(page), Some(directory)) => c_int::from(page.pick_many(selection, directory)),
+        _ => 0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_save(
+    page: *mut Page<'static>,
+    name: *const c_char,
+    directory: *const c_char,
+) -> c_int {
+    match (page.as_mut(), borrow(name), borrow(directory)) {
+        (Some(page), Some(name), Some(directory)) => c_int::from(page.save(name, directory)),
+        _ => 0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_picked(page: *mut Page<'static>) -> *mut c_char {
+    page.as_mut()
+        .and_then(Page::picked)
+        .and_then(|path| path.to_str().map(owned))
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_picked_next(page: *mut Page<'static>) -> *mut c_char {
+    page.as_mut()
+        .and_then(Page::picked_next)
+        .and_then(|path| path.to_str().map(owned))
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_app_string_free(text: *mut c_char) {
+    if text.is_null() {
+        return;
+    }
+    drop(CString::from_raw(text));
 }
 
 #[no_mangle]
@@ -535,6 +663,25 @@ pub unsafe extern "C" fn lxb_draw_spot(page: *mut Page<'static>, id: c_uint, rec
     }
 }
 
+/// Blur and fade the top and bottom edges of a scrolling area, after
+/// everything in it has been drawn.
+///
+/// `band` is the feather in points; `top` and `bottom` are how strongly each
+/// edge is there, which is how a list says whether anything really continues
+/// past it.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_draw_soft_edges(
+    page: *mut Page<'static>,
+    rect: *const c_float,
+    band: c_float,
+    top: c_float,
+    bottom: c_float,
+) {
+    if let (Some(page), Some(rect)) = (page.as_mut(), rectangle(rect)) {
+        page.ui().soft_edges(rect, band, top, bottom);
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn lxb_page_at(page: *const Page<'static>, x: c_float, y: c_float) -> c_int {
     use lxb_app::lxb_render::Spot;
@@ -583,6 +730,12 @@ unsafe fn borrow<'a>(text: *const c_char) -> Option<&'a str> {
     CStr::from_ptr(text).to_str().ok()
 }
 
+fn owned(text: &str) -> *mut c_char {
+    CString::new(text)
+        .map(CString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
+
 unsafe fn strings(list: *const *const c_char, count: Size) -> Vec<String> {
     if list.is_null() {
         return Vec::new();
@@ -611,5 +764,25 @@ fn pressed(press: Size) -> Press {
         1 => Press::Focused,
         2 => Press::Pressed,
         through => Press::Going(((through - 3) as f32 / 100.0).clamp(0.0, 1.0)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_path_returned_to_c_is_released_by_this_library() {
+        let text = owned("/tmp/selected-file");
+        assert!(!text.is_null());
+        assert_eq!(
+            unsafe { CStr::from_ptr(text) }.to_str(),
+            Ok("/tmp/selected-file")
+        );
+
+        unsafe {
+            lxb_app_string_free(text);
+            lxb_app_string_free(std::ptr::null_mut());
+        }
     }
 }

@@ -1,25 +1,4 @@
-<!--
-  The Music subcategory's glyph: a pair of beamed notes.
-
-  Under Multimedia, beside Video. Beamed rather than single because two notes
-  joined by a beam is the mark that means *music* rather than *a note*, and
-  because the beam gives the shape a top edge to stand its wall up on.
-
-  No openings at all, which makes this the mark that tests the other half of the
-  material: a body of water with nothing taken out of it is carried entirely by
-  its own outline. The beam, the stems and the two heads are one object and no
-  crevice is cut between them — a seam along a join would be a line ruled across
-  a solid.
-
-  The stems are the thinnest parts in the set. A part narrower than twice the
-  bevel is all bevel, which is correct for a run of water that thin, and the
-  shader flattens the crease that would otherwise run down the middle of it.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="beam" d="M12.54 11.72L25.24 9.32L25.84 9.09L26.33 8.67L26.65 8.11L26.75 7.48L26.63 6.85L26.30 6.29L25.81 5.89L25.20 5.67L24.56 5.68L11.86 8.08L11.26 8.31L10.77 8.73L10.45 9.29L10.35 9.92L10.47 10.55L10.80 11.11L11.29 11.51L11.90 11.73Z"/>
     <path id="stem-l" d="M11.00 9.90L11.00 23.40L11.07 23.81L11.28 24.17L11.60 24.44L11.99 24.58L12.41 24.58L12.80 24.44L13.12 24.17L13.33 23.81L13.40 23.40L13.40 9.90L13.33 9.49L13.12 9.13L12.80 8.86L12.41 8.72L11.99 8.72L11.60 8.86L11.28 9.13L11.07 9.49Z"/>

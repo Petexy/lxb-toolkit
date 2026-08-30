@@ -9,9 +9,26 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-lxb-toolkit = { path = "../lxb-toolkit", version = "0.2.0" }
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.0" }
+# How a file question is put to the desktop. Std only — no window, no GPU, no
+# runtime — so a component that draws a chooser can also decline to draw one.
+lxb-portal = { path = "../lxb-portal", version = "0.9.0" }
+
+# One clock reading: the monotonic sample a wallpaper handoff is anchored to.
+# `lxb-toolkit` owns the record itself and carries no dependencies at all, so
+# the one call that needs the C library is made from the crate every program
+# drawing the wallpaper already has.
+libc = "0.2"
 
 bytemuck = { version = "1", features = ["derive"] }
 glyphon = "0.12"
-resvg = { version = "0.48", default-features = false }
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "gif",
+    "webp",
+    "bmp",
+    "tiff",
+] }
+resvg = { version = "0.48", default-features = false, features = ["raster-images"] }
 wgpu = "30"

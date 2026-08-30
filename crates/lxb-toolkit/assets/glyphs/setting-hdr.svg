@@ -1,24 +1,4 @@
-<!--
-  The badge on the one control that turns high dynamic range on.
-
-  A frame with its middle taken out and three letters standing in the hole. The
-  letters are strokes, which the field measures like anything else, and they are
-  bodies of their own rather than marks on a face — there is no face to mark.
-
-  This badge is reserved for that control. Anything that merely explains
-  something wears setting-info.svg instead.
-
-  Drawn a little smaller than the old mark was. A shape has to leave room round
-  itself for the shadow the shader casts beside it, and this one ran to within a
-  unit of the cell's edge; the scale below is what brings it inside. The four
-  rotations all carry the same factor whatever each needs on its own, because
-  they are one object turned and have to stay one size.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="frame" fill-rule="evenodd" clip-rule="evenodd"
           d="M5 5h22a4 4 0 0 1 4 4v14a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4z
@@ -38,7 +18,7 @@
     </mask>
   </defs>
   <g transform="translate(16 16) scale(0.8667) translate(-16 -16)">
-  
+
     <g mask="url(#pierced)">
       <use href="#bead" fill="#ffffff"/>
     </g>

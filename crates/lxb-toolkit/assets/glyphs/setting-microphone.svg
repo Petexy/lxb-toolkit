@@ -1,15 +1,4 @@
-<!--
-  A microphone, for the input rows.
-
-  Capsule, cradle and stand. The cradle is a stroke — an arc under the capsule,
-  standing clear of it — and the three grille slots are openings cut through the
-  capsule, which is what stops it reading as a pill.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="capsule" d="M16 3.2a4.3 4.3 0 0 1 4.3 4.3v6.9a4.3 4.3 0 0 1-8.6 0V7.5A4.3 4.3 0 0 1 16 3.2z"/>
     <path id="cradle" d="M23.6 12.4v1.1a7.6 7.6 0 0 1-15.2 0v-1.1"

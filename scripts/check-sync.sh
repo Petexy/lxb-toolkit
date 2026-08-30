@@ -6,8 +6,8 @@ set -euo pipefail
 # Usage: scripts/check-sync.sh [path-to-project-linexinbar]
 #
 # This never rewrites either tree. It checks the recorded source commit, every
-# bundled glyph/sound and selected font byte-for-byte, then compares the design
-# constants that are deliberately transcribed rather than shared as a crate.
+# bundled glyph geometry, every sound and selected font byte-for-byte, then
+# compares the design constants deliberately transcribed rather than shared.
 # Keep each comparison named: the useful answer to drift is which contract
 # moved, not merely that two large source files differ.
 
@@ -37,6 +37,18 @@ require_file() {
     [[ -f "$2" ]] || fail_setup "$1" "missing file $2"
 }
 
+# Toolkit SVGs intentionally omit the shell sources' design notes and carry
+# their material marker as an XML attribute. Remove those two representation
+# differences while retaining every element, attribute and authored number.
+normalised_svg() {
+    perl -0pe '
+        s/<!--.*?-->//gs;
+        s/ data-lxb-material="lxb:shape"//g;
+        s/[ \t]+$//mg;
+        s/^[ \t]*\n//mg;
+    ' "$1"
+}
+
 # Print exactly one sed capture. Zero or multiple captures mean a source shape
 # moved and should be reported as a checker setup problem, not compared as an
 # empty value.
@@ -58,6 +70,40 @@ extract_one() {
 rust_scalar() {
     extract_one "$1" "$2" \
         "s/^[[:space:]]*(pub[[:space:]]+)?const[[:space:]]+$3:[^=]+=[[:space:]]*([^;]+);[[:space:]]*$/\\2/p"
+}
+
+# A shell constant is sometimes written by naming another one —
+# `const PANEL_RADIUS: f32 = lxb_protocol::pip::MENU_RADIUS as f32;` — which is
+# a constant moving house rather than a value changing. Follow the name to
+# wherever it is now written instead of reporting the expression as "not a
+# decimal number", which is what a reader that only understood literals did the
+# first time the shell did this.
+rust_scalar_followed() {
+    local label=$1 file=$2 name=$3
+    local found compact named home depth=0
+    found=$(rust_scalar "$label" "$file" "$name")
+    while true; do
+        compact=$(compact_number "$found")
+        if [[ "$compact" =~ ^-?([0-9]+([.][0-9]*)?|[.][0-9]+)$ ]]; then
+            printf '%s' "$found"
+            return
+        fi
+        if (( depth >= 4 )); then
+            fail_setup "$label" "followed $name through four names without a number"
+        fi
+        named=${compact%%as[a-z]*[0-9]*}
+        named=${named##*::}
+        if [[ ! "$named" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
+            printf '%s' "$found"
+            return
+        fi
+        home=$(grep -rlE "^(pub )?const $named:" "$project_root/crates" --include='*.rs')
+        if [[ -z "$home" || "$home" == *$'\n'* ]]; then
+            fail_setup "$label" "$name names $named, which is not written in exactly one place"
+        fi
+        found=$(rust_scalar "$label" "$home" "$named")
+        depth=$(( depth + 1 ))
+    done
 }
 
 rust_vector() {
@@ -329,6 +375,7 @@ toolkit_glyph_material="$toolkit_root/crates/lxb-toolkit/src/glyph_material.rs"
 toolkit_material="$toolkit_root/crates/lxb-toolkit/src/material.rs"
 toolkit_metrics="$toolkit_root/crates/lxb-toolkit/src/metrics.rs"
 toolkit_menu="$toolkit_root/crates/lxb-toolkit/src/menu.rs"
+toolkit_components="$toolkit_root/crates/lxb-render/src/components.rs"
 project_ui="$project_root/crates/lxb-desktop/src/ui.rs"
 toolkit_control="$toolkit_root/crates/lxb-toolkit/src/control.rs"
 toolkit_settings="$toolkit_root/crates/lxb-toolkit/src/settings.rs"
@@ -657,8 +704,38 @@ for mapping in \
     'power-dim POWER_DIM PowerDim'; do
     read -r label project_name toolkit_name <<< "$mapping"
     compare_number "metric.$label" \
-        "$(rust_scalar "metric.$label.project" "$project_ui" "$project_name")" \
+        "$(rust_scalar_followed "metric.$label.project" "$project_ui" "$project_name")" \
         "$(metric_value "metric.$label.toolkit" "$toolkit_metrics" "$toolkit_name")"
+done
+
+# The file chooser's own shape. It is drawn by lxb-render rather than by the
+# values crate, so the numbers live beside the drawing — which is exactly the
+# kind of place a transcribed number drifts unwatched. What is compared is the
+# panel's proportions and every band inside it, because a chooser with the
+# shell's material and its own margins is not the shell's chooser.
+project_picker="$project_root/crates/lxb-desktop/src/picker.rs"
+require_file picker.project.source "$project_picker"
+compare_number picker.share \
+    "$(rust_scalar picker.share.project "$project_picker" SHARE)" \
+    "$(rust_scalar picker.share.toolkit "$toolkit_components" PICKER_WINDOW_WIDTH)"
+compare_number picker.share.square \
+    "$(rust_scalar picker.share.square.project "$project_picker" SHARE)" \
+    "$(rust_scalar picker.share.square.toolkit "$toolkit_components" PICKER_WINDOW_HEIGHT)"
+for mapping in \
+    'margin GUIDE_MARGIN PICKER_MARGIN' \
+    'head PICKER_HEAD PICKER_HEAD' \
+    'foot PICKER_FOOT PICKER_FOOT' \
+    'where PICKER_WHERE PICKER_WHERE' \
+    'cross-x PICKER_CROSS_X PICKER_CROSS_X' \
+    'cross-y PICKER_CROSS_Y PICKER_CROSS_Y' \
+    'hint-glyph PICKER_HINT_GLYPH PICKER_HINT_GLYPH' \
+    'hint-label PICKER_HINT_LABEL PICKER_HINT_LABEL' \
+    'hint-gap PICKER_HINT_GAP PICKER_HINT_GAP' \
+    'hint-step PICKER_HINT_STEP PICKER_HINT_STEP'; do
+    read -r label project_name toolkit_name <<< "$mapping"
+    compare_number "picker.$label" \
+        "$(rust_scalar_followed "picker.$label.project" "$project_ui" "$project_name")" \
+        "$(rust_scalar "picker.$label.toolkit" "$toolkit_components" "$toolkit_name")"
 done
 
 # The context menu is a component rather than a value: the material says what
@@ -774,6 +851,87 @@ project_visual=$(extract_one wallpaper.visual.project "$project_theme" \
 toolkit_visual=$(extract_one wallpaper.visual.toolkit "$toolkit_wallpaper" \
     's/^pub const VISUAL: &str = "([^"]+)";/\1/p')
 compare_text wallpaper.visual "$project_visual" "$toolkit_visual"
+
+# --- the wallpaper's clock, handed from one process to the next --------------
+
+# The scene is a function of a palette and a number of seconds, so a window
+# opening over a wallpaper already on screen only has to be told which second
+# it is. That is a record one process writes and another reads, which makes
+# every byte of it a contract: the shell reads one from its display manager,
+# and a toolkit window reads one from whatever started it — the same variable,
+# the same fields, the same refusals, in the same words.
+#
+# One deliberate difference, and it is an addition rather than a divergence:
+# the toolkit writes records as well as reading them, so it canonicalizes the
+# material a record names instead of accepting it and dropping it on the floor
+# as the shell does. Both still accept every record the other writes.
+project_wallpaper_clock="$project_root/crates/lxb-desktop/src/wallpaper_clock.rs"
+toolkit_handoff="$toolkit_root/crates/lxb-toolkit/src/handoff.rs"
+require_file handoff.project "$project_wallpaper_clock"
+require_file handoff.toolkit "$toolkit_handoff"
+
+compare_text handoff.variable \
+    "$(rust_scalar handoff.variable.project "$project_wallpaper_clock" HANDOFF_ENV)" \
+    "$(rust_scalar handoff.variable.toolkit "$toolkit_handoff" ENV)"
+compare_text handoff.clock \
+    "$(rust_scalar handoff.clock.project "$project_wallpaper_clock" CLOCK_ID)" \
+    "$(rust_scalar handoff.clock.toolkit "$toolkit_handoff" CLOCK)"
+compare_text handoff.boot-id \
+    "$(rust_scalar handoff.boot-id.project "$project_wallpaper_clock" BOOT_ID_PATH)" \
+    "$(rust_scalar handoff.boot-id.toolkit "$toolkit_handoff" BOOT_ID_PATH)"
+compare_text handoff.max-record-bytes \
+    "$(rust_scalar handoff.max-record-bytes.project "$project_wallpaper_clock" MAX_RECORD_BYTES)" \
+    "$(rust_scalar handoff.max-record-bytes.toolkit "$toolkit_handoff" MAX_RECORD_BYTES)"
+compare_text handoff.expires-after \
+    "$(rust_scalar handoff.expires-after.project "$project_wallpaper_clock" MAX_HANDOFF_AGE_NS)" \
+    "$(rust_scalar handoff.expires-after.toolkit "$toolkit_handoff" MAX_AGE_NS)"
+compare_text handoff.nanos-per-second \
+    "$(rust_scalar handoff.nanos.project "$project_wallpaper_clock" NANOS_PER_SECOND)" \
+    "$(rust_scalar handoff.nanos.toolkit "$toolkit_handoff" NANOS_PER_SECOND)"
+
+# The scene a record names is the one named beside the wallpaper itself, in
+# both, so neither can offer a phase for a picture its reader does not draw.
+file_contains handoff.visual.project "$project_wallpaper_clock" \
+    "const VISUAL_ID: &str = lxb_protocol::wallpaper::VISUAL;"
+file_contains handoff.visual.toolkit "$toolkit_handoff" \
+    "use crate::{palette::PALETTES, settings::WallpaperStyle, wallpaper::VISUAL};"
+file_contains handoff.version.project "$project_wallpaper_clock" 'if version != "1" {'
+compare_text handoff.version '"1"' \
+    "$(rust_scalar handoff.version.toolkit "$toolkit_handoff" VERSION)"
+
+# Every field on the wire, in the order each reader writes them down.
+record_fields() {
+    local found
+    found=$(sed -nE 's/^[[:space:]]*"([a-z-]+)" => &mut [a-z_]+,$/\1/p' "$2" | paste -sd,)
+    [[ -n "$found" ]] || fail_setup "$1" "no record fields in $2"
+    printf '%s' "$found"
+}
+compare_text handoff.fields \
+    "$(record_fields handoff.fields.project "$project_wallpaper_clock")" \
+    "$(record_fields handoff.fields.toolkit "$toolkit_handoff")"
+
+# And every reason a record is refused. A reader that quietly accepted one the
+# other refuses would draw a different wallpaper at the same second, which is
+# the whole of what this exists to prevent.
+refusals() {
+    local found
+    found=$(sed -nE 's/^[[:space:]]*Self::[A-Za-z0-9]+ => "([^"]+)",$/\1/p' "$2" \
+        | sort | paste -sd'|')
+    [[ -n "$found" ]] || fail_setup "$1" "no refusals in $2"
+    printf '%s' "$found"
+}
+compare_text handoff.refusals \
+    "$(refusals handoff.refusals.project "$project_wallpaper_clock")" \
+    "$(refusals handoff.refusals.toolkit "$toolkit_handoff")"
+
+# One whole record, byte for byte: the fixture each side's own tests assert
+# against, which is also the fixture the display manager's encoder is held to.
+canonical_record() {
+    extract_one "$1" "$2" 's/^[[:space:]]*"(v=1;visual=lxb-[^"]+)",?[[:space:]]*$/\1/p'
+}
+compare_text handoff.record \
+    "$(canonical_record handoff.record.project "$project_wallpaper_clock")" \
+    "$(canonical_record handoff.record.toolkit "$toolkit_handoff")"
 compare_vector wallpaper.key-light \
     "$(wgsl_vector wallpaper.key-light.project "$project_shader" KEY_LIGHT)" \
     "$(rust_vector wallpaper.key-light.toolkit "$toolkit_wallpaper" KEY_LIGHT)"
@@ -803,11 +961,12 @@ for mapping in \
         "$expected"
 done
 
-# Colour, by role. Five palettes of fourteen roles each: seventy authored
+# Colour, by role. Twelve palettes of fourteen roles each: 168 authored
 # values, and the whole of what "coloured by role rather than by name" means.
 # Nothing else in this checker would notice a palette that had drifted, and a
 # drifted palette is the one kind of mismatch a user sees immediately.
-for palette in PURPLE BLUE GREEN YELLOW RED; do
+for palette in PURPLE BLUE GREEN YELLOW RED TEAL INDIGO PINK ORANGE WHITE \
+    SILVER BLACK; do
     for role in accent accent_soft accent_deep glass glass_raised rim text \
         text_soft danger glow; do
         compare_text "palette.$palette.$role" \
@@ -905,11 +1064,34 @@ toolkit_used_files=$(
 )
 compare_text sound.shell-used "$project_effects" "$toolkit_used_files"
 
-# Byte-for-byte payload checks come last so a stale asset does not hide a
-# malformed token comparison in this checker itself.
-if ! diff -qr --exclude='*.swp' "$project_glyphs" "$toolkit_glyphs"; then
-    fail_mismatch assets.glyphs 'directory contents differ' 'directory contents differ'
+# Payload checks come last so a stale asset does not hide a malformed token
+# comparison in this checker itself.
+project_glyph_names=$(find "$project_glyphs" -maxdepth 1 -type f -name '*.svg' \
+    -printf '%f\n' | sort)
+toolkit_glyph_names=$(find "$toolkit_glyphs" -maxdepth 1 -type f -name '*.svg' \
+    -printf '%f\n' | sort)
+# The toolkit ships a curated subset — 98 of the shell's marks — and has since
+# its set was frozen: the shell keeps marks for the Users page, for
+# Picture-in-Picture and for the guide that an application has nothing to draw
+# with. So the assertion is one-directional. Every mark shipped here must be
+# the shell's, and none may be invented; a library that drew a mark the shell
+# does not have would be a second design language wearing the first one's name.
+# The shell growing a mark is not drift and is not reported here — what would
+# report it is somebody wanting that mark, which is a decision and not a check.
+invented_glyphs=$(comm -23 \
+    <(printf '%s\n' "$toolkit_glyph_names") \
+    <(printf '%s\n' "$project_glyph_names"))
+if [[ -n "$invented_glyphs" ]]; then
+    fail_mismatch assets.glyph.names \
+        'the shell has no such mark' "$(printf '%s' "$invented_glyphs" | tr '\n' ' ')"
 fi
+while IFS= read -r glyph_name; do
+    if ! diff -q \
+        <(normalised_svg "$project_glyphs/$glyph_name") \
+        <(normalised_svg "$toolkit_glyphs/$glyph_name") >/dev/null; then
+        fail_mismatch "assets.glyph.$glyph_name" 'geometry differs' 'geometry differs'
+    fi
+done <<< "$toolkit_glyph_names"
 if ! diff -qr "$project_sounds" "$toolkit_sounds"; then
     fail_mismatch assets.sounds 'directory contents differ' 'directory contents differ'
 fi
@@ -1060,14 +1242,18 @@ compare_text sound.fade \
     "$(rust_numbers sound.fade.project "$project_sound_source" smooth_step)" \
     "$(rust_numbers sound.fade.toolkit "$toolkit_sound_source" fade)"
 
-project_count=$(find "$project_glyphs" -maxdepth 1 -type f -name '*.svg' -print | wc -l)
 toolkit_count=$(find "$toolkit_glyphs" -maxdepth 1 -type f -name '*.svg' -print | wc -l)
 shape_count=$({ rg -l 'lxb:shape' "$toolkit_glyphs" -g '*.svg' || true; } | wc -l)
-if [[ "$project_count" -ne "$toolkit_count" || "$shape_count" -ne "$toolkit_count" ]]; then
+# Every mark shipped here is computed material rather than a painted picture,
+# so every one of them carries the marker. How many the shell has is reported
+# for the person reading a failure and is not what is asserted; see
+# assets.glyph.names above for why.
+project_count=$(find "$project_glyphs" -maxdepth 1 -type f -name '*.svg' -print | wc -l)
+if [[ "$shape_count" -ne "$toolkit_count" ]]; then
     printf 'sync mismatch [assets.glyph.contract]: project=%s toolkit=%s shapes=%s\n' \
         "$project_count" "$toolkit_count" "$shape_count" >&2
     exit 1
 fi
 
-printf 'lxb-toolkit matches project-linexinbar %s: %s glyphs, fonts and recordings, 70 palette colours, 34 durations, the context menu shape and material, the control, the three shaders on the processor, what the controls mean and the token contracts\n' \
+printf 'lxb-toolkit matches project-linexinbar %s: %s glyphs, fonts and recordings, 168 palette colours, 34 durations, the context menu shape and material, the file chooser shape, the wallpaper handoff, the control, the three shaders on the processor, what the controls mean and the token contracts\n' \
     "$head" "$toolkit_count"

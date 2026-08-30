@@ -145,6 +145,32 @@ pub mod optics {
     pub const BLUR_LEVELS: f32 = 4.0;
 }
 
+pub mod modal {
+
+    /// How deep into the blur pyramid the page goes while a modal surface is
+    /// over it, as a share of the levels there are.
+    ///
+    /// A panel's own frost, because a panel is the cut that "carries text over
+    /// anything" and a dialog has to do that over a page it knows nothing
+    /// about. The dialog's *own* pane is untouched by this: it stays the
+    /// clearer sidebar cut it has always been. What changed is what it is
+    /// looking at.
+    pub const FROST: f32 = super::Surface::Panel.glass().frost;
+
+    /// How much of `Role::Glass` — which is nearly black — is mixed into that
+    /// blurred picture.
+    ///
+    /// **Blur alone cannot do this, and most of the work here is the stain.**
+    /// A pyramid takes away detail and leaves brightness: a screenshot of an
+    /// ordinary light desktop window blurred to the last level is still a
+    /// white slab, and white letters over a white slab are letters nobody can
+    /// read at any depth of frost. What made a dialog legible over one was
+    /// darkening the page under it, not blurring it further, and 0.55 is where
+    /// a white window behind the words stops being white without the page
+    /// ceasing to be recognisably itself.
+    pub const STAIN: f32 = 0.55;
+}
+
 pub mod light {
 
     pub const SIDEBAR_STAIN: f32 = 0.38;
@@ -179,6 +205,30 @@ mod tests {
         assert_eq!(control.curve, 0.0, "a compact pane stays level");
         assert!(sidebar.curve > 0.0, "a broad sheet bows");
         assert!(GLOSS_QUIET < control.gloss);
+    }
+
+    #[test]
+    fn a_modal_frosts_the_page_at_a_panels_cut_and_stains_it_dark() {
+        assert_eq!(
+            modal::FROST,
+            Surface::Panel.glass().frost,
+            "a modal's backdrop is the cut that carries text over anything"
+        );
+        assert!(
+            modal::FROST > Surface::Sidebar.glass().frost,
+            "at the dialog's own cut a screenshot is still a screenshot"
+        );
+        assert!(
+            (0.0..=1.0).contains(&modal::FROST),
+            "it is a share of the pyramid, and past the last level of it \
+             there is nothing to sample"
+        );
+        assert!(
+            (0.4..1.0).contains(&modal::STAIN),
+            "blur leaves brightness behind, so the stain is what makes a \
+             light window under the words stop being one — and a stain that \
+             replaced the picture outright would not be a stain"
+        );
     }
 
     #[test]

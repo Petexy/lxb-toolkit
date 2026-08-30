@@ -1,16 +1,4 @@
-<!--
-  The door an account is left by, with an arrow going out through it.
-
-  Two bodies with a crevice between: the arrow is in front of the door and has
-  to read as passing it rather than growing out of it. The door's two panels are
-  openings — they were engraved lines in the old drawing — and the handle is a
-  third, small and round, which is what says which side the door opens.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <rect id="door" x="3.2" y="4.2" width="10.6" height="23.6" rx="1.8"/>
     <g id="panels">

@@ -1,14 +1,4 @@
-<!--
-  The three bars a shelf's order is changed by.
-
-  Three separate bodies with air between them, which is all this mark is. The
-  gaps are wider than the bars are thick, so nothing merges.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <g fill="#fff">
     <rect x="5.6" y="8.2" width="20.8" height="3.9" rx="1.95"/>
     <rect x="5.6" y="14.05" width="14.6" height="3.9" rx="1.95"/>

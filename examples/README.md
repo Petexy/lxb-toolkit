@@ -20,8 +20,9 @@ device or an event loop. All three are one page function against `lxb-app`.
 
 ## The tour
 
-Seven pages of the language itself — what it answers, its colour, its material,
-its marks, its type, its motion and its sounds:
+Eight pages of the language itself — what it answers, its colour, its material,
+its marks, its type, its motion, its sounds, and its built-in file and folder
+picker:
 
 ```sh
 (cd rust && cargo run --release)                       # Rust
@@ -42,30 +43,52 @@ that has outgrown the page function looks like.
 Every one of them draws the shell's own material on the GPU: the analytic water
 behind everything, panes of real glass that bend what is behind them — so the
 sidebar bends the water and the context menu bends the sidebar, the rows and
-the words — and ninety-eight marks shaded into beads of water out of their own
+the words — and every mark shaded into a bead of water out of its own
 distance fields. None of them contains a shader, a pipeline or an atlas.
 
 All three raise the same context menu, and it is the shell's rather than a
 lookalike: it stands *beside* the row it is about, its list is measured by
 `menu::Layout`, it is laid out once and flown out of its anchor as one shape,
 and the page behind it steps back, dims and gives up the words the panel is
-covering.
+covering. Their Picker page also opens the same contained Lattice file and
+folder window: it covers roughly seventy percent of the app, path columns
+recede, the focused row owns the glass, and the surrounding application falls
+back under strong frost and depth.
 
 ## They are the same frames
 
-Every greeting takes `--shot FILE [PAGE] [menu|dialog]`: one settled frame to a
+Every greeting takes `--shot FILE [PAGE] [OVERLAY]`: one settled frame to a
 PNG, with no display, compositor or window involved, through the same page
-function and the same renderer as the window. So the three can be compared,
-byte for byte:
+function and the same renderer as the window. So they can be compared, byte for
+byte:
 
 ```sh
 scripts/check-greetings.sh
 ```
 
-Eleven views — seven pages of the tour, its menu, its question, and the short
-greeting in all three languages. A PNG of the same pixels is the same file, so
-anything at all that differs fails there. It is the only check that catches a
-binding which crosses a value correctly and then uses it slightly differently.
+Seventeen views — eight pages of the tour, its menu, its question, the five
+file questions it can put, and the short greeting. A PNG of the same pixels is the same
+file, so anything at all that differs fails there. It is the only check that
+catches a binding which crosses a value correctly and then uses it slightly
+differently.
+
+**Sixteen of those are C against Python.** The seventeenth is the short
+greeting, which is the one view that exists in all three languages. The Rust
+tour is deliberately not a third copy of the C one — it carries prose of its
+own, drives its own window, and reaches the renderer directly rather than
+through `lxb-app` — so nothing compares its pixels to anything. What covers it
+is its own test suite, and **`cargo test --workspace` does not reach it**,
+because this directory is outside the workspace:
+
+```sh
+(cd rust && cargo fmt --check \
+    && cargo clippy --all-targets --locked -- -D warnings \
+    && cargo test --release --locked)
+```
+
+Run that, or the tour drifts and every other check stays green while it does.
+It has: the accent palette grew to twelve and the Rust tour went on drawing
+them in one row, off the edge of the page, for as long as nobody looked.
 
 One trap, and it costs a whole afternoon: **do the arithmetic in double and
 narrow once.** Python has no float32, so every length it works out is a double

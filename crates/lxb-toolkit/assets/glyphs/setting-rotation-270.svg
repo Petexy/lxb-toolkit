@@ -1,29 +1,4 @@
-<!--
-  The display at 270 degrees, one of the four a rotation row offers.
-
-  **The stand is the mark.** Bezel and screen are the same object in all four —
-  the same landscape rectangle, stood on its end for two of them — so what says
-  which turn this is, and the only thing that does, is where the stand ends up:
-  to its right. Drop the stand and this glyph and the one for the opposite turn
-  become the same picture, which is exactly what happened when this set was first
-  cut back to its shape: the stand was drawn in the body rather than in the defs
-  the conversion read, so all four came out as a bare screen and two pairs of
-  them were indistinguishable.
-
-  Bezel, neck and foot are one object and take no crevice between them — a
-  monitor is not a screen resting on a separate stand. The screen is an opening,
-  as it is on every display in these rows.
-
-  The four all carry the same scale whatever each needs on its own. They are one
-  object turned, and one object seen four ways cannot change size as it goes
-  round; the factor is what the two portrait turns need, because on its end the
-  display is the tallest thing here.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="bezel" d="M6.35 3.15h12.9a2 2 0 0 1 2 2v23.2a2 2 0 0 1-2 2h-12.9a2 2 0 0 1-2-2V5.15a2 2 0 0 1 2-2z"/>
     <path id="pane" d="M6.85 6.15h11.9v21.2h-11.9z"/>

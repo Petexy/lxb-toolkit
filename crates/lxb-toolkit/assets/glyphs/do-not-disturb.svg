@@ -1,19 +1,4 @@
-<!--
-  Do not disturb: a crescent moon.
-
-  The shell's second moon, and deliberately so — night light is a warmth over
-  the whole display and this is a switch on one thing, so they are drawn as the
-  same object seen twice rather than made to differ for the sake of differing.
-
-  The craters the old drawing had are gone. They were shading and not shape, and
-  as openings they would be three pixels across on a guide tile, which is noise
-  rather than a moon.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <path fill="#fff"
         d="M18.32 4.847
            A11.2 11.2 0 1 0 25.97 23.09

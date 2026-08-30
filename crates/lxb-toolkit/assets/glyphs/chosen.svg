@@ -1,17 +1,4 @@
-<!--
-  The badge that marks the value in force: a tick cut through a bead.
-
-  The tick is an opening and not a mark laid on top, which is the rule the whole
-  set follows — see category-games.svg. It also happens to be what this badge
-  needs: the disc is drawn in the accent and the tick has to read against it at
-  a third of an icon's size, and a hole with a ring of displaced water standing
-  round it reads there where a paler tick painted on would not.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <circle id="disc" cx="16" cy="16" r="12.2"/>
     <path id="tick" d="M10.3 16.4L14.2 20.3L21.7 11.9"

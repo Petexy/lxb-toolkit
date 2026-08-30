@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """A tour of the LineXinBar design language, in Python.
 
-Seven pages: what the language answers, its colour, its material, its marks,
-its type, its motion and its sounds. Every one of them is drawn by the shell's
-own renderer on the GPU — the same wallpaper shader, the same glass shader and
-the same glyph shader the shell itself runs — through one library and one page
+Eight pages: what the language answers, its colour, its material, its marks,
+its type, its motion, its sounds and its built-in picker. Every one is drawn
+by the shell's own renderer on the GPU — the same wallpaper shader, the same
+glass shader and the same glyph shader the shell itself runs — through one
+library and one page
 function.
 
     python3 tour.py                    # the window
     python3 tour.py --shot tour.png    # one frame of it, with no display
     python3 tour.py --shot tour.png Colour
+    python3 tour.py --shot picker.png Picker picker-file
 
 Up and Down walk the pages; Left and Right walk within one. Enter presses;
 Escape leaves; the Menu key or the right mouse button raises a context menu.
@@ -21,11 +23,23 @@ which. An application that is one list of things has none of this and is a
 dozen lines; see hello-app.py.
 """
 
+import os
 import sys
+from pathlib import Path
+from typing import Optional
+
+# A source-checkout tour must use the Python binding and shared libraries it
+# sits beside.  Without this, running `python3 tour.py` from this directory can
+# silently load an older installed binding: its callback then lacks new page
+# methods and the native window has only wallpaper left to draw.
+_SOURCE_PYTHON = Path(__file__).resolve().parents[2] / "python"
+if _SOURCE_PYTHON.is_dir():
+    sys.path.insert(0, str(_SOURCE_PYTHON))
 
 import lxb_toolkit as lxb
 
-SECTIONS = ("Hello", "Colour", "Material", "Marks", "Type", "Motion", "Sound")
+SECTIONS = ("Hello", "Colour", "Material", "Marks", "Type", "Motion", "Sound",
+            "Picker")
 
 # Where this page's own items are, so a pointer over one can be answered. The
 # numbers are this program's, and are kept clear of the sidebar's, which
@@ -46,10 +60,35 @@ SHOWN_DURATIONS = (
 )
 
 MENU_ROWS = ("Simple marks", "Ask a question", "Copy this page's values", "Close")
+PANEL_SHOTS = ("menu", "dialog", "picker-file", "picker-many", "picker-folder",
+               "picker-save", "picker-image")
+
+# The four questions the Picker page can put, in the order it offers them, and
+# the name each is raised by for a headless shot. A save arrives named because
+# that is the case worth a picture: it is the one purpose whose column opens on
+# the row that answers.
+PICKER_LABELS = ("Choose a file", "Choose some files", "Choose a folder",
+                 "Choose somewhere to save", "Choose an image")
+PICKER_PANELS = ("picker-file", "picker-many", "picker-folder", "picker-save",
+                 "picker-image")
+PICKER_SAVE_NAME = "untitled.txt"
+
+
+def tour_files() -> Path:
+    """The checked-in picker contents, or the one a screenshot test supplied.
+
+    C and Python read the same override rather than each creating a temporary
+    directory of its own, which keeps the visible location and listing
+    identical in their headless frames.
+    """
+    default = Path(__file__).resolve().parents[1] / "tour-files"
+    return Path(os.environ.get("LXB_TOUR_FILES", default))
 
 
 class Tour:
     """The whole of the application: which page, and where in it."""
+
+    raise_panel: Optional[str]
 
     def __init__(self):
         self.section = 0
@@ -65,13 +104,16 @@ class Tour:
         self.asked = False
         # A panel to raise on the first frame, for a picture of one.
         self.raise_panel = None
+        self.picker_root = tour_files()
+        self.picked_path: Optional[Path] = None
 
     # -- what is on each page ---------------------------------------------
 
     def count(self) -> int:
         """How many things the current page has to walk between."""
         return (1, len(lxb.PALETTES), len(lxb.Surface), len(lxb.GLYPHS),
-                len(lxb.Text), len(SHOWN_DURATIONS), len(lxb.SOUNDS))[self.section]
+                len(lxb.Text), len(SHOWN_DURATIONS), len(lxb.SOUNDS),
+                len(PICKER_LABELS))[self.section]
 
     def at(self) -> int:
         return self.cursor[self.section]
@@ -132,6 +174,23 @@ class Tour:
             self.palette = self.at()
         elif self.section == 6:
             page.play(self.at())
+        elif self.section == 7:
+            self.ask_for_files(page, self.at())
+
+    def ask_for_files(self, page, index):
+        """Put the question the Picker page's row at `index` asks."""
+        if index == 1:
+            page.pick_many(lxb.Selection.FILE, self.picker_root)
+        elif index == 2:
+            page.pick(lxb.Selection.FOLDER, self.picker_root)
+        elif index == 3:
+            page.save(PICKER_SAVE_NAME, self.picker_root)
+        # The one question with a kind of file in force, which is what the
+        # panel's Types row exists for.
+        elif index == 4:
+            page.pick(lxb.Selection.IMAGE, self.picker_root)
+        else:
+            page.pick(lxb.Selection.FILE, self.picker_root)
 
     def light(self, page, rect):
         """The lit capsule, travelling.
@@ -156,9 +215,17 @@ class Tour:
         for action in page.actions():
             self.act(page, action)
         if self.raise_panel is not None:
-            self.act(page, {"menu": lxb.Action.MENU,
-                            "dialog": lxb.Action.BACK}[self.raise_panel])
+            if self.raise_panel == "menu":
+                self.act(page, lxb.Action.MENU)
+            elif self.raise_panel == "dialog":
+                self.act(page, lxb.Action.BACK)
+            elif self.raise_panel in PICKER_PANELS:
+                self.ask_for_files(page, PICKER_PANELS.index(self.raise_panel))
             self.raise_panel = None
+
+        picked = page.picked()
+        if picked is not None:
+            self.picked_path = picked
 
         # A press on one of this page's own items. The pointer's half of Left
         # and Right: it carries the selection there and acts on it, which is
@@ -193,7 +260,7 @@ class Tour:
         page.cursor = (content[0] + pad, content[1] + pad,
                        content[2] - 2 * pad, content[3] - 2 * pad)
         (self.hello, self.colour, self.material, self.marks,
-         self.type_, self.motion, self.sound)[self.section](page)
+         self.type_, self.motion, self.sound, self.picker)[self.section](page)
 
     def draw_sidebar(self, page, rect):
         """The pages, as a column beside the page they are about.
@@ -227,7 +294,7 @@ class Tour:
                             what, lxb.Role.TEXT_SOFT)
             foot += line
 
-    # -- the seven pages ---------------------------------------------------
+    # -- the eight pages ---------------------------------------------------
 
     def head(self, page, title, mark=None):
         if mark is None:
@@ -454,6 +521,18 @@ class Tour:
                   "Right walk them and each one plays as it is reached; Enter "
                   "plays it again. No clip is ever laid over a copy of itself.")
 
+    def picker(self, page):
+        self.head(page, "File and folder picker", "file-folder")
+        self.chips(page, PICKER_LABELS, self.cursor[7])
+        page.gap()
+        page.note("No file or folder chosen yet." if self.picked_path is None
+                  else f"Last choice: {self.picked_path.name}")
+        page.text("One call opens a centred Lattice window covering roughly seventy percent "
+                  "of this application. Folder columns recede along the trail while strong "
+                  "frost and depth put this page behind it. A on Search opens its controller "
+                  "keyboard; Start finishes; B or its hide key returns without losing the "
+                  "query.")
+
     def chips(self, page, names, chosen):
         """A row of capsules, one of them lit. What choosing between a handful
         of things looks like in this language."""
@@ -461,10 +540,19 @@ class Tour:
         gap = page.m(lxb.Metric.GAP) * 0.5
         height = page.s(44.0)
         left = x
+        top = y
+        rows = 1
         rects = []
         for name in names:
             room = page.measure(lxb.Text.LABEL, name) + 2 * page.m(lxb.Metric.ROW_PADDING)
-            rects.append((left, y, room, height))
+            # A capsule that would hang off the page starts the next row
+            # instead. One that is wider than the whole column stays where it
+            # is, because there is nowhere better for it to go.
+            if left > x and left + room > x + width:
+                left = x
+                top += height + gap
+                rows += 1
+            rects.append((left, top, room, height))
             left += room + gap
 
         # The light first, and the faces over it: one object crossing the row
@@ -477,7 +565,7 @@ class Tour:
             # is on is part-way through a press whenever one is in flight, and
             # this program has no way of its own to know that.
             page.draw_button(rects[index], name, page.press(index == chosen))
-        page.cursor = (x, y + height + gap, width, 0)
+        page.cursor = (x, y + rows * (height + gap), width, 0)
 
 
 def main():
@@ -490,6 +578,8 @@ def main():
         # A panel, if one was asked for: raised on the first frame, settled by
         # the second, which is the one that is kept.
         tour.raise_panel = sys.argv[4] if len(sys.argv) > 4 else None
+        if tour.raise_panel is not None and tour.raise_panel not in PANEL_SHOTS:
+            raise SystemExit("panel must be one of: " + ", ".join(PANEL_SHOTS))
         app.shot(sys.argv[2])
     else:
         app.run()

@@ -206,13 +206,13 @@ stage_crate_sources() {
     # the installed path does not carry a version a consumer would have to know.
     tar -xzf "$crate" -C "$crates/lxb-toolkit" --strip-components=1
 
-    # The other three by hand, because `cargo package` cannot normalise them:
+    # The others by hand, because `cargo package` cannot normalise them:
     # each depends on lxb-toolkit, which is not on any registry, and packaging
     # a crate resolves its dependencies whether or not it verifies them. So the
     # sources are copied and the same inherited keys are written in, along with
     # the path to the sibling installed beside them.
     local sibling
-    for sibling in lxb-render lxb-input lxb-sound lxb-app; do
+    for sibling in lxb-render lxb-input lxb-sound lxb-portal lxb-app; do
         mkdir -p "$crates/$sibling"
         cp -r "$PROJECT_ROOT/crates/$sibling/src" "$crates/$sibling/"
         if [[ -d "$PROJECT_ROOT/crates/$sibling/examples" ]]; then

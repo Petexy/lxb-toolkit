@@ -90,15 +90,28 @@ mv "$manifest.tmp" "$manifest"
 
 # The FFI crate depends on the core by an exact version, so that a mismatched
 # pair cannot be resolved rather than being resolved to something untested.
-note "crates/lxb-toolkit-ffi/Cargo.toml lxb-toolkit -> $new_version"
-ffi_manifest="$project_root/crates/lxb-toolkit-ffi/Cargo.toml"
-awk -v version="$new_version" '
-    /^lxb-toolkit[[:space:]]*=/ {
-        sub(/version[[:space:]]*=[[:space:]]*"[^"]*"/, "version = \"" version "\"")
-    }
-    { print }
-' "$ffi_manifest" > "$ffi_manifest.tmp"
-mv "$ffi_manifest.tmp" "$ffi_manifest"
+# Every crate here that names another one names its version too, so that a
+# published release cannot resolve against a different one. All of them move
+# together or the workspace stops resolving; rewriting only the FFI crate's is
+# what shipped 0.2.0 with five stale requirements.
+#
+# The Rust examples are in this list for the same reason and are easy to
+# forget, because they are deliberately outside the workspace and so no
+# workspace command reaches them. They are built the way an application is,
+# which is exactly why a stale requirement there is worth catching.
+for manifest in "$project_root"/crates/*/Cargo.toml "$project_root"/examples/*/Cargo.toml; do
+    if ! grep -qE '^lxb-[a-z-]+[[:space:]]*=.*version[[:space:]]*=' "$manifest"; then
+        continue
+    fi
+    note "${manifest#"$project_root/"} lxb-* -> $new_version"
+    awk -v version="$new_version" '
+        /^lxb-[a-z-]+[[:space:]]*=/ {
+            sub(/version[[:space:]]*=[[:space:]]*"[^"]*"/, "version = \"" version "\"")
+        }
+        { print }
+    ' "$manifest" > "$manifest.tmp"
+    mv "$manifest.tmp" "$manifest"
+done
 
 note "python/pyproject.toml -> $new_version"
 awk -v version="$new_version" '
@@ -128,6 +141,17 @@ mv "$spec.tmp" "$spec"
 note "Cargo.lock"
 (cd "$project_root" && cargo update --workspace --offline >/dev/null 2>&1) \
     || (cd "$project_root" && cargo update --workspace >/dev/null)
+
+# Each example keeps a lock file of its own, because each is built the way an
+# application is rather than as part of the workspace. A lock still naming the
+# old version is what makes `cargo --locked` refuse the whole example.
+for example in "$project_root"/examples/*/Cargo.lock; do
+    [ -e "$example" ] || continue
+    directory="$(dirname "$example")"
+    note "${directory#"$project_root/"}/Cargo.lock"
+    (cd "$directory" && cargo update --workspace --offline >/dev/null 2>&1) \
+        || (cd "$directory" && cargo update --workspace >/dev/null)
+done
 
 note "done. The spec's %changelog is the one thing only a person can write:"
 echo "    packaging/fedora/lxb-toolkit.spec"

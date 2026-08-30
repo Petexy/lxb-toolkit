@@ -1,18 +1,4 @@
-<!--
-  The Office column's glyph: a page with its corner turned.
-
-  The three slits are the opening — text, as three holes rather than three
-  painted rules, for the same reason the globe's lines are slits.
-
-  The turned corner is a second body lying on the page, so a crevice is cut
-  between them: what says the corner is *folded* is the seam where it meets the
-  sheet, and the field would otherwise merge the two into one flat pentagon.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="page" d="M8.6 3h11l6.2 6.4v16.4a1.8 1.8 0 0 1-1.8 1.8H8.6a1.8 1.8 0 0 1-1.8-1.8V4.8A1.8 1.8 0 0 1 8.6 3z"/>
     <path id="flap" d="M19.6 3v6.4h6.4z"/>

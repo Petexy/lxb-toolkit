@@ -1,26 +1,4 @@
-<!--
-  A display stood on its end with an arrow turning into it: the row that sets
-  which way round a screen is.
-
-  The display is setting-rotation-90.svg's — same bezel, same screen, same stand
-  on its left — carried in at three quarters and dropped down the cell by the one
-  matrix it has always used. That matrix is what keeps it clear of the arrow, and
-  it is not decoration: at full size the two run into each other and the arrow
-  has to be cut out of the display's corner, which reads as a bite taken out of
-  the screen rather than as something being done to it.
-
-  Nothing here touches anything, so there is no crevice in the drawing. The
-  screen is an opening, as on every display in these rows, and the stand is part
-  of the same body as the bezel.
-
-  The outer scale is only what brings the arrowhead inside the margin the
-  shader's shadow needs.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="bezel" d="M12.75 3.15h12.9a2 2 0 0 1 2 2v23.2a2 2 0 0 1-2 2h-12.9a2 2 0 0 1-2-2V5.15a2 2 0 0 1 2-2z"/>
     <path id="pane" d="M13.25 6.15h11.9v21.2h-11.9z"/>

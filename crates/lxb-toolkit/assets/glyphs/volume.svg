@@ -1,21 +1,4 @@
-<!--
-  The volume bar's glyph: a speaker, and two waves leaving it.
-
-  The waves are strokes rather than the outlines of strokes. A stroke is
-  coverage like any other, so the field measures it exactly as it measures a
-  filled path, and the shader stands a run of water along it — which is what
-  the old drawing had to fake with a gradient down a line. Their width is about
-  one bevel, so they come out as round beads rather than as flat ribbons, and
-  that is wanted: at the thirty-three pixels a quick-settings bar gives this, a
-  ribbon with a flat top reads as a smudge.
-
-  The speaker and the waves stand apart, so nothing needs a crevice.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
   <path fill="#fff" d="M2.4 9.2h4.9L12.8 4.4v15.2L7.3 14.8H2.4z"/>
   <g fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round">
     <path d="M15.6 9.3a3.9 3.9 0 0 1 0 5.4"/>

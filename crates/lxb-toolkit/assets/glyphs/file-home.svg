@@ -1,16 +1,4 @@
-<!--
-  The house that stands for the user's own folder.
-
-  Roof and wall are one object and take no crevice between them — a rim drawn
-  along that join would be a line ruled across the middle of a solid. The door
-  is an opening, which is what a door is, and the eaves the old drawing ruled
-  under the roof are gone with the rest of the shading.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="roof" d="M16 4.6L28.2 15.2H3.8z" stroke-width="1.5" stroke-linejoin="round"/>
     <rect id="wall" x="6.8" y="13.8" width="18.4" height="13.4" rx="1.8"/>

@@ -1,16 +1,4 @@
-<!--
-  A moon with a star beside it, for the night light rows.
-
-  The shell's other moon — do-not-disturb.svg has the first — and deliberately
-  the same object seen twice. What tells them apart is the star, which is here
-  because this is a warmth laid over the whole display rather than a switch on
-  one thing.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <g fill="#fff">
     <path d="M12.775 6.113 A10.4 10.4 0 1 0 25.887 19.225 A9.6 9.6 0 0 1 12.775 6.113 Z"/>
     <path d="M26 7.6 24.18 8.18 23.6 10 23.02 8.18 21.2 7.6 23.02 7.02 23.6 5.2 24.18 7.02 Z"/>

@@ -1,20 +1,4 @@
-<!--
-  The pencil, on the menu row that changes a name.
-
-  Two bodies with a crevice between them: the barrel, and the sharpened tip in
-  front of it. Merged they would be one tapered stick, which is a crayon; the
-  gap is the sharpening, and it is the only line in the drawing.
-
-  It lies at an angle because that is how a pencil is held and because nothing
-  else in the set runs diagonally — the row above it carries a sheet with an
-  arrow leaving it, and two marks that both stood upright would be two rows the
-  eye has to read rather than recognise.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <g id="pencil" transform="rotate(-45 16 16)">
       <rect id="barrel" x="11.8" y="3.9" width="8.4" height="17" rx="1.6"/>

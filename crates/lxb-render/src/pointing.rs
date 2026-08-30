@@ -8,6 +8,16 @@ pub enum Spot {
 
     DialogButton(usize),
 
+    PickerRow(usize),
+
+    PickerTrail(usize),
+
+    PickerKey { row: usize, column: usize },
+
+    PickerLeave,
+
+    OutsidePicker,
+
     OutsidePanel,
 
     Nothing,
@@ -15,7 +25,7 @@ pub enum Spot {
 
 impl Spot {
     pub fn pressable(self) -> bool {
-        !matches!(self, Spot::Nothing)
+        !matches!(self, Spot::Nothing | Spot::OutsidePicker)
     }
 }
 
@@ -66,6 +76,11 @@ mod tests {
         }
         .pressable());
         assert!(Spot::DialogButton(0).pressable());
+        assert!(Spot::PickerRow(0).pressable());
+        assert!(Spot::PickerTrail(1).pressable());
+        assert!(Spot::PickerKey { row: 0, column: 0 }.pressable());
+        assert!(Spot::PickerLeave.pressable());
+        assert!(!Spot::OutsidePicker.pressable());
         assert!(Spot::OutsidePanel.pressable());
         assert!(!Spot::Nothing.pressable());
     }

@@ -1,21 +1,4 @@
-<!--
-  The bell.
-
-  Three bodies: the bell, the loop it hangs by and the clapper under it. The
-  loop and the clapper each take a crevice against the bell, which is what makes
-  them read as three things rather than as one lumpy one — the clapper in
-  particular sat a third of a unit clear of the bell in the old drawing, and a
-  third of a unit is under a pixel where this is drawn, so the field would have
-  run them together.
-
-  The lip the old drawing ruled across the bell's foot is gone. It was a line
-  and not an edge, and the material has no way to be told about it.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="bell"
           d="M16 4.8

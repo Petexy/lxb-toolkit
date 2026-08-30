@@ -9,10 +9,11 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-lxb-toolkit = { path = "../lxb-toolkit", version = "0.2.0" }
-lxb-render = { path = "../lxb-render", version = "0.2.0" }
-lxb-input = { path = "../lxb-input", version = "0.2.0", features = ["winit"] }
-lxb-sound = { path = "../lxb-sound", version = "0.2.0" }
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.0" }
+lxb-render = { path = "../lxb-render", version = "0.9.0" }
+lxb-input = { path = "../lxb-input", version = "0.9.0", features = ["winit"] }
+lxb-portal = { path = "../lxb-portal", version = "0.9.0" }
+lxb-sound = { path = "../lxb-sound", version = "0.9.0" }
 
 png = "0.17"
 pollster = "0.4"

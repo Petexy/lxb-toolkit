@@ -1,28 +1,75 @@
-//! The seven pages, and what the keyboard is doing to them.
+//! The eight pages, and what the keyboard is doing to them.
 //!
 //! Every drawn thing here is one call. There is no shader in this file, no
 //! pipeline, no atlas and no pass: `lxb-render` owns all of that, because
 //! every application would otherwise own an identical copy of it.
 
-use lxb_render::{Align, ContextMenu, Dialog, Entry, Press, Pressing, Selection, Spot, Ui};
+use std::path::PathBuf;
+
+use lxb_render::{Align, ContextMenu, Dialog, Entry, Files, Press, Pressing, Selection, Spot, Ui};
 use lxb_toolkit::{
     accent::Accent,
     assets, control,
-    input::Action,
+    input::{Action, Key},
     material::{Overlay, Surface},
     menu,
     metrics::{capsule_radius, Metric},
     motion,
     palette::{Role, PALETTES},
+    picker::{Purpose as PickerPurpose, Selection as PickerSelection},
     settings::{IconStyle, ShellTheme},
     sound::Sound,
     typography::{Face, Text},
 };
 
-pub const PAGES: [&str; 7] = [
-    "Hello", "Colour", "Material", "Marks", "Type", "Motion", "Sound",
+pub const PAGES: [&str; 8] = [
+    "Hello", "Colour", "Material", "Marks", "Type", "Motion", "Sound", "Picker",
 ];
 pub const GREETING: &str = "Hello, world";
+
+/// The four questions the Picker page can put, in the order it offers them:
+/// what is being asked for, what the columns list, the row that asks it, and
+/// what a new file is called to begin with.
+///
+/// A save arrives already named because that is the case worth showing — it is
+/// the one purpose whose column opens on the row that answers, and a picture of
+/// it with an empty name would be a picture of the other rule.
+pub const PICKER_PURPOSES: [(PickerPurpose, PickerSelection, &str, &str); 5] = [
+    (
+        PickerPurpose::OneFile,
+        PickerSelection::File,
+        "Choose a file",
+        "",
+    ),
+    (
+        PickerPurpose::ManyFiles,
+        PickerSelection::File,
+        "Choose some files",
+        "",
+    ),
+    (
+        PickerPurpose::AFolder,
+        PickerSelection::Folder,
+        "Choose a folder",
+        "",
+    ),
+    (
+        PickerPurpose::ANewFile,
+        PickerSelection::File,
+        "Choose somewhere to save",
+        "untitled.txt",
+    ),
+    // The one question with a kind of file in force, which is what the panel's
+    // Types row exists for: an application asking for images shows a folder of
+    // images, and without that row nothing says the rest of the disk is one
+    // press away.
+    (
+        PickerPurpose::OneFile,
+        PickerSelection::Image,
+        "Choose an image",
+        "",
+    ),
+];
 
 /// The mark that stands beside it, and the noise a press on it makes.
 pub const MARK: &str = "launch";
@@ -80,6 +127,13 @@ pub struct Tour {
 
     pub menu: ContextMenu,
     pub dialog: Dialog,
+    /// The same built-in in-window chooser that lxb-app exposes through
+    /// Page::pick. This tour drives the renderer directly, so it owns the
+    /// state itself and still draws the toolkit's real Lattice picker.
+    pub files: Files,
+    picker_root: PathBuf,
+    picked: Vec<PathBuf>,
+
     /// The press the chosen control is part-way through. A press is a
     /// journey in this language, not a state: the key coming up does not stop
     /// it, and it is watched to the end.
@@ -126,6 +180,9 @@ impl Tour {
             height: 0.0,
             menu: ContextMenu::default(),
             dialog: Dialog::default(),
+            files: Files::default(),
+            picker_root: picker_root(),
+            picked: Vec::new(),
             pressing: Pressing::default(),
             sidebar_light: Selection::default(),
             light: Selection::default(),
@@ -154,10 +211,25 @@ impl Tour {
         )
     }
 
+    /// Never put a question to the desktop, whatever the session has.
+    pub fn keep_its_own_questions(&mut self) {
+        self.files.own_questions();
+    }
+
+    /// Whether a question is standing somewhere else, waiting to be answered.
+    pub fn asking_the_desktop(&self) -> bool {
+        self.files.asking_the_desktop()
+    }
+
     pub fn advance(&mut self, dt: f32) {
+        if let Some(chosen) = self.files.answered() {
+            self.picked = chosen;
+        }
+        self.files.advance(dt);
         self.accent.advance(dt);
         self.menu.advance(dt);
         self.dialog.advance(dt);
+
         self.pressing.advance(dt);
         let target = if (self.elapsed / 1.6) as i64 % 2 == 1 {
             1.0
@@ -183,6 +255,7 @@ impl Tour {
             4 => Text::ALL.len(),
             5 => SHOWN.len(),
             6 => Sound::ALL.len(),
+            7 => PICKER_PURPOSES.len(),
             _ => 1,
         }
     }
@@ -235,6 +308,8 @@ impl Tour {
 
         ui.context_menu(&mut self.menu);
         ui.dialog(&mut self.dialog);
+        self.files.hand(self.pads > 0);
+        self.files.draw(ui);
     }
 
     fn sidebar(&mut self, ui: &mut Ui, rect: [f32; 4]) {
@@ -406,7 +481,8 @@ impl Tour {
             3 => self.marks(ui, x, y, width),
             4 => self.type_(ui, x, y, width),
             5 => self.motion(ui, x, y, width),
-            _ => self.sound(ui, x, y, width),
+            6 => self.sound(ui, x, y, width),
+            _ => self.picker_page(ui, x, y, width),
         }
     }
 
@@ -563,16 +639,27 @@ impl Tour {
 
         top += per_column as f32 * step + gap;
 
-        // Five buttons with one light between them. Worked out before any of
-        // them is drawn, because the light is laid down first and the button it
-        // has arrived over hands its own face to it — which is what lets the
-        // light glide across the row instead of each button colouring itself in.
+        // One capsule per palette, with one light between all of them. Worked
+        // out before any is drawn, because the light is laid down first and the
+        // button it has arrived over hands its own face to it — which is what
+        // lets the light glide across the row instead of each button colouring
+        // itself in. It glides between rows the same way once there is more
+        // than one, which there is: a capsule that would hang off the column
+        // starts the next row instead, and one wider than the whole column
+        // stays where it is because there is nowhere better for it to go.
         let capsule = ui.s(menu::ROW - 2.0 * control::PADDING);
         let mut rects = [[0.0f32; 4]; PALETTES.len()];
         let mut left = x;
+        let mut line = top;
+        let mut rows = 1.0f32;
         for (index, palette) in PALETTES.iter().enumerate() {
             let room = ui.measure(Text::Label, palette.name) + 2.0 * ui.m(Metric::RowPadding);
-            rects[index] = [left, top, room, capsule];
+            if left > x && left + room > x + width {
+                left = x;
+                line += capsule + gap;
+                rows += 1.0;
+            }
+            rects[index] = [left, line, room, capsule];
             left += room + gap;
         }
         let chosen = self.cursor[self.page].min(rects.len() - 1);
@@ -587,7 +674,7 @@ impl Tour {
             );
         }
 
-        top += capsule + gap;
+        top += rows * (capsule + gap);
         let note = format!(
             "{} is what the shell has. Left and Right choose, Enter applies — and \
              nothing here is repainted when it does: the fourteen colours above \
@@ -786,7 +873,7 @@ impl Tour {
         top += line + gap;
         top += ui.paragraph(
             [x, top, width, 0.0],
-            "Every one of the ninety-eight is shape source, not a picture: one \
+            "Every one of them is shape source, not a picture: one \
              silhouette, rasterised at four times its cell, measured into a signed \
              distance field, and shaded from that. Left and Right walk them; the \
              menu changes the style.",
@@ -1049,6 +1136,82 @@ impl Tour {
         );
         ui.paragraph([x, top, width, 0.0], &about, Role::AccentSoft);
     }
+
+    fn picker_page(&mut self, ui: &mut Ui, x: f32, y: f32, width: f32) {
+        let mut top = y + self.head(
+            ui,
+            [x, y, width],
+            "File and folder picker",
+            Some("file-folder"),
+            true,
+        );
+        let gap = ui.m(Metric::Gap);
+        top += ui.paragraph(
+            [x, top, width, 0.0],
+            "One call opens a centred Lattice window covering roughly seventy percent of \
+             this application. Folder columns recede along the trail while strong frost and \
+             depth put this page behind it. A on Search opens its controller keyboard; \
+             Start finishes; B or its hide key returns without losing the query. Four \
+             questions, and each grows the head rows it needs: New folder wherever \
+             something may be written, a name above Save here, and one row that hands \
+             over everything ticked. An application asks lxb-app rather than this, and \
+             lxb-app puts the question to the desktop's own chooser when there is one.",
+            Role::TextSoft,
+        ) + gap;
+
+        let labels: Vec<&str> = PICKER_PURPOSES
+            .iter()
+            .map(|(_, _, label, _)| *label)
+            .collect();
+        let row = ui.m(Metric::RowHeight) * 0.74;
+        let chosen = self.cursor[self.page].min(labels.len() - 1);
+        let lit = motion::pressed(
+            [x, top + chosen as f32 * (row + gap), width, row],
+            self.pressing.through(),
+        );
+        self.glide(ui, lit, width, 1.0);
+        for (index, label) in labels.iter().enumerate() {
+            let rect = [x, top + index as f32 * (row + gap), width, row];
+            ui.spot(ITEM_SPOT + index as u32, rect);
+            ui.button(rect, label, self.press(index == chosen));
+        }
+        top += labels.len() as f32 * (row + gap) + gap;
+
+        let result = match self.picked.as_slice() {
+            _ if self.asking_the_desktop() => {
+                "The question is with the desktop's own chooser, in a window of its \
+                 own. This one only draws it where the session has no portal to ask."
+                    .to_string()
+            }
+            [] => "No choice yet — the fixture is safe to explore.".to_string(),
+            [one] => format!("Last choice: {}", one.display()),
+            many => format!(
+                "Last choice: {} files — {}",
+                many.len(),
+                many.iter()
+                    .filter_map(|path| path.file_name())
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        };
+        ui.paragraph([x, top, width, 0.0], &result, Role::AccentSoft);
+    }
+}
+
+fn picker_root() -> PathBuf {
+    std::env::var_os("LXB_TOUR_FILES")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            // Keep the same clean fixture spelling C and Python use. Leaving
+            // a literal `rust/..` here makes the picker build one phantom
+            // ancestor column, so the three tours no longer show the same
+            // settled Lattice frame.
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("the Rust example has an examples parent")
+                .join("tour-files")
+        })
 }
 
 // --- input -----------------------------------------------------------------
@@ -1069,6 +1232,9 @@ impl Tour {
         // Innermost first. A panel that is up owns every action, which is what
         // makes it a panel: a question about leaving must not be answerable by
         // something meant for the page behind it.
+        if self.files.is_open() {
+            return self.files.act(action);
+        }
         if self.dialog.is_open() {
             return self.on_dialog(action);
         }
@@ -1100,6 +1266,24 @@ impl Tour {
                 Some(Sound::Press)
             }
         }
+    }
+
+    /// What the last question was answered with.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn picked(&self) -> &[PathBuf] {
+        &self.picked
+    }
+
+    /// Whether the chooser this program draws is the one answering.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn picker_open(&self) -> bool {
+        self.files.is_open()
+    }
+
+    /// One key, as the platform delivered it. Answers whether the chooser
+    /// wanted it.
+    pub fn picker_key(&mut self, key: Option<Key>, text: Option<&str>) -> bool {
+        self.files.key(key, text)
     }
 
     fn on_dialog(&mut self, action: Action) -> Option<Sound> {
@@ -1149,6 +1333,13 @@ impl Tour {
     /// do not follow it at all: they move in two steps, so that a folder never
     /// opens under a pointer that was only crossing the screen.
     pub fn point_at(&mut self, spot: Spot) {
+        if self.files.is_open() {
+            // A directory row is deliberately inert under hover. This is the
+            // same two-step pointer gesture as the shell lattice: click once
+            // to bring focus over, then again to activate.
+            self.files.point_at(spot);
+            return;
+        }
         if self.dialog.is_open() {
             self.dialog.point_at(spot);
             return;
@@ -1169,6 +1360,9 @@ impl Tour {
         // selected already would be a list of things to do to something the
         // user is not pointing at. So the selection is carried there first,
         // and then the same action the pad's button sends is sent.
+        if self.files.is_open() {
+            return self.files.press_at(spot, menu);
+        }
         if menu {
             self.aim_at(spot);
             return self.on_action(Action::Menu);
@@ -1215,6 +1409,9 @@ impl Tour {
     /// pointing at a thing is not already what selects it. Answers whether it
     /// moved.
     fn aim_at(&mut self, spot: Spot) -> bool {
+        if self.files.is_open() {
+            return false;
+        }
         if self.dialog.is_open() {
             return false;
         }
@@ -1337,6 +1534,9 @@ impl Tour {
 
     /// Enter, on whatever is selected.
     pub fn act(&mut self) -> Option<Sound> {
+        if self.files.is_open() {
+            return self.files.act(Action::Accept);
+        }
         if self.dialog.is_open() {
             return self.choose_answer();
         }
@@ -1367,6 +1567,10 @@ impl Tour {
                 }
                 Some(sound)
             }
+            7 => {
+                let asked = self.cursor[self.page].min(PICKER_PURPOSES.len() - 1);
+                self.open_picker(asked).then_some(Sound::Press)
+            }
             // A press that starts nothing stays silent.
             _ => None,
         }
@@ -1381,6 +1585,30 @@ impl Tour {
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn selected_sound(&self) -> usize {
         self.cursor[6].min(Sound::ALL.len() - 1)
+    }
+
+    /// Raise the panel's own menu, for a headless picture of it.
+    ///
+    /// Only ever after the panel has been drawn once: the menu hangs off the
+    /// word "Options" on the legend, and where that word is is something only
+    /// the drawing knows.
+    pub fn open_picker_menu(&mut self) -> bool {
+        self.files.open_menu()
+    }
+
+    /// Put one of the Picker page's questions.
+    ///
+    /// Public for the headless screenshot path; regular interaction reaches it
+    /// by pressing one of the controls on that page. Where it is *answered* is
+    /// not this program's business: `Files` puts the question to whatever
+    /// chooser the session already has, and draws one here only when there is
+    /// none to put it to.
+    pub fn open_picker(&mut self, which: usize) -> bool {
+        if self.menu.is_open() || self.dialog.is_open() {
+            return false;
+        }
+        let asked = PICKER_PURPOSES.get(which).unwrap_or(&PICKER_PURPOSES[0]);
+        self.files.ask(asked.0, asked.1, &self.picker_root, asked.3)
     }
 
     fn ask(&mut self) {

@@ -26,6 +26,16 @@ pub const GLYPHS: &[(&str, &[u8])] = glyphs![
     "notifications",
     "pad-select",
     "pad-west",
+    "pad-south",
+    "pad-east",
+    "pad-north",
+    "pad-start",
+    "key-space",
+    "key-enter",
+    "key-escape",
+    "mouse-right",
+    "new-folder",
+    "select-multiple",
     "arrow-left",
     "arrow-down",
     "arrow-up",
@@ -93,6 +103,7 @@ pub const GLYPHS: &[(&str, &[u8])] = glyphs![
     "setting-info",
     "swatch",
     "chosen",
+    "add",
     "uninstall",
     "launch",
     "open-with",
@@ -209,11 +220,15 @@ mod tests {
 
     #[test]
     fn every_asset_is_really_here() {
-        assert_eq!(GLYPHS.len(), 98, "the mark set changed size");
+        assert_eq!(GLYPHS.len(), 109, "the mark set changed size");
         for (name, bytes) in GLYPHS {
-            assert!(bytes.len() > 200, "{name} is {} bytes", bytes.len());
-            let head = std::str::from_utf8(&bytes[..bytes.len().min(400)]).unwrap_or("");
-            assert!(head.contains("<svg") || head.contains("<!--"), "{name}");
+            let source = std::str::from_utf8(bytes)
+                .unwrap_or_else(|error| panic!("{name} is not UTF-8: {error}"));
+            assert!(source.starts_with("<svg"), "{name} has no SVG root");
+            assert!(
+                source.trim_end().ends_with("</svg>"),
+                "{name} is incomplete"
+            );
         }
         for (name, bytes) in SOUNDS {
             assert!(bytes.len() > 1000, "{name} is {} bytes", bytes.len());
@@ -246,7 +261,7 @@ mod tests {
             .iter()
             .filter(|(name, _)| glyph_box(name) == Some(24))
             .count();
-        assert_eq!(small, 10);
+        assert_eq!(small, 18);
     }
 
     #[test]
@@ -266,6 +281,16 @@ mod tests {
             "notifications",
             "pad-select",
             "pad-west",
+            "pad-south",
+            "pad-east",
+            "pad-north",
+            "pad-start",
+            "key-space",
+            "key-enter",
+            "key-escape",
+            "mouse-right",
+            "new-folder",
+            "select-multiple",
             "arrow-left",
             "arrow-down",
             "arrow-up",
@@ -333,6 +358,7 @@ mod tests {
             "setting-info",
             "swatch",
             "chosen",
+            "add",
             "uninstall",
             "launch",
             "open-with",

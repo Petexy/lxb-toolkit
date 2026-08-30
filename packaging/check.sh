@@ -108,7 +108,8 @@ if [[ "$build" == true ]]; then
     # liblxb_app.so an earlier build had left in target/release — a clean tree
     # would have failed here.
     (cd "$PROJECT_ROOT" && cargo build --locked --release \
-        -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lxb-app-ffi -p lxb-new)
+        -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-portal -p lxb-app -p lxb-app-ffi \
+        -p lxb-new)
 fi
 
 target_dir="${CARGO_TARGET_DIR:-$PROJECT_ROOT/target}"

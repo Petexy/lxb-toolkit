@@ -1,26 +1,4 @@
-<!--
-  A field with something typed in it, for the rows that take text.
-
-  The plate has its well taken out, and what is in the well — three word shapes
-  and the bar that says where the next letter lands — stands in that hole.
-  Three shapes and not letters: this mark stands for typing rather than for
-  anything typed.
-
-  Drawn a little smaller than the old mark was. A shape has to leave room round
-  itself for the shadow the shader casts beside it, and this one ran to within a
-  unit of the cell's edge; the scale below is what brings it inside. The four
-  rotations all carry the same factor whatever each needs on its own, because
-  they are one object turned and have to stay one size.
-
-  The screen is cut before what stands in it is laid down. Painted the other way
-  round the hole takes the contents with it, which is a monitor showing nothing
-  and looks exactly like a monitor meant to show nothing.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <rect id="plate" x="2.4" y="9.6" width="27.2" height="12.8" rx="2.4"/>
     <rect id="well" x="4.6" y="11.8" width="22.8" height="8.4" rx="1.4"/>
@@ -39,7 +17,7 @@
     </mask>
   </defs>
   <g transform="translate(16 16) scale(0.963) translate(-16 -16)">
-  
+
     <g mask="url(#pierced)">
       <use href="#bead" fill="#ffffff"/>
     </g>

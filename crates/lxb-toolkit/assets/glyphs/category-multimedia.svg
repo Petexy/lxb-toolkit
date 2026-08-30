@@ -1,33 +1,4 @@
-<!--
-  The Multimedia column's glyph: a strip of film with a pair of notes over it.
-
-  Multimedia is the column that has both Video and Audio under it, so its mark
-  has to be both without being either — the two subcategories carry the film and
-  the note on their own.
-
-  The sprockets are the openings. They are the one place in the set where a run
-  of small holes is wanted rather than one large one: the eye reads the rhythm
-  before it reads the shape, which is what says film.
-
-  The notes lie *over* the strip rather than beside it, and a crevice runs
-  between them: the left head sits mostly on the strip, the left stem straddles
-  its edge and the beam's near cap comes to rest on it. Two pieces standing
-  apart are two marks that have to be read one after the other, and at the size
-  a column is drawn there is not room for two. Crossing them makes one.
-
-  The crevice is cut in the mask and not painted: the whole note is laid down
-  swollen in black and then again at its true size in white, so what is left
-  between it and the strip is a gap in the shape itself. The field cannot tell
-  two touching bodies from one, so the separation has to be real — and then the
-  shader turns the wall over on both sides of it for nothing. Its width is the
-  set's, and the sprocket the left head covers is meant to be covered: the notes
-  are in front.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <rect id="strip" x="5.55" y="4.12" width="9.68" height="23.76" rx="1.76"/>
     <path id="beam" d="M16.06 11.51L25.08 9.75L25.63 9.54L26.08 9.15L26.36 8.63L26.45 8.05L26.34 7.46L26.03 6.96L25.57 6.58L25.01 6.4L24.41 6.41L15.4 8.17L14.85 8.38L14.39 8.77L14.11 9.29L14.02 9.87L14.13 10.46L14.44 10.96L14.9 11.34L15.46 11.52Z"/>

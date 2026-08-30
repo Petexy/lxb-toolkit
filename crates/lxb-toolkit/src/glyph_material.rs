@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn a_shape_says_so_in_its_source() {
-        assert!(is_shape(b"<!-- lxb:shape -->"));
+        assert!(is_shape(b"<svg data-lxb-material=\"lxb:shape\"/>"));
         assert!(!is_shape(b"<svg/>"));
     }
 

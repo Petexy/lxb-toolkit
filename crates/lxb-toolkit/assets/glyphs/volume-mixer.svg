@@ -1,17 +1,4 @@
-<!--
-  The mixer: a frame with three faders in it.
-
-  The frame is a body with its middle taken out, which is an opening like any
-  other and gets its ring of displaced water for nothing. The three rods stand
-  inside that opening without touching the frame, and each cap is a separate
-  body sitting on its rod, so each takes a crevice — a cap merged into its rod
-  is a rod with a bulge, and the whole mark is about where the three caps are.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <rect id="shell" x="3.4" y="5.2" width="25.2" height="21.6" rx="4.8"/>
     <rect id="window" x="5.7" y="7.5" width="20.6" height="17" rx="2.8"/>

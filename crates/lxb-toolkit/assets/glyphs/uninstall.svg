@@ -1,18 +1,4 @@
-<!--
-  The bin, on the context menu row that removes an application.
-
-  Three bodies stacked: the handle at the back, the lid bar over it and the bin
-  under that, each taking a crevice against what is behind it. Stacked and not
-  merged, because a bin whose lid has run into its body is a bucket.
-
-  The two slots down the bin are openings. They were shading in the old drawing
-  and they are the one thing that says which way up this is.
-
-  lxb:shape — the material is computed from this outline. See
-  category-games.svg, which is where it is explained.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <path id="handle" d="M13 4.1h6a1.7 1.7 0 0 1 1.7 1.7V9h-2.6V6.7h-4.2V9H11.3V5.8
                          A1.7 1.7 0 0 1 13 4.1z"/>

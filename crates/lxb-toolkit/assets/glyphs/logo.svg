@@ -1,37 +1,8 @@
-<!--
-  LineXinBar's fennec mark.
-
-  lxb:shape — a shape and not a picture of one. Nothing here is shaded and
-  nothing here should be: `icons::builtin_distance_field` measures how far every
-  pixel is from the nearest edge, and `glyph_material` in shaders.wgsl stands the
-  water up out of that. See category-games.svg, which carries the recipe.
-
-  Ears, muzzle, whiskers, eyes and chin, all one material and all bodies in their
-  own right. They were tried as openings first, on the rule the rest of the set
-  follows — and that is wrong here, because the face does not lie inside the
-  ears: cut as holes it fell outside them and simply disappeared. An opening
-  needs something to be an opening in.
-
-  Drawn in Inkscape on a page of its own, so the geometry arrives here in that
-  page's coordinates and the two groups below are the whole of the conversion.
-  The inner matrix is the page mapped into the 32-unit cell; the outer scale is
-  the margin, and it is the only number in this file worth revisiting.
-
-  The margin is 3.2 units at the ear tips, which is where the drawing was widest
-  and where it ran out to the very edge of its page. It is not slack: the shader
-  draws the mark's own shadow on the flat space beside it and can only draw it
-  where the quad reaches, so a mark touching its cell edge has its shadow end in
-  a straight cut. 0.8 is what puts the ears where the wide marks in the rest of
-  the set stand — category-system's box is x 3.19..28.81 and this one's is the
-  same to the pixel — and it lands the fennec exactly where the drawing it
-  replaces stood, which is the other thing that had to stay true.
--->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"
+<svg data-lxb-material="lxb:shape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"
      fill="#ffffff" stroke="none">
-  <!-- The margin the shadow is drawn in. -->
+
   <g transform="translate(16 16) scale(0.8) translate(-16 -16)">
-    <!-- The page the mark was drawn on, into the cell. -->
+
     <g transform="matrix(0.309050375,0,0,0.309147589,-17.728868,-22.176826)">
       <path
             d="m 87.364822,120.87492 c 3.836176,7.07312 18.601688,26.83717 19.717598,7.87401 0.0497,-10.02409 -0.85762,-9.44118 -7.873961,-15.45519 C 89.312293,104.2147 74.987569,91.493392 68.94882,86.125136 44.18932,71.522225 63.740455,145.32594 84.566698,142.34948 51.060244,105.48625 61.034864,67.347 87.364822,120.87492 Z m 43.544598,0 c -3.83618,7.07312 -18.60169,26.83717 -19.7176,7.87401 -0.0497,-10.02409 0.85762,-9.44118 7.87396,-15.45519 9.89617,-9.07904 24.22089,-21.800348 30.25964,-27.168604 24.7595,-14.602911 5.20836,59.200804 -15.61788,56.224344 33.50646,-36.86323 23.53184,-75.00248 -2.79812,-21.47456 z" />

@@ -4,6 +4,9 @@ const KIND_SOLID: i32 = 2;
 const KIND_LIGHT: i32 = 3;
 const KIND_GLASS: i32 = 4;
 const KIND_GLYPH: i32 = 5;
+const KIND_IMAGE: i32 = 6;
+const KIND_SOFT_EDGE: i32 = 7;
+const KIND_FROST: i32 = 8;
 
 const CORNER: f32 = 2.0;
 
@@ -23,6 +26,11 @@ struct Frame {
 @group(0) @binding(2) var source_sampler: sampler;
 @group(0) @binding(3) var atlas: texture_2d<f32>;
 @group(0) @binding(4) var atlas_sampler: sampler;
+@group(0) @binding(5) var thumbnails: texture_2d<f32>;
+
+// The page without its own content: its panes over the ground, or the bare
+// ground. What a soft edge ends in.
+@group(0) @binding(6) var beneath: texture_2d<f32>;
 
 struct Instance {
     @location(0) rect: vec4<f32>,
@@ -33,6 +41,7 @@ struct Instance {
     @location(3) material: vec4<f32>,
 
     @location(4) cell: vec4<f32>,
+    @location(5) cut: vec4<f32>,
 }
 
 struct VertexOut {
@@ -48,6 +57,7 @@ struct VertexOut {
 
     @location(6) shape: vec4<f32>,
     @location(7) pixel: vec2<f32>,
+    @location(8) cut: vec4<f32>,
 }
 
 @vertex
@@ -70,6 +80,7 @@ fn vs(@builtin(vertex_index) index: u32, quad: Instance) -> VertexOut {
     out.cell = quad.cell;
     out.shape = quad.shape;
     out.pixel = pixel;
+    out.cut = quad.cut;
     return out;
 }
 
@@ -89,6 +100,12 @@ fn wallpaper_at(pixel: vec2<f32>, soften: f32) -> vec3<f32> {
     );
 }
 
+fn ground_at(pixel: vec2<f32>, lod: f32) -> vec3<f32> {
+    let resolution = max(frame.resolution.xy, vec2<f32>(1.0));
+    let uv = clamp(pixel / resolution, vec2<f32>(0.0), vec2<f32>(1.0));
+    return textureSampleLevel(beneath, source_sampler, uv, lod).rgb;
+}
+
 fn behind(pixel: vec2<f32>, lod: f32) -> vec3<f32> {
     let resolution = max(frame.resolution.xy, vec2<f32>(1.0));
     let uv = clamp(pixel / resolution, vec2<f32>(0.0), vec2<f32>(1.0));
@@ -101,6 +118,12 @@ fn field(uv: vec2<f32>) -> f32 {
 
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
+
+    if (in.pixel.x < in.cut.x || in.pixel.y < in.cut.y
+        || in.pixel.x > in.cut.z || in.pixel.y > in.cut.w) {
+        discard;
+    }
+
     let kind = i32(in.shape.y + 0.5);
 
     if (kind == KIND_WALLPAPER) {
@@ -154,6 +177,55 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
             pane, in.tint, in.material.z, in.material.y, red, green, blue);
 
         return vec4<f32>(shade.rgb, shade.a * pane.coverage * in.shape.w);
+    }
+
+    if (kind == KIND_IMAGE) {
+        let uv = mix(in.cell.xy, in.cell.zw, in.unit);
+        let picture = textureSample(thumbnails, atlas_sampler, uv);
+        let d = lxb_rounded_box(in.local, in.half_size, in.shape.x, CORNER);
+        let coverage = 1.0 - smoothstep(-0.75, 0.75, d);
+        return vec4<f32>(picture.rgb, picture.a * coverage * in.shape.w);
+    }
+
+    if (kind == KIND_FROST) {
+        // The whole page, read back out of the blur pyramid and laid over
+        // itself, so a modal surface has something calm underneath it however
+        // busy the page it covers. `material.x` is how deep into the pyramid
+        // it reaches; the tint's own alpha is how much of the tint is mixed
+        // into what comes back.
+        let d = lxb_rounded_box(in.local, in.half_size, in.shape.x, CORNER);
+        let coverage = 1.0 - smoothstep(-0.75, 0.75, d);
+        let lod = clamp(in.material.x, 0.0, frame.atlas_size.z);
+        let blurred = behind(in.pixel, lod);
+        let stained = mix(blurred, in.tint.rgb, in.tint.a);
+        return vec4<f32>(stained, coverage * in.shape.w);
+    }
+
+    if (kind == KIND_SOFT_EDGE) {
+        let height = max(2.0 * in.half_size.y, 1.0);
+        let band = clamp(in.material.x, 1.0, height * 0.5);
+        // Each end fades over a band of its own, narrowed by how much really
+        // continues past it. Narrowed rather than dimmed: an end that faded to
+        // something short of the ground would stop at a line, and a line is
+        // what all of this is here to be rid of.
+        let over = max(band * in.cell.x, 1.0);
+        let under = max(band * in.cell.y, 1.0);
+        let top = select(
+            0.0,
+            1.0 - smoothstep(0.0, over, in.unit.y * height),
+            in.cell.x > 0.0);
+        let bottom = select(
+            0.0,
+            1.0 - smoothstep(0.0, under, (1.0 - in.unit.y) * height),
+            in.cell.y > 0.0);
+        let edge = clamp(max(top, bottom), 0.0, 1.0);
+        // Blurrier and more transparent together, and at the very edge it is
+        // the page's own ground — which is what makes a list end *in* the page
+        // instead of at a boundary. Washing towards a glass colour instead
+        // left a pale band that stopped dead, and read as a shadow.
+        let blurred = behind(in.pixel, in.material.y * edge);
+        let ground = ground_at(in.pixel, 0.0);
+        return vec4<f32>(mix(blurred, ground, edge), edge * in.shape.w);
     }
 
     let uv = mix(in.cell.xy, in.cell.zw, in.unit);
