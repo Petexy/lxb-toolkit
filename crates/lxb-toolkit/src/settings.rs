@@ -152,6 +152,42 @@ fn controller_in_hand_from(raw: &str) -> Option<bool> {
     }
 }
 
+/// The keyboard arrangement the shell is set to, as an xkb layout and variant.
+///
+/// The answer somebody gave on Settings > Input > Keyboard > Keyboard layout,
+/// out of the same file the accent and the icon style come from. One key and
+/// not two — `keyboard-layout = "pl (qwertz)"` — because a layout and a variant
+/// of it are two halves of one answer, spelled the way xkeyboard-config's own
+/// registry spells the pair.
+///
+/// Read so that an application's on-screen board prints the letters the person
+/// in front of it actually types. A session exports `XKB_DEFAULT_LAYOUT` for
+/// the same purpose, and this is the better of the two where there is a choice:
+/// a variable is copied into an application as it starts, so one left running
+/// across a change to the setting holds the answer from before it, and a
+/// desktop that is not this shell's compositor exports nothing at all.
+///
+/// `None` where there is no such file, or the key is not in it — a machine that
+/// has never had this shell as much as one whose owner has never been asked.
+pub fn keyboard_layout() -> Option<(String, String)> {
+    keyboard_layout_from(&std::fs::read_to_string(settings_path()?).ok()?)
+}
+
+/// `layout (variant)`, or a bare layout where there is no variant.
+///
+/// Tolerant on both counts, because this key can be typed by hand: the bracket
+/// may never be closed, and the spacing is not part of the answer. A key with
+/// nothing in it is nothing rather than a layout named the empty string, which
+/// is a keymap nothing can compile.
+fn keyboard_layout_from(raw: &str) -> Option<(String, String)> {
+    let key = top_level_string(raw, "keyboard-layout")?;
+    let (layout, variant) = match key.trim().split_once('(') {
+        Some((layout, rest)) => (layout.trim(), rest.trim_end().trim_end_matches(')').trim()),
+        None => (key.trim(), ""),
+    };
+    (!layout.is_empty()).then(|| (layout.to_string(), variant.to_string()))
+}
+
 /// A bare top-level value: a number, a boolean, anything not in quotes.
 fn top_level_word(raw: &str, wanted: &str) -> Option<String> {
     top_level_value(raw, wanted).map(|value| value.to_string())
@@ -245,6 +281,31 @@ mod tests {
             controller_in_hand_from("[media-sort]\ncontroller-in-hand = true\n"),
             None
         );
+    }
+
+    #[test]
+    fn the_keyboard_the_shell_was_set_to_is_read_off_the_same_file() {
+        assert_eq!(
+            keyboard_layout_from("accent = \"purple\"\nkeyboard-layout = \"pl (qwertz)\"\n"),
+            Some(("pl".to_string(), "qwertz".to_string()))
+        );
+        // A layout with no variant is written as the bare layout.
+        assert_eq!(
+            keyboard_layout_from("keyboard-layout = 'us'\n"),
+            Some(("us".to_string(), String::new()))
+        );
+        // Typed by hand, and still an answer.
+        assert_eq!(
+            keyboard_layout_from("keyboard-layout = \"  de  ( neo  \"\n"),
+            Some(("de".to_string(), "neo".to_string()))
+        );
+        // Not an answer: nothing to compile, and a table's key is not this one.
+        assert_eq!(keyboard_layout_from("keyboard-layout = \"\"\n"), None);
+        assert_eq!(
+            keyboard_layout_from("[display.TEST]\nkeyboard-layout = \"pl\"\n"),
+            None
+        );
+        assert_eq!(keyboard_layout_from("accent = 'jade'\n"), None);
     }
 
     #[test]

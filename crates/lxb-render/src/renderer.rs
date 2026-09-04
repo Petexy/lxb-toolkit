@@ -1669,6 +1669,36 @@ impl Ui {
         );
     }
 
+    /// Fade everything drawn between two marks, all the way down to nothing.
+    ///
+    /// **The companion to [`Ui::cut_between`], and the only way a page can
+    /// fade what it has drawn.** A page that hands a strength to every call it
+    /// makes can fade its words and its pictures, but not its glass: a glass
+    /// quad's material is not scaled by its own tint, so `Ui::card` at a tint
+    /// alpha of a thousandth still refracts, glosses and rims exactly as hard
+    /// as at one, and then goes out in a single frame. This multiplies the one
+    /// channel the shader carries through every kind — `shape[3]` — so glass
+    /// fades with everything beside it.
+    ///
+    /// It is also the shorter road for a page crossing out of the card that
+    /// opened it: draw the page, fade the whole of it, rather than carry one
+    /// number through every call that draws a part of it.
+    ///
+    /// The same two rules as the cut: both marks have to have been taken on
+    /// the same layer, and `to` cannot be before `from`. Either mistake fades
+    /// nothing rather than fading the wrong thing.
+    pub fn fade_between(&mut self, from: Written, to: Written, fade: f32) {
+        if from.layer != to.layer || to.quads < from.quads || to.runs < from.runs {
+            return;
+        }
+        self.faded(
+            from.layer,
+            (from.quads, from.runs),
+            Some((to.quads, to.runs)),
+            fade.clamp(0.0, 1.0),
+        );
+    }
+
     pub(crate) fn flew(
         &mut self,
         layer: usize,

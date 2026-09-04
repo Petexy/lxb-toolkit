@@ -1205,14 +1205,19 @@ file_contains input.map.top-face.toolkit "$toolkit_pad" \
 file_contains input.guide-is-the-shells "$toolkit_input" \
     "Button::Guide | Button::West | Button::Select => None,"
 
-# The two places the toolkit deliberately differs, pinned so that neither can
-# be quietly "corrected" into the shell's answer. Both differences are the
-# same difference: the shell has to keep a way out of a game that the game
-# cannot take, and an application has nothing to keep a way out of.
-file_contains input.divergence.menu-key "$project_main" \
-    "Keysym::Home | Keysym::XF86_HomePage | Keysym::Menu => Some(Action::Guide),"
-file_contains input.divergence.menu-key.toolkit "$toolkit_input" \
+# The Menu key raises the context menu on both sides, pinned so neither can
+# drift off it. This used to be pinned as a *divergence* — the shell gave that
+# key to the guide — and it stopped being one when the shell adopted this
+# crate's answer, which is what a key printed with a menu on it should do.
+file_contains input.map.menu-key "$project_main" \
+    "Keysym::Menu | Keysym::F10 | Keysym::y | Keysym::Y => Some(Action::Menu),"
+file_contains input.map.menu-key.toolkit "$toolkit_input" \
     "Key::Menu | Key::F10 => Some(Action::Menu),"
+
+# The one place the toolkit deliberately differs, pinned so that it cannot be
+# quietly "corrected" into the shell's answer: the shell has to keep a way out
+# of a game that the game cannot take, and an application has nothing to keep a
+# way out of.
 file_contains input.divergence.tab "$project_main" \
     "Keysym::Tab => Some(Action::NextScreen),"
 file_contains input.divergence.tab.toolkit "$toolkit_input" \

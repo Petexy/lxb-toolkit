@@ -13,8 +13,9 @@ ExclusiveArch:  x86_64 aarch64
 
 # Cargo's release profile emits no DWARF, so find-debuginfo would produce an
 # empty debugsourcefiles.list and rpmbuild would fail on it after the whole
-# build. An archive submission wants real debuginfo instead: drop this and
-# build with `-Cdebuginfo=2 -Cstrip=none` under Fedora's own remapping.
+# build. An archive submission wants real debuginfo instead: drop this, and
+# with it the -Cdebuginfo=0 in %build that holds Fedora's own -Cdebuginfo=2 off,
+# so the DWARF is built and packaged rather than built and binned.
 %global debug_package %{nil}
 
 # python3-devel supplies this on Fedora. Defining it only when it is missing
@@ -70,7 +71,30 @@ Python version.
 %build
 export RUSTUP_TOOLCHAIN=stable
 export CARGO_TARGET_DIR=target
-cargo build --offline --locked --release -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lxb-app-ffi -p lxb-new
+# Fedora exports its own %%{build_rustflags} into RUSTFLAGS before this runs, and
+# they carry -Cdebuginfo=2 -Cstrip=none. RUSTFLAGS is appended after the release
+# profile's own flags and wins, so every crate here was generating full DWARF —
+# and with %%global debug_package %%{nil} above, no package was ever made of it.
+# -Cdebuginfo=0 last turns that off. This profile asks for `lto = true`, which
+# is fat LTO rather than thin, and the two together are the largest compiler in
+# any of these repositories: the final rustc measures 1898 MiB with the DWARF
+# and 1578 MiB without.
+export RUSTFLAGS="${RUSTFLAGS:-} -Cdebuginfo=0"
+
+# And Cargo takes its job count from the core count alone, knowing nothing about
+# how much memory the machine has to hold that many of those at once. The sister
+# repository's shell was killed by the kernel's OOM killer twice on an 8 GiB
+# Apple M1 for want of exactly this.
+#
+# Arithmetic rather than %%limit_build, the Fedora macro meant for this, which
+# swallowed the remainder of the script it was used in on Fedora Asahi.
+build_jobs="%{_smp_build_ncpus}"
+build_room="$(awk '/^MemTotal:/ { n = int($2 / 1024 / 2048); print (n < 1 ? 1 : n) }' /proc/meminfo 2>/dev/null || true)"
+if [ -n "$build_room" ] && [ "$build_room" -lt "$build_jobs" ]; then
+    build_jobs="$build_room"
+fi
+echo "building with $build_jobs of %{_smp_build_ncpus} jobs, for the memory this machine has"
+cargo build --offline --locked --release -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lxb-app-ffi -p lxb-new -j"$build_jobs"
 # The crate the installed generator points new projects at, normalised by Cargo
 # so that it parses outside this workspace. Built here rather than in %install,
 # which is not a build phase.
@@ -89,7 +113,17 @@ export CARGO_TARGET_DIR=target
 %check
 export RUSTUP_TOOLCHAIN=stable
 export CARGO_TARGET_DIR=target
-cargo test --offline --locked -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lxb-app-ffi -p lxb-new --all-targets
+# The same two as %%build. The dev profile asks for full DWARF and this phase
+# builds the graph a second time to get it, with no package made of it either;
+# a failing test still names its file and line, which the panic carries rather
+# than DWARF.
+export RUSTFLAGS="${RUSTFLAGS:-} -Cdebuginfo=0"
+build_jobs="%{_smp_build_ncpus}"
+build_room="$(awk '/^MemTotal:/ { n = int($2 / 1024 / 2048); print (n < 1 ? 1 : n) }' /proc/meminfo 2>/dev/null || true)"
+if [ -n "$build_room" ] && [ "$build_room" -lt "$build_jobs" ]; then
+    build_jobs="$build_room"
+fi
+cargo test --offline --locked -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lxb-app-ffi -p lxb-new --all-targets -j"$build_jobs"
 
 %files
 %license LICENSE

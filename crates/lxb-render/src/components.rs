@@ -13,6 +13,8 @@ use lxb_toolkit::{
     typography::{Face, Text},
 };
 
+use xkbcommon::xkb;
+
 use crate::renderer::{Quad, Run, Ui, OVER, PANE, SOFTEN};
 use crate::{Align, Fit, Spot};
 
@@ -264,11 +266,19 @@ impl Ui {
             Quad::light(control::glow_rect_tall(rect, over, tall), glow),
         );
 
-        let tint = self.tinted(role, control::lit_alpha(seconds) * strength);
+        // **`strength` fades the quad, and does not merely stain it.** A glass
+        // quad's material is not scaled by its own tint: the refraction, the
+        // gloss and the rim are all there at a tint alpha of a thousandth, and
+        // a light asked for at almost nothing came out as a hard ring that then
+        // went out in one frame. Putting it in `Quad::faded` — `shape[3]`, the
+        // one channel the glass branch of the shader multiplies through — is
+        // what `Ui::control` has always done with its own. Nothing moves at
+        // full strength, which is what everything but a page crossing asks for.
+        let tint = self.tinted(role, control::lit_alpha(seconds));
         let scale = self.scale;
         self.quad(
             layer,
-            Quad::glass(rect, radius, tint, control::lit(), scale),
+            Quad::glass(rect, radius, tint, control::lit(), scale).faded(strength),
         );
         self.light = Some(rect);
     }
@@ -1531,11 +1541,13 @@ impl Ui {
                     continue;
                 };
                 let selected = (row, column) == (selected_row, selected_column);
-                let held = state.keyboard.latched(key).is_on();
-                let locked = state.keyboard.locked(key);
+                let latch = state.keyboard.latched(key);
+                let held = latch.is_on();
                 if state.keyboard.is_open() {
                     self.mark_spot(Spot::PickerKey { row, column }, visible);
                 }
+                // The selection's halo, which is drawn outside the key and so
+                // survives whatever fills it.
                 if selected {
                     let glow = rect[3] * 2.2;
                     let light = [
@@ -1548,29 +1560,48 @@ impl Ui {
                         OVER,
                         Quad::light(light, self.tinted(Role::Accent, 0.30 + 0.08 * pulse)),
                     );
-                    self.quad(
-                        OVER,
-                        Quad::glass(
-                            lit,
-                            radius,
-                            self.tinted(Role::Accent, 0.52 + 0.05 * pulse),
-                            Surface::Control.glass(),
-                            scale,
-                        ),
-                    );
-                } else {
-                    let (role, alpha) = if held {
-                        (Role::Accent, if locked { 0.50 } else { 0.32 })
-                    } else if key.is_character() {
-                        (Role::GlassRaised, 0.10)
-                    } else {
-                        (Role::GlassRaised, 0.17)
-                    };
-                    let mut key_glass = Surface::Control.glass();
+                }
+                // One fill per key, the selected one included. It used to be a
+                // branch that asked `selected` first, so a modifier armed or
+                // locked from the board showed nothing at all until the cursor
+                // was walked off it — and the cursor stands on the key that was
+                // just pressed. That reads as a key needing two presses to come
+                // back off.
+                //
+                // And a held key is drawn *darker* rather than as a brighter
+                // cast of the accent, which is the colour the cursor is drawn
+                // in: two readings competing to mean two things. A key holding
+                // the board down is a key pressed into the panel, so it is the
+                // panel's own near-black glass, and twice as much of it locked
+                // as armed.
+                let (role, alpha) = match latch {
+                    PickerKeyboardLatch::Locked => (Role::Glass, 0.72),
+                    PickerKeyboardLatch::Once => (Role::Glass, 0.40),
+                    PickerKeyboardLatch::Off if selected => (Role::Accent, 0.52 + 0.05 * pulse),
+                    PickerKeyboardLatch::Off if key.is_character() => (Role::GlassRaised, 0.10),
+                    PickerKeyboardLatch::Off => (Role::GlassRaised, 0.17),
+                };
+                let mut key_glass = Surface::Control.glass();
+                // A pressed key does not catch the light a raised one does, and
+                // the selected key catches all of it.
+                if !(selected && !held) {
                     key_glass.gloss = 0.45;
+                }
+                self.quad(
+                    OVER,
+                    Quad::glass(rect, radius, self.tinted(role, alpha), key_glass, scale),
+                );
+                // The cursor's own rim, and only on a key whose fill a latch has
+                // taken over. Everywhere else the fill *is* the selection.
+                if selected && held {
                     self.quad(
                         OVER,
-                        Quad::glass(rect, radius, self.tinted(role, alpha), key_glass, scale),
+                        Quad::outline(
+                            rect,
+                            radius,
+                            self.tinted(Role::AccentSoft, 0.62 + 0.10 * pulse),
+                            2.0 * scale,
+                        ),
                     );
                 }
 
@@ -1603,7 +1634,7 @@ impl Ui {
                     continue;
                 }
 
-                let label = key.label(state.keyboard.shifted());
+                let label = key.label(state.keyboard.level());
                 let size = if row == 0 {
                     PICKER_KEYBOARD_FUNCTION_CAP * scale
                 } else if key.is_character() {
@@ -2235,6 +2266,98 @@ enum PickerKeyboardStroke {
     Backspace,
     Enter,
     Inert,
+    /// A dead key: a keysym with no character of its own that the *layout* put
+    /// on the alphabet, which is how a French or a German keyboard reaches its
+    /// accented letters.
+    ///
+    /// It is on the board because a key that is on the keyboard and missing
+    /// from the picture of it is a picture that is wrong, and it shows the
+    /// accent a real keycap shows. Typing it does nothing: this board types
+    /// into a field rather than through a keymap, so there is nothing here for
+    /// an accent to combine with — and the letters it would have made are on
+    /// the AltGr face of this board anyway, where they can be typed directly.
+    Dead(u32),
+}
+
+/// Which face of the board is showing.
+///
+/// xkb's first four shift levels, which is what a keyboard's four-level type
+/// is. The board reaches them with two keys: Shift, and AltGr where the layout
+/// has anything on the far two.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum PickerKeyboardLevel {
+    #[default]
+    Plain,
+    Shift,
+    AltGr,
+    AltGrShift,
+}
+
+impl PickerKeyboardLevel {
+    fn of(shifted: bool, altgr: bool) -> Self {
+        match (altgr, shifted) {
+            (false, false) => Self::Plain,
+            (false, true) => Self::Shift,
+            (true, false) => Self::AltGr,
+            (true, true) => Self::AltGrShift,
+        }
+    }
+
+    fn index(self) -> usize {
+        match self {
+            Self::Plain => 0,
+            Self::Shift => 1,
+            Self::AltGr => 2,
+            Self::AltGrShift => 3,
+        }
+    }
+}
+
+/// What one character key types, on each face the board can show.
+///
+/// Four answers rather than the two a keycap is printed with, because a layout
+/// keeps its accented letters on the far two: `ą` is AltGr and `a` on a Polish
+/// keyboard, and a board offering only the near pair is a board a Pole cannot
+/// search their own files with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PickerKeyboardCap {
+    levels: [Option<PickerKeyboardStroke>; 4],
+}
+
+impl PickerKeyboardCap {
+    /// A key with a plain and a shifted character and nothing on AltGr, which
+    /// is how the board's own fallback arrangement is written.
+    const fn letter(plain: char, shifted: char) -> Self {
+        Self {
+            levels: [
+                Some(PickerKeyboardStroke::Character(plain)),
+                Some(PickerKeyboardStroke::Character(shifted)),
+                None,
+                None,
+            ],
+        }
+    }
+
+    fn at(self, level: PickerKeyboardLevel) -> Option<PickerKeyboardStroke> {
+        self.levels[level.index()]
+    }
+
+    /// What is printed on it on one face.
+    fn printed(self, level: PickerKeyboardLevel) -> String {
+        match self.at(level) {
+            Some(PickerKeyboardStroke::Character(character)) => character.to_string(),
+            // The accent a dead key carries, which is what a real keycap shows.
+            Some(PickerKeyboardStroke::Dead(raw)) => {
+                picker_keyboard_dead_mark(raw).unwrap_or("").to_string()
+            }
+            Some(PickerKeyboardStroke::Space) => " ".to_string(),
+            Some(_) | None => String::new(),
+        }
+    }
+
+    fn has_altgr(self) -> bool {
+        self.levels[2].is_some() || self.levels[3].is_some()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2260,27 +2383,33 @@ impl PickerKeyboardArrow {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PickerKeyboardKey {
-    Character(char, char),
+    /// A character key: what it types on each of the four faces the board can
+    /// show. See [`PickerKeyboardCap`].
+    Character(PickerKeyboardCap),
     Named(&'static str, PickerKeyboardStroke),
     Arrow(PickerKeyboardArrow),
     Shift,
     Caps,
     Control,
     Alt,
+    /// AltGr: the third and fourth faces of the board, where most layouts keep
+    /// their accented letters and their currency signs. On the board only where
+    /// the layout has something on those faces.
+    AltGr,
     Close,
 }
 
 impl PickerKeyboardKey {
-    fn label(self, shifted: bool) -> String {
+    fn label(self, level: PickerKeyboardLevel) -> String {
         match self {
-            Self::Character(_, shifted_character) if shifted => shifted_character.to_string(),
-            Self::Character(character, _) => character.to_string(),
+            Self::Character(cap) => cap.printed(level),
             Self::Named(label, _) => label.to_string(),
             Self::Arrow(_) | Self::Close => String::new(),
             Self::Shift => "Shift".to_string(),
             Self::Caps => "Caps".to_string(),
             Self::Control => "Ctrl".to_string(),
             Self::Alt => "Alt".to_string(),
+            Self::AltGr => "AltGr".to_string(),
         }
     }
 
@@ -2334,6 +2463,10 @@ impl PickerKeyboardLatch {
 enum PickerKeyboardPress {
     Type(PickerKeyboardStroke),
     Shifted,
+    /// The key has nothing on the face the board is showing, so the press did
+    /// nothing at all — the armed modifier included, because the user is still
+    /// reaching for the key it was armed for.
+    Nothing,
     Close,
 }
 
@@ -2346,6 +2479,7 @@ struct PickerKeyboard {
     shift: PickerKeyboardLatch,
     control: PickerKeyboardLatch,
     alt: PickerKeyboardLatch,
+    altgr: PickerKeyboardLatch,
 }
 
 impl Default for PickerKeyboard {
@@ -2359,6 +2493,7 @@ impl Default for PickerKeyboard {
             shift: PickerKeyboardLatch::Off,
             control: PickerKeyboardLatch::Off,
             alt: PickerKeyboardLatch::Off,
+            altgr: PickerKeyboardLatch::Off,
         }
     }
 }
@@ -2371,6 +2506,7 @@ impl PickerKeyboard {
         self.shift = PickerKeyboardLatch::Off;
         self.control = PickerKeyboardLatch::Off;
         self.alt = PickerKeyboardLatch::Off;
+        self.altgr = PickerKeyboardLatch::Off;
     }
 
     fn close(&mut self) -> bool {
@@ -2403,8 +2539,10 @@ impl PickerKeyboard {
         false
     }
 
-    fn shifted(&self) -> bool {
-        self.shift.is_on()
+    /// Which face the board is showing, which is what every cap on it says and
+    /// what the next press will type.
+    fn level(&self) -> PickerKeyboardLevel {
+        PickerKeyboardLevel::of(self.shift.is_on(), self.altgr.is_on())
     }
 
     fn selected_position(&self) -> (usize, usize) {
@@ -2457,15 +2595,12 @@ impl PickerKeyboard {
             PickerKeyboardKey::Shift => self.shift,
             PickerKeyboardKey::Control => self.control,
             PickerKeyboardKey::Alt => self.alt,
+            PickerKeyboardKey::AltGr => self.altgr,
             PickerKeyboardKey::Caps if self.shift == PickerKeyboardLatch::Locked => {
                 PickerKeyboardLatch::Locked
             }
             _ => PickerKeyboardLatch::Off,
         }
-    }
-
-    fn locked(&self, key: PickerKeyboardKey) -> bool {
-        self.latched(key) == PickerKeyboardLatch::Locked
     }
 
     fn press(&mut self) -> PickerKeyboardPress {
@@ -2480,6 +2615,10 @@ impl PickerKeyboard {
             }
             PickerKeyboardKey::Alt => {
                 self.alt = self.alt.pressed();
+                PickerKeyboardPress::Shifted
+            }
+            PickerKeyboardKey::AltGr => {
+                self.altgr = self.altgr.pressed();
                 PickerKeyboardPress::Shifted
             }
             PickerKeyboardKey::Caps => {
@@ -2498,10 +2637,19 @@ impl PickerKeyboard {
                 self.spend();
                 PickerKeyboardPress::Type(PickerKeyboardStroke::Inert)
             }
-            PickerKeyboardKey::Character(plain, shifted) => {
-                let character = if self.shifted() { shifted } else { plain };
-                self.spend();
-                PickerKeyboardPress::Type(PickerKeyboardStroke::Character(character))
+            PickerKeyboardKey::Character(cap) => {
+                // Read before spending: it is this press the armed shift is for.
+                match cap.at(self.level()) {
+                    Some(stroke) => {
+                        self.spend();
+                        PickerKeyboardPress::Type(stroke)
+                    }
+                    // Nothing on this face, so nothing happens — the latches
+                    // included. A blank cap that spent the AltGr the user had
+                    // just armed would take the modifier away for the key they
+                    // were actually reaching for.
+                    None => PickerKeyboardPress::Nothing,
+                }
             }
         }
     }
@@ -2510,6 +2658,7 @@ impl PickerKeyboard {
         self.shift = self.shift.spent();
         self.control = self.control.spent();
         self.alt = self.alt.spent();
+        self.altgr = self.altgr.spent();
     }
 }
 
@@ -2521,16 +2670,289 @@ fn picker_keyboard_row_scale(row: usize) -> f32 {
     }
 }
 
-fn picker_keyboard_row_spans(row: usize) -> Vec<(PickerKeyboardKey, f32)> {
-    use PickerKeyboardKey::{Alt, Arrow, Caps, Character, Close, Control, Named, Shift};
+/// The character rows a board with no layout to read shows.
+///
+/// The fallback and not the board: the caps follow whatever keyboard this
+/// machine is configured for — see [`picker_keyboard_note_layout`] — and this
+/// is what is drawn until that has been read, and if it will not compile.
+const PICKER_KEYBOARD_NUMBER_ROW: (&str, &str) = ("`1234567890-=", "~!@#$%^&*()_+");
+const PICKER_KEYBOARD_UPPER_ROW: (&str, &str) = ("qwertyuiop[]", "QWERTYUIOP{}");
+const PICKER_KEYBOARD_HOME_ROW: (&str, &str) = ("asdfghjkl;'", "ASDFGHJKL:\"");
+const PICKER_KEYBOARD_LOWER_ROW: (&str, &str) = ("zxcvbnm,./", "ZXCVBNM<>?");
 
-    fn characters(plain: &str, shifted: &str) -> Vec<(PickerKeyboardKey, f32)> {
-        plain
-            .chars()
-            .zip(shifted.chars())
-            .map(|(plain, shifted)| (PickerKeyboardKey::Character(plain, shifted), 1.0))
-            .collect()
+/// The X11 keycode of every character key on the board, by row.
+///
+/// What makes the caps follow the layout: a keymap answers "what does this key
+/// produce" about a *keycode*, so the board's ANSI positions have to be named
+/// in the only language xkb has for them. X11's numbering, which is evdev's
+/// plus eight.
+///
+/// The counts are fixed here — thirteen, thirteen, eleven, ten — which is what
+/// stops a layout changing the width of a row. Every row but the function row
+/// comes to exactly [`PICKER_KEYBOARD_COLUMNS`], and a keymap has no say in it.
+const PICKER_KEYBOARD_KEYCODES: [&[u32]; 4] = [
+    // <TLDE> and <AE01>..<AE12>
+    &[49, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+    // <AD01>..<AD12>, then <BKSL> — which the row draws last and wider.
+    &[24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 51],
+    // <AC01>..<AC11>
+    &[38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48],
+    // <AB01>..<AB10>
+    &[52, 53, 54, 55, 56, 57, 58, 59, 60, 61],
+];
+
+/// The caps of the four character rows, in [`PICKER_KEYBOARD_KEYCODES`] order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PickerKeyboardArrangement {
+    rows: [Vec<PickerKeyboardCap>; 4],
+    /// Whether anything on it is reached with AltGr, which decides whether the
+    /// board draws that key at all. An American board has no AltGr, and one
+    /// that drew a dead key would be a key doing nothing on the layout most
+    /// people use.
+    altgr: bool,
+}
+
+/// What this machine's keyboards are set to, as caps this board can print.
+///
+/// Read once, on the first board drawn, and kept: reading a keymap is a file
+/// opened and a grammar parsed, and the picker's board is built fresh every
+/// frame it is on screen.
+static PICKER_KEYBOARD_CAPS: std::sync::OnceLock<Option<PickerKeyboardArrangement>> =
+    std::sync::OnceLock::new();
+
+/// The caps of one character row: the layout's, or the ANSI/US fallback.
+///
+/// `row` is the board's own row number — 1 to 4 — which is
+/// [`PICKER_KEYBOARD_KEYCODES`]'s index plus one.
+fn picker_keyboard_caps(row: usize) -> Vec<PickerKeyboardCap> {
+    if let Some(held) = picker_keyboard_arrangement() {
+        if let Some(caps) = row.checked_sub(1).and_then(|index| held.rows.get(index)) {
+            return caps.clone();
+        }
     }
+    let (plain, shifted) = match row {
+        1 => PICKER_KEYBOARD_NUMBER_ROW,
+        2 => PICKER_KEYBOARD_UPPER_ROW,
+        3 => PICKER_KEYBOARD_HOME_ROW,
+        _ => PICKER_KEYBOARD_LOWER_ROW,
+    };
+    let mut caps: Vec<PickerKeyboardCap> = plain
+        .chars()
+        .zip(shifted.chars())
+        .map(|(plain, shifted)| PickerKeyboardCap::letter(plain, shifted))
+        .collect();
+    // The backslash, which the fallback rows above do not carry because it is
+    // the one character key drawn at a width of its own.
+    if row == 2 {
+        caps.push(PickerKeyboardCap::letter('\\', '|'));
+    }
+    caps
+}
+
+/// Whether the board draws an AltGr key at all.
+fn picker_keyboard_altgr_on_the_board() -> bool {
+    picker_keyboard_arrangement().is_some_and(|held| held.altgr)
+}
+
+/// This machine's arrangement, compiled on first use.
+///
+/// The first of the layouts this machine names that xkbcommon will compile, in
+/// the order [`picker_keyboard_layouts`] believes them. The first of them and
+/// not simply the first one named, because the answer standing in front is a
+/// setting: a file naming an arrangement this machine's xkeyboard-config does
+/// not have must not cost the board the machine's own keyboard behind it.
+fn picker_keyboard_arrangement() -> Option<&'static PickerKeyboardArrangement> {
+    PICKER_KEYBOARD_CAPS
+        .get_or_init(|| {
+            picker_keyboard_layouts()
+                .into_iter()
+                .find_map(|(layout, variant)| picker_keyboard_note_layout(&layout, &variant))
+        })
+        .as_ref()
+}
+
+/// What this machine's keyboard is set to, as xkb layouts and variants, in the
+/// order they deserve to be believed.
+///
+/// **The shell's own setting first.** It is the answer somebody gave on
+/// Settings > Input > Keyboard > Keyboard layout, and an application reads it
+/// out of the file rather than being handed a copy of it at startup — see
+/// [`lxb_toolkit::settings::keyboard_layout`]. Nothing else here is a decision
+/// anybody made about this board.
+///
+/// Then `XKB_DEFAULT_LAYOUT`, which is what libxkbcommon itself honours and what
+/// a compositor that has been told a layout exports for its clients. Under this
+/// shell it agrees with the setting above; under any other desktop it is the
+/// only one of the two that will be there.
+///
+/// Then the system's own X11 keyboard configuration, which is what
+/// `localectl set-x11-keymap` writes and what every session on this machine
+/// starts from. Then `us` — not a guess about the machine but the same default
+/// libxkbcommon has, and the reason this list always ends in something that
+/// compiles.
+fn picker_keyboard_layouts() -> Vec<(String, String)> {
+    let mut named = Vec::new();
+    named.extend(lxb_toolkit::settings::keyboard_layout());
+    if let Ok(layout) = std::env::var("XKB_DEFAULT_LAYOUT") {
+        if !layout.trim().is_empty() {
+            let variant = std::env::var("XKB_DEFAULT_VARIANT").unwrap_or_default();
+            named.push((layout.trim().to_string(), variant.trim().to_string()));
+        }
+    }
+    named.extend(picker_keyboard_configured_layout());
+    named.push(("us".to_string(), String::new()));
+    // Two places saying the same thing is the ordinary case under this shell,
+    // and compiling that keymap twice to find out it still will not build is
+    // the one cost worth taking off a board drawn on first use.
+    named.dedup();
+    named
+}
+
+/// The layout out of the system's X11 keyboard configuration.
+///
+/// Only the first `XkbLayout`, and only the first of a comma-separated list:
+/// xkb can hold several layouts at once with a key to switch between them, and
+/// this board has no such key — so it offers the one the machine comes up in
+/// rather than pretending to offer all of them.
+fn picker_keyboard_configured_layout() -> Option<(String, String)> {
+    for path in [
+        "/etc/X11/xorg.conf.d/00-keyboard.conf",
+        "/etc/X11/xorg.conf.d/90-keyboard.conf",
+        "/etc/X11/xorg.conf",
+    ] {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let option = |name: &str| {
+            text.lines()
+                .filter_map(|line| {
+                    let rest = line.trim().strip_prefix("Option")?.trim_start();
+                    let rest = rest.strip_prefix(&format!("\"{name}\""))?.trim_start();
+                    Some(rest.trim_matches('"').split(',').next()?.trim().to_string())
+                })
+                .find(|value| !value.is_empty())
+        };
+        if let Some(layout) = option("XkbLayout") {
+            return Some((layout, option("XkbVariant").unwrap_or_default()));
+        }
+    }
+    None
+}
+
+/// Compile a layout and read the four character rows off it.
+///
+/// The four faces the board can show are xkb's first four shift levels, which
+/// is what a keyboard's four-level type is: plain, Shift, AltGr, and both.
+///
+/// A key with nothing on a level gets nothing rather than falling back to its
+/// plain character. A cap that showed `a` on the AltGr face and typed `a` when
+/// pressed would be a key ignoring the modifier the user is holding.
+fn picker_keyboard_note_layout(layout: &str, variant: &str) -> Option<PickerKeyboardArrangement> {
+    let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+    let keymap = xkb::Keymap::new_from_names(
+        &context,
+        "",
+        "",
+        layout,
+        variant,
+        None,
+        xkb::KEYMAP_COMPILE_NO_FLAGS,
+    )?;
+    let mut rows: [Vec<PickerKeyboardCap>; 4] = Default::default();
+    let mut altgr = false;
+    for (row, keycodes) in PICKER_KEYBOARD_KEYCODES.iter().enumerate() {
+        for keycode in *keycodes {
+            let cap = picker_keyboard_cap_of(&keymap, *keycode);
+            altgr |= cap.has_altgr();
+            rows[row].push(cap);
+        }
+    }
+    // A keymap that compiled but says nothing about the alphabet is not an
+    // arrangement — it is a layout this board cannot show, and the US fallback
+    // is a better board than one with a blank home row.
+    rows[2]
+        .iter()
+        .any(|cap| cap.at(PickerKeyboardLevel::Plain).is_some())
+        .then_some(PickerKeyboardArrangement { rows, altgr })
+}
+
+/// What one key of the keymap types on each of the board's four faces.
+fn picker_keyboard_cap_of(keymap: &xkb::Keymap, keycode: u32) -> PickerKeyboardCap {
+    let key = xkb::Keycode::new(keycode);
+    let mut levels = [None; 4];
+    for (index, slot) in levels.iter_mut().enumerate() {
+        // One keysym or none. A level bound to several — which xkb allows and
+        // almost nothing uses — is one keycap's worth of typing here.
+        *slot = keymap
+            .key_get_syms_by_level(key, 0, index as u32)
+            .first()
+            .copied()
+            .and_then(picker_keyboard_stroke_of);
+    }
+    PickerKeyboardCap { levels }
+}
+
+/// One keysym as this board would type it.
+///
+/// A character where it has one — which is nearly all of them — and the keysym
+/// itself where it has not, which is the dead keys.
+fn picker_keyboard_stroke_of(keysym: xkb::Keysym) -> Option<PickerKeyboardStroke> {
+    if let Some(character) =
+        char::from_u32(xkb::keysym_to_utf32(keysym)).filter(|c| !c.is_control())
+    {
+        return Some(PickerKeyboardStroke::Character(character));
+    }
+    picker_keyboard_dead_mark(keysym.raw())
+        .is_some()
+        .then_some(PickerKeyboardStroke::Dead(keysym.raw()))
+}
+
+/// The accent printed on a dead key's cap.
+///
+/// The one place the board cannot ask the keymap what to print, because a dead
+/// key has no character. What a real keycap shows is the accent itself. A dead
+/// key this table does not know is left off the board rather than shown blank:
+/// a cap with nothing on it is a key nobody can find out the meaning of.
+fn picker_keyboard_dead_mark(raw: u32) -> Option<&'static str> {
+    let name = xkb::keysym_get_name(xkb::Keysym::new(raw));
+    Some(match name.strip_prefix("dead_")? {
+        "grave" => "`",
+        "acute" => "´",
+        "circumflex" => "^",
+        "tilde" | "perispomeni" => "~",
+        "macron" => "¯",
+        "breve" => "˘",
+        "abovedot" => "˙",
+        "diaeresis" => "¨",
+        "abovering" => "˚",
+        "doubleacute" => "˝",
+        "caron" => "ˇ",
+        "cedilla" => "¸",
+        "ogonek" => "˛",
+        "iota" => "ͅ",
+        "belowdot" => "̣",
+        "hook" => "̉",
+        "horn" => "̛",
+        "stroke" => "̶",
+        "abovecomma" | "psili" => "᾿",
+        "abovereversedcomma" | "dasia" => "῾",
+        "doublegrave" => "̏",
+        "belowring" => "̥",
+        "belowmacron" => "̱",
+        "belowcircumflex" => "̭",
+        "belowtilde" => "̰",
+        "belowbreve" => "̮",
+        "belowdiaeresis" => "̤",
+        "invertedbreve" => "̑",
+        "belowcomma" => "̦",
+        "currency" => "¤",
+        "greek" => "µ",
+        _ => return None,
+    })
+}
+
+fn picker_keyboard_row_spans(row: usize) -> Vec<(PickerKeyboardKey, f32)> {
+    use PickerKeyboardKey::{Alt, AltGr, Arrow, Caps, Character, Close, Control, Named, Shift};
 
     let mut keys = Vec::new();
     match row {
@@ -2544,28 +2966,55 @@ fn picker_keyboard_row_spans(row: usize) -> Vec<(PickerKeyboardKey, f32)> {
             }
         }
         1 => {
-            keys.extend(characters("`1234567890-=", "~!@#$%^&*()_+"));
+            keys.extend(
+                picker_keyboard_caps(row)
+                    .into_iter()
+                    .map(|cap| (Character(cap), 1.0)),
+            );
             keys.push((Named("Back", PickerKeyboardStroke::Backspace), 2.0));
         }
         2 => {
             keys.push((Named("Tab", PickerKeyboardStroke::Inert), 1.5));
-            keys.extend(characters("qwertyuiop[]", "QWERTYUIOP{}"));
-            keys.push((Character('\\', '|'), 1.5));
+            // The backslash is the row's last key and is drawn wider, which is
+            // where ANSI puts it. It is a character key like the twelve before
+            // it, so the layout has its say about what it prints — on a German
+            // keyboard that position is `#`.
+            let caps = picker_keyboard_caps(row);
+            let (letters, wide) = caps.split_at(caps.len().saturating_sub(1));
+            keys.extend(letters.iter().map(|cap| (Character(*cap), 1.0)));
+            keys.extend(wide.iter().map(|cap| (Character(*cap), 1.5)));
         }
         3 => {
             keys.push((Caps, 1.75));
-            keys.extend(characters("asdfghjkl;'", "ASDFGHJKL:\""));
+            keys.extend(
+                picker_keyboard_caps(row)
+                    .into_iter()
+                    .map(|cap| (Character(cap), 1.0)),
+            );
             keys.push((Named("Enter", PickerKeyboardStroke::Enter), 2.25));
         }
         4 => {
             keys.push((Shift, 2.25));
-            keys.extend(characters("zxcvbnm,./", "ZXCVBNM<>?"));
+            keys.extend(
+                picker_keyboard_caps(row)
+                    .into_iter()
+                    .map(|cap| (Character(cap), 1.0)),
+            );
             keys.push((Shift, 2.75));
         }
         _ => {
             keys.push((Control, 1.5));
             keys.push((Alt, 1.5));
-            keys.push((Named("Space", PickerKeyboardStroke::Space), 5.5));
+            // AltGr takes a key and a half out of the space bar, and only where
+            // the layout has something on the faces it reaches. Right of the
+            // space bar, which is where a keyboard that has one puts it.
+            match picker_keyboard_altgr_on_the_board() {
+                true => {
+                    keys.push((Named("Space", PickerKeyboardStroke::Space), 4.0));
+                    keys.push((AltGr, 1.5));
+                }
+                false => keys.push((Named("Space", PickerKeyboardStroke::Space), 5.5)),
+            }
             keys.extend(PickerKeyboardArrow::ALL.map(|arrow| (Arrow(arrow), 1.0)));
             keys.push((Close, 2.5));
         }
@@ -2980,8 +3429,16 @@ impl FilePicker {
             }
             PickerKeyboardPress::Type(PickerKeyboardStroke::Enter) => self.submit_search_keyboard(),
 
-            PickerKeyboardPress::Type(PickerKeyboardStroke::Inert) => true,
-            PickerKeyboardPress::Shifted => true,
+            // A dead key among the inert ones: this board types into a field
+            // rather than through a keymap, so there is nothing here for an
+            // accent to combine with. It stays *on* the board because a key
+            // that is on the keyboard and missing from the picture of it is a
+            // picture that is wrong — and the letters it would have made are on
+            // the AltGr face, where they can be typed directly.
+            PickerKeyboardPress::Type(
+                PickerKeyboardStroke::Inert | PickerKeyboardStroke::Dead(_),
+            ) => true,
+            PickerKeyboardPress::Shifted | PickerKeyboardPress::Nothing => true,
             PickerKeyboardPress::Close => self.close_search_keyboard(),
         }
     }
@@ -4730,6 +5187,140 @@ mod tests {
     }
 
     #[test]
+    fn a_fade_between_marks_takes_the_glass_down_with_the_words() {
+        let (width, height) = (900u32, 600u32);
+        let Ok(mut ui) = Ui::headless(width, height) else {
+            eprintln!("no adapter: a fade was not checked");
+            return;
+        };
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        ui.begin(
+            width as f32,
+            height as f32,
+            10.0,
+            &accent,
+            lxb_toolkit::settings::WallpaperStyle::Default,
+            IconStyle::Default,
+        );
+
+        // A heading that stays, and a card and a word that go out together.
+        ui.label(
+            [40.0, 10.0, 300.0, 30.0],
+            Text::Title,
+            "Heading",
+            Role::Text,
+            Align::Left,
+        );
+        let from = ui.written();
+        ui.card(
+            [40.0, 60.0, 300.0, 70.0],
+            Surface::Control,
+            Role::Glass,
+            0.4,
+        );
+        ui.label(
+            [40.0, 60.0, 300.0, 30.0],
+            Text::Body,
+            "Leaving",
+            Role::Text,
+            Align::Left,
+        );
+        let to = ui.written();
+        ui.fade_between(from, to, 0.25);
+
+        let card = ui.scene.layers[CONTROL_LAYER]
+            .quads
+            .iter()
+            .find(|quad| quad.shape[1] == crate::renderer::KIND_GLASS)
+            .expect("the card");
+        assert!(
+            (card.shape[3] - 0.25).abs() < 1e-6,
+            "a pane of glass did not fade with the page it was drawn on: a \
+             glass quad's material is not scaled by its own tint, so this is \
+             the only channel that takes it out"
+        );
+
+        let runs = &ui.scene.layers[CONTROL_LAYER].runs;
+        assert_eq!(runs.len(), 2, "the heading and the word that is leaving");
+        assert!(
+            (runs[1].tint[3] - 0.25).abs() < 1e-6,
+            "the word between the marks did not fade"
+        );
+        assert!(
+            runs[0].tint[3] > 0.9,
+            "a word outside the two marks was faded with them"
+        );
+    }
+
+    #[test]
+    fn a_fade_between_marks_that_are_not_a_range_fades_nothing() {
+        let (width, height) = (900u32, 600u32);
+        let Ok(mut ui) = Ui::headless(width, height) else {
+            eprintln!("no adapter: a backwards fade was not checked");
+            return;
+        };
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        ui.begin(
+            width as f32,
+            height as f32,
+            10.0,
+            &accent,
+            lxb_toolkit::settings::WallpaperStyle::Default,
+            IconStyle::Default,
+        );
+
+        let from = ui.written();
+        ui.card(
+            [40.0, 60.0, 300.0, 70.0],
+            Surface::Control,
+            Role::Glass,
+            0.4,
+        );
+        let to = ui.written();
+        // The wrong way round, which is a mistake in the page and not a
+        // licence to fade the whole scene.
+        ui.fade_between(to, from, 0.0);
+        let card = ui.scene.layers[CONTROL_LAYER]
+            .quads
+            .iter()
+            .find(|quad| quad.shape[1] == crate::renderer::KIND_GLASS)
+            .expect("the card");
+        assert_eq!(card.shape[3], 1.0, "a backwards fade faded");
+    }
+
+    #[test]
+    fn a_light_at_no_strength_leaves_no_glass_behind_it() {
+        let (width, height) = (900u32, 600u32);
+        let Ok(mut ui) = Ui::headless(width, height) else {
+            eprintln!("no adapter: a fading light was not checked");
+            return;
+        };
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        ui.begin(
+            width as f32,
+            height as f32,
+            10.0,
+            &accent,
+            lxb_toolkit::settings::WallpaperStyle::Default,
+            IconStyle::Default,
+        );
+
+        // A page crossing away asks for its light at almost nothing. What it
+        // must not get is a ring refracting as hard as at full strength.
+        ui.selection([40.0, 60.0, 300.0, 70.0], 0.02);
+        let lit = ui.scene.layers[CONTROL_LAYER]
+            .quads
+            .iter()
+            .find(|quad| quad.shape[1] == crate::renderer::KIND_GLASS)
+            .expect("the light");
+        assert!(
+            (lit.shape[3] - 0.02).abs() < 1e-6,
+            "the light's glass was laid at full strength: its fade is in the \
+             tint, which a glass quad's material does not read"
+        );
+    }
+
+    #[test]
     fn a_mark_inside_a_panel_is_drawn_in_the_panels_layer() {
         let (width, height) = (900u32, 600u32);
         let Ok(mut ui) = Ui::headless(width, height) else {
@@ -5422,7 +6013,12 @@ mod tests {
         let counts: Vec<_> = (0..PICKER_KEYBOARD_ROWS)
             .map(|row| picker_keyboard_row_keys(row).len())
             .collect();
-        assert_eq!(counts, vec![13, 14, 14, 13, 12, 8]);
+        // The bottom row is eight keys, and nine on a machine whose layout
+        // keeps letters behind AltGr — which is the one key on this board the
+        // layout is allowed to add. Every other row is fixed, which is what
+        // stops a keymap changing the shape of the grid.
+        let bottom = 8 + usize::from(picker_keyboard_altgr_on_the_board());
+        assert_eq!(counts, vec![13, 14, 14, 13, 12, bottom]);
         for row in 0..PICKER_KEYBOARD_ROWS {
             let width: f32 = picker_keyboard_row_spans(row)
                 .iter()
@@ -5439,7 +6035,12 @@ mod tests {
                 PickerKeyboardStroke::Backspace,
             ))
         );
-        assert_eq!(picker_keyboard_row_keys(5)[3].glyph(), Some("arrow-left"));
+        // The arrows begin after Ctrl, Alt, Space and AltGr where there is one.
+        let arrows = 3 + usize::from(picker_keyboard_altgr_on_the_board());
+        assert_eq!(
+            picker_keyboard_row_keys(5)[arrows].glyph(),
+            Some("arrow-left")
+        );
         assert_eq!(
             picker_keyboard_row_keys(5)
                 .last()
@@ -5448,12 +6049,155 @@ mod tests {
         );
     }
 
+    /// The caps come off the layout, and the keys stay where they are.
+    ///
+    /// German is the clearest pair to check both halves at once: it is QWERTZ,
+    /// so the key ANSI prints Y types z and the key it prints Z types y — the
+    /// letters swapped and the keys exactly where they were.
+    #[test]
+    fn picker_keyboard_caps_come_off_the_layout_and_the_keys_stay_put() {
+        let Some(german) = picker_keyboard_note_layout("de", "") else {
+            // No xkeyboard-config on this machine, which a build container may
+            // well not have. Nothing to assert about a layout that is not there.
+            return;
+        };
+        let printed = |row: usize| -> Vec<String> {
+            german.rows[row]
+                .iter()
+                .map(|cap| cap.printed(PickerKeyboardLevel::Plain))
+                .collect()
+        };
+        // The lower row, which is the fourth in keycode order.
+        assert_eq!(
+            printed(3),
+            ["y", "x", "c", "v", "b", "n", "m", ",", ".", "-"]
+        );
+        // And the upper row's first six, plus the key ANSI prints backslash —
+        // `#` on a German board.
+        assert_eq!(printed(1)[..6], ["q", "w", "e", "r", "t", "z"]);
+        assert_eq!(printed(1)[12], "#");
+        // Every row still has exactly the number of keys the grid is built for.
+        for (row, keycodes) in PICKER_KEYBOARD_KEYCODES.iter().enumerate() {
+            assert_eq!(german.rows[row].len(), keycodes.len());
+        }
+    }
+
+    /// A layout that keeps letters behind AltGr is marked as needing the key,
+    /// and one that does not is not.
+    ///
+    /// Polish is the case this exists for: it is QWERTY, so without AltGr the
+    /// board would look right and be unable to write a single Polish word.
+    #[test]
+    fn picker_keyboard_altgr_is_read_off_the_layout_that_needs_it() {
+        let Some(polish) = picker_keyboard_note_layout("pl", "") else {
+            return;
+        };
+        assert!(polish.altgr, "Polish keeps its own letters behind AltGr");
+        // <AC01>, which ANSI prints A.
+        assert_eq!(polish.rows[2][0].printed(PickerKeyboardLevel::AltGr), "ą");
+        let Some(american) = picker_keyboard_note_layout("us", "") else {
+            return;
+        };
+        assert!(!american.altgr, "an American board has no AltGr");
+    }
+
+    /// A dead key shows the accent a real keycap shows, and typing it into the
+    /// field does nothing rather than putting a stray mark in the query.
+    #[test]
+    fn picker_keyboard_dead_keys_show_their_accent_and_type_nothing() {
+        let Some(french) = picker_keyboard_note_layout("fr", "") else {
+            return;
+        };
+        // <AD11>, which ANSI prints [ and AZERTY prints the circumflex.
+        let dead = french.rows[1][10];
+        assert_eq!(dead.printed(PickerKeyboardLevel::Plain), "^");
+        assert!(matches!(
+            dead.at(PickerKeyboardLevel::Plain),
+            Some(PickerKeyboardStroke::Dead(_))
+        ));
+    }
+
+    /// A layout that will not compile is no arrangement at all, which leaves
+    /// the board on the ANSI/US rows it is built with.
+    #[test]
+    fn picker_keyboard_an_impossible_layout_leaves_the_ansi_board() {
+        assert!(picker_keyboard_note_layout("no-such-layout-anywhere", "").is_none());
+    }
+
+    /// Where the board looks for the keyboard it is a picture of, and in what
+    /// order.
+    ///
+    /// Machine-independent on purpose: which of these places answers here is
+    /// this machine's business, but the list must always end in something that
+    /// compiles, and no step of it may offer a layout with no name — a keymap
+    /// nothing can build, standing in front of one that could.
+    #[test]
+    fn picker_keyboard_reads_the_setting_before_the_session_and_the_machine() {
+        let named = picker_keyboard_layouts();
+        assert_eq!(
+            named.last(),
+            Some(&("us".to_string(), String::new())),
+            "the list has to end somewhere xkbcommon will follow"
+        );
+        assert!(named.iter().all(|(layout, _)| !layout.trim().is_empty()));
+        // The shell's own setting, where this machine has one, is asked for
+        // first and asked for by reading the file rather than the environment.
+        if let Some(chosen) = lxb_toolkit::settings::keyboard_layout() {
+            assert_eq!(named.first(), Some(&chosen));
+        }
+    }
+
+    /// A key with nothing on the face the board is showing types nothing, and
+    /// does not spend the modifier armed for the key next to it.
+    #[test]
+    fn picker_keyboard_a_blank_face_types_nothing_and_keeps_the_modifier() {
+        // The cap's own answer first, which is true on every machine: a key
+        // built with two characters has nothing on the far two faces.
+        let letter = PickerKeyboardCap::letter('a', 'A');
+        assert!(letter.at(PickerKeyboardLevel::AltGr).is_none());
+        assert!(letter.printed(PickerKeyboardLevel::AltGr).is_empty());
+        assert!(!letter.has_altgr());
+
+        // And then the press, on whichever key this machine's layout leaves
+        // blank there. Which key that is belongs to xkeyboard-config and
+        // changes with the package — Polish, the obvious candidate, includes
+        // `latin` and so has something on AltGr for every key — so it is found
+        // rather than named, and a layout with none skips this half.
+        let mut board = PickerKeyboard::default();
+        board.open();
+        let blank = (1..5).find_map(|row| {
+            picker_keyboard_row_keys(row)
+                .into_iter()
+                .enumerate()
+                .find(|(_, key)| {
+                    matches!(key, PickerKeyboardKey::Character(cap)
+                        if cap.at(PickerKeyboardLevel::AltGr).is_none())
+                })
+                .map(|(column, _)| (row, column))
+        });
+        let Some((row, column)) = blank else {
+            return;
+        };
+        board.select(row, column);
+        board.altgr = PickerKeyboardLatch::Once;
+        assert_eq!(board.level(), PickerKeyboardLevel::AltGr);
+        assert_eq!(board.press(), PickerKeyboardPress::Nothing);
+        assert_eq!(
+            board.level(),
+            PickerKeyboardLevel::AltGr,
+            "a key that did nothing takes nothing away"
+        );
+    }
+
     #[test]
     fn picker_keyboard_navigation_wraps_and_tracks_key_midpoints() {
         let mut board = PickerKeyboard::default();
         board.open();
         assert_eq!(board.selected_position(), (3, 1));
-        assert_eq!(board.selected(), PickerKeyboardKey::Character('a', 'A'));
+        // A character key, not a particular letter: which letter the home row's
+        // first key prints belongs to the layout this machine is configured
+        // for, and a test that named one would be a test about xkeyboard-config.
+        assert!(matches!(board.selected(), PickerKeyboardKey::Character(_)));
 
         assert!(board.move_by(-1, 0));
         assert_eq!(board.selected(), PickerKeyboardKey::Caps);
@@ -5463,11 +6207,11 @@ mod tests {
             PickerKeyboardKey::Named("Enter", PickerKeyboardStroke::Enter)
         );
 
-        assert!(board.select(2, 10), "put the cursor on p");
+        assert!(board.select(2, 10), "put the cursor on the eleventh key");
         assert!(board.move_by(0, 1));
         assert_eq!(
-            board.selected(),
-            PickerKeyboardKey::Character(';', ':'),
+            board.selected_position(),
+            (3, 10),
             "Down follows the nearest key midpoint, not the row index"
         );
         assert!(board.select(0, 0));
@@ -5551,10 +6295,7 @@ mod tests {
         assert!(picker.move_selection(-1));
         assert!(picker.activate());
         assert!(picker.point_at(Spot::PickerKey { row: 2, column: 2 }));
-        assert_eq!(
-            picker.keyboard.selected(),
-            PickerKeyboardKey::Character('w', 'W')
-        );
+        assert_eq!(picker.keyboard.selected_position(), (2, 2));
         assert!(!picker.point_at(Spot::PickerRow(0)));
         assert!(picker.close_search_keyboard());
         assert!(
@@ -5573,21 +6314,18 @@ mod tests {
         assert!(picker.move_selection(-1), "Up reaches the Search head row");
         assert!(picker.activate(), "Accept opens the local search board");
         assert!(picker.search_keyboard_open());
-        assert_eq!(
-            picker.keyboard.selected(),
-            PickerKeyboardKey::Character('a', 'A')
-        );
-        assert!(
-            picker.press_search_keyboard(),
-            "A presses the selected a key"
-        );
+        // Whatever the home row's first key prints on this machine's layout,
+        // which is what pressing it has to put in the field.
+        let typed = picker.keyboard.selected().label(PickerKeyboardLevel::Plain);
+        assert!(!typed.is_empty(), "the board opens on a character key");
+        assert!(picker.press_search_keyboard(), "A presses the selected key");
         assert_eq!(
             picker
                 .active_level()
                 .expect("an active column")
                 .picker
                 .query(),
-            "a"
+            typed
         );
         assert!(picker.close_search_keyboard(), "B closes the board");
         assert!(!picker.search_keyboard_open());
@@ -5597,7 +6335,7 @@ mod tests {
                 .expect("the column remains")
                 .picker
                 .query(),
-            "a",
+            typed,
             "closing the board must not clear its query"
         );
     }

@@ -32,3 +32,8 @@ image = { version = "0.25", default-features = false, features = [
 ] }
 resvg = { version = "0.48", default-features = false, features = ["raster-images"] }
 wgpu = "30"
+# The keyboard layout this machine is configured for, so the picker's on-screen
+# board prints the letters the person in front of it actually types rather than
+# American ones. Reading a keymap is all it is used for; nothing here holds a
+# seat. See `picker_keyboard_note_layout` in `src/components.rs`.
+xkbcommon = "0.8"
