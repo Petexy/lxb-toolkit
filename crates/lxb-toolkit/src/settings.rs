@@ -152,6 +152,33 @@ fn controller_in_hand_from(raw: &str) -> Option<bool> {
     }
 }
 
+/// Whether the shell says what its buttons do, as it was last set.
+///
+/// Settings > System > Button hints, out of the same file the accent and the
+/// icon style come from. One answer for the whole session rather than a rule
+/// about one of the shell's screens: somebody who has turned the pictures of
+/// buttons off has turned them off in the application they open next as well,
+/// and an application that went on drawing its own would be the switch not
+/// doing what its row says.
+///
+/// Read so that a legend in an application built on this toolkit is there on
+/// exactly the terms the shell's own are. `None` where there is no such file
+/// or the key is not in it, which is what running under GNOME or Plasma looks
+/// like and also what a settings file written before this key existed looks
+/// like — the caller's answer for both is the shell's own default, which is to
+/// write them.
+pub fn button_hints() -> Option<bool> {
+    button_hints_from(&std::fs::read_to_string(settings_path()?).ok()?)
+}
+
+fn button_hints_from(raw: &str) -> Option<bool> {
+    match top_level_word(raw, "button-hints")?.as_str() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
 /// The keyboard arrangement the shell is set to, as an xkb layout and variant.
 ///
 /// The answer somebody gave on Settings > Input > Keyboard > Keyboard layout,
@@ -279,6 +306,23 @@ mod tests {
         // is `media-sort.controller-in-hand` and says nothing about hands.
         assert_eq!(
             controller_in_hand_from("[media-sort]\ncontroller-in-hand = true\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn whether_the_shell_writes_what_its_buttons_do_is_read_off_the_same_file() {
+        assert_eq!(
+            button_hints_from("accent = \"purple\"\nbutton-hints = false\n"),
+            Some(false)
+        );
+        assert_eq!(button_hints_from("button-hints = true\n"), Some(true));
+        // Nothing said is not "off": a file written before the key existed has
+        // to leave the hints where the shell's own default puts them.
+        assert_eq!(button_hints_from("accent = 'jade'\n"), None);
+        // And a key of the same name inside a table is a different key.
+        assert_eq!(
+            button_hints_from("[media-sort]\nbutton-hints = false\n"),
             None
         );
     }

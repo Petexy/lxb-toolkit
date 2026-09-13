@@ -1450,6 +1450,27 @@ impl Ui {
         if out <= 0.01 {
             return;
         }
+        // Turned off for the session, so this panel says nothing either — the
+        // shell's own legends are gone on the same answer, and a file question
+        // that went on drawing pad buttons over a shell that had stopped would
+        // be the one screen the setting did not reach. The anchor the panel's
+        // menu grows out of is left at the middle of the foot, which is where
+        // it starts: with no Options pair to pin it to, a menu out of the
+        // corner would climb out of nothing.
+        if !state.writes_what_the_buttons_do() {
+            // The line on the left gets the whole foot, there being nothing on
+            // the right of it any more, and the menu grows out of the middle of
+            // that foot — the same fallback the row itself uses when it has no
+            // Options pair to pin the anchor to.
+            state.legend_left = (panel[2] - PICKER_MARGIN * scale * 2.0).max(0.0);
+            state.menu_anchor = [
+                panel[0] + panel[2] * 0.5,
+                panel[1] + panel[3] - foot * 0.5,
+                1.0,
+                1.0,
+            ];
+            return;
+        }
         let glyph = PICKER_HINT_GLYPH * scale;
         let size = PICKER_HINT_LABEL * scale;
         let gap = PICKER_HINT_GAP * scale;
@@ -3082,6 +3103,15 @@ pub struct FilePicker {
     name: String,
     ticked: Vec<std::path::PathBuf>,
     pad: bool,
+    /// Whether the foot names the buttons at all — Settings > System > Button
+    /// hints, which is one answer for the whole session and reaches an
+    /// application through `lxb_toolkit::settings::button_hints`.
+    ///
+    /// `None` until somebody says, and read as *written*: a machine that has
+    /// never had this shell on it, and a settings file older than the key, both
+    /// look like this, and neither is somebody asking for a panel with no
+    /// legend on it.
+    hints: Option<bool>,
     sort: PickerSort,
     hidden: bool,
     filtered: bool,
@@ -3182,6 +3212,16 @@ impl FilePicker {
 
     pub fn hand(&mut self, pad: bool) {
         self.pad = pad;
+    }
+
+    /// Whether the panel writes what its buttons do. See [`FilePicker::hints`],
+    /// where what nothing at all means is written down.
+    pub fn say_what_the_buttons_do(&mut self, hints: bool) {
+        self.hints = Some(hints);
+    }
+
+    fn writes_what_the_buttons_do(&self) -> bool {
+        self.hints.unwrap_or(true)
     }
 
     pub fn menu_is_open(&self) -> bool {
@@ -6349,6 +6389,71 @@ mod tests {
         assert_eq!(
             picker_time_note(SystemTime::UNIX_EPOCH + Duration::from_secs(86_400 * 59)),
             "1 March 1970"
+        );
+    }
+
+    /// Turning the shell's hints off takes this panel's legend with them, and
+    /// gives the line beside it the whole foot.
+    ///
+    /// The setting is one answer for the session rather than a rule about the
+    /// shell's own screens — see `lxb_toolkit::settings::button_hints` — so a
+    /// file question raised by an application has to obey it too.
+    #[test]
+    fn the_hints_setting_takes_the_pickers_legend_with_it() {
+        let directory = PickerDirectory::new("hints");
+        std::fs::write(directory.path.join("only.txt"), b"x").expect("a file");
+
+        let Ok(mut ui) = Ui::headless(1280, 800) else {
+            eprintln!("no adapter: the picker's legend was not checked");
+            return;
+        };
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        let written = |ui: &mut Ui, hints: bool| {
+            let mut picker = FilePicker::default();
+            assert!(picker.open(PickerSelection::File, &directory.path));
+            picker.say_what_the_buttons_do(hints);
+            for _ in 0..90 {
+                picker.advance(1.0 / 60.0);
+            }
+            ui.begin(
+                1280.0,
+                800.0,
+                10.0,
+                &accent,
+                lxb_toolkit::settings::WallpaperStyle::Default,
+                IconStyle::Default,
+            );
+            ui.file_picker(&mut picker);
+            let said: Vec<String> = [PANE, CONTROL_LAYER, OVER]
+                .into_iter()
+                .flat_map(|layer| ui.scene.layers[layer].runs.iter())
+                .map(|run| run.text.clone())
+                .collect();
+            (said, picker.legend_left)
+        };
+
+        let (loud, narrowed) = written(&mut ui, true);
+        for word in ["Select", "Options", "Cancel"] {
+            assert!(
+                loud.iter().any(|said| said == word),
+                "the legend says {word}: {loud:?}"
+            );
+        }
+
+        let (quiet, whole_foot) = written(&mut ui, false);
+        for word in ["Select", "Options", "Cancel"] {
+            assert!(
+                !quiet.iter().any(|said| said == word),
+                "{word} was written with the hints off: {quiet:?}"
+            );
+        }
+        // And the panel is otherwise the panel it was: the file is still listed,
+        // and the line that says what is showing now has the room the buttons
+        // were taking.
+        assert!(quiet.iter().any(|said| said == "only.txt"), "{quiet:?}");
+        assert!(
+            whole_foot > narrowed,
+            "the foot kept the room the legend gave back: {whole_foot} against {narrowed}"
         );
     }
 

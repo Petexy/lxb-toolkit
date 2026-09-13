@@ -84,6 +84,13 @@ impl Files {
         self.picker.hand(pad);
     }
 
+    /// Whether the panel writes what its buttons do — Settings > System >
+    /// Button hints, as the shell last wrote it down. See
+    /// `lxb_toolkit::settings::button_hints`.
+    pub fn say_what_the_buttons_do(&mut self, hints: bool) {
+        self.picker.say_what_the_buttons_do(hints);
+    }
+
     pub fn advance(&mut self, dt: f32) -> bool {
         self.hear_the_desktop();
         self.picker.advance(dt)

@@ -149,6 +149,11 @@ impl App {
         let accent = Accent::new(theme.accent.name).unwrap_or_else(Accent::default_accent);
         let mut state = Interaction {
             driven: self.driven,
+            // Asked here as well as in the window's own constructor, because a
+            // shot is a picture of the window: a legend that was in one and not
+            // the other would make the two disagree about what the application
+            // looks like.
+            hints: Some(says_what_the_buttons_do()),
             ..Interaction::default()
         };
         state.files.own_questions();
@@ -347,6 +352,25 @@ struct Interaction {
     /// down, and from whether there is a pad at all where it has written
     /// nothing.
     pad_in_hand: bool,
+
+    /// Whether this application says what its buttons do at all.
+    ///
+    /// The shell's own switch, read out of the file it writes it to — see
+    /// `lxb_toolkit::settings::button_hints`. Written unless it says otherwise,
+    /// which covers a machine that has never had this shell on it as much as a
+    /// settings file older than the key.
+    ///
+    /// Read once, as the accent and the icon style are: it is a preference
+    /// somebody sets on a settings page rather than something that moves under
+    /// the hands, unlike [`Interaction::pad_in_hand`] above it. An application
+    /// left running across a change to it says what it said when it started,
+    /// and the next one started says the new thing.
+    ///
+    /// `None` until it has been asked, and read as *written*, which is what
+    /// keeps the derived default honest: a page drawn without ever consulting a
+    /// settings file is a page with its legends on, exactly as it was before
+    /// there was a setting at all.
+    hints: Option<bool>,
 
     driven: bool,
 }
@@ -909,6 +933,10 @@ impl<F: FnMut(&mut Page)> Runtime<F> {
                     // session — whether there is a pad plugged in at all.
                     pad_in_hand: lxb_toolkit::settings::controller_in_hand()
                         .unwrap_or(controls.pads() > 0),
+                    // On unless the shell says otherwise, which is the shell's
+                    // own default: a console is the one kind of machine nobody
+                    // arrives at already knowing which button does what.
+                    hints: Some(says_what_the_buttons_do()),
                     ..Interaction::default()
                 };
                 if own_questions {
@@ -1230,8 +1258,22 @@ impl<F: FnMut(&mut Page)> Runtime<F> {
         ui.context_menu(&mut self.state.menu);
         ui.dialog(&mut self.state.dialog);
         self.state.files.hand(self.controls.pads() > 0);
+        self.state
+            .files
+            .say_what_the_buttons_do(self.state.hints.unwrap_or(true));
         self.state.files.draw(ui);
     }
+}
+
+/// Whether this application writes what its buttons do.
+///
+/// The shell's own switch — Settings > System > Button hints — out of the file
+/// the shell writes it to, and its own default where nothing has been written:
+/// a machine that has never had this shell on it, and a settings file older
+/// than the key, are both "nobody has said", and neither is somebody asking for
+/// a panel with no legend on it. See `lxb_toolkit::settings::button_hints`.
+fn says_what_the_buttons_do() -> bool {
+    lxb_toolkit::settings::button_hints().unwrap_or(true)
 }
 
 /// Normalize traditional wheel lines and touchpad pixels into signed steps.
