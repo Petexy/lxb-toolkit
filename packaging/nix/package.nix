@@ -92,6 +92,10 @@ rustPlatform.buildRustPackage {
     install -Dm0644 LICENSE "$out/share/licenses/lxb-toolkit/GPL-3.0-only.txt"
     install -Dm0644 crates/lxb-toolkit/assets/fonts/LICENSE-Roboto.txt \
       "$out/share/licenses/lxb-toolkit/Roboto-Apache-2.0.txt"
+    install -Dm0644 crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansDevanagariUI.txt \
+      "$out/share/licenses/lxb-toolkit/NotoSansDevanagariUI-OFL-1.1.txt"
+    install -Dm0644 crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansCJKsc.txt \
+      "$out/share/licenses/lxb-toolkit/NotoSansCJKsc-OFL-1.1.txt"
     install -Dm0644 README.md "$out/share/doc/lxb-toolkit/README.md"
     install -Dm0644 docs/api-reference.md "$out/share/doc/lxb-toolkit/api-reference.md"
 

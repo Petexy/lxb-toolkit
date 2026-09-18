@@ -3,7 +3,7 @@ Version:        0.9.0
 Release:        1%{?dist}
 Summary:        The LineXinBar design language, for applications built to sit beside it
 
-# The library itself, the embedded Roboto faces, and the locked Rust dependency
+# The library itself, the embedded Roboto and Noto faces, and the locked Rust dependency
 # graph the tests build against.
 License:        GPL-3.0-only AND Apache-2.0 AND MIT AND Apache-2.0 WITH LLVM-exception AND Unicode-3.0
 URL:            https://github.com/petexy/lxb-toolkit
@@ -132,7 +132,7 @@ cargo test --offline --locked -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lx
 %{_libdir}/liblxb_app.so
 
 %files devel
-%license LICENSE crates/lxb-toolkit/assets/fonts/LICENSE-Roboto.txt
+%license LICENSE crates/lxb-toolkit/assets/fonts/LICENSE-Roboto.txt crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansDevanagariUI.txt crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansCJKsc.txt
 %doc docs/design-language.md docs/application-development.md docs/api-reference.md
 %{_bindir}/lxb-new
 %{_includedir}/lxb_toolkit.h

@@ -1523,6 +1523,25 @@ pub extern "C" fn lxb_font(bold: c_int) -> LxbBytes {
     })
 }
 
+/// The same face for a script Roboto has not got: `"latin"` is Roboto,
+/// `"devanagari"` and `"han"` the two Noto faces bundled beside it. Empty for
+/// a name that is none of the three.
+///
+/// # Safety
+/// `script` is a NUL-terminated string or null.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_font_for(script: *const c_char, bold: c_int) -> LxbBytes {
+    let Some(script) = as_str(script).and_then(lxb_toolkit::typography::Script::named) else {
+        return LxbBytes::NONE;
+    };
+    let face = if bold != 0 {
+        lxb_toolkit::typography::Face::Bold
+    } else {
+        lxb_toolkit::typography::Face::Regular
+    };
+    LxbBytes::of(face.bytes_for(script))
+}
+
 #[no_mangle]
 pub extern "C" fn lxb_glass_wgsl() -> LxbBytes {
     LxbBytes::of(lxb_toolkit::assets::GLASS_WGSL)

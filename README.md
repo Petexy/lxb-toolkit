@@ -103,6 +103,7 @@ against), and the Python binding. See
 | [**The design language**](docs/design-language.md) | What the material *is*, for a renderer that is not this one |
 | [**Python**](python/README.md) | The `ctypes` binding: no build step, no wheel per version |
 | [**Examples**](examples/README.md) | Hello world and an eight-page tour, in three languages |
+| [**Languages**](docs/localization.md) | The catalogs the controls speak from, and how to add a language |
 
 ## What is in it
 

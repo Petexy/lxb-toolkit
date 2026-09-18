@@ -12,6 +12,12 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+# The catalogs the controls this crate draws speak from, in the form the shell
+# keeps its own in: `.ftl` files compiled into the binary, selected by the
+# session's locale, with the plural rules of every language a translator may
+# add. See `src/i18n.rs` and `docs/localization.md`.
+fluent-bundle = "0.16"
+unic-langid = "0.9"
 
 [dev-dependencies]
 naga = { version = "30", features = ["wgsl-in"] }

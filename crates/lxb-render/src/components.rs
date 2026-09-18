@@ -1503,7 +1503,7 @@ impl Ui {
                 Role::Text,
                 mark,
             );
-            if word == "Options" {
+            if word == lxb_toolkit::i18n::text("options") {
                 anchor = [right, middle - glyph * 0.5, glyph + gap + width, glyph];
             }
             leftmost = right;
@@ -2036,28 +2036,40 @@ fn picker_hints(purpose: PickerPurpose, pad: bool) -> Vec<(&'static str, &'stati
     let one = |label, on_a_pad, otherwise| (label, if pad { on_a_pad } else { otherwise });
     let mut hints = vec![one(
         if purpose.takes_several() {
-            "Choose"
+            lxb_toolkit::i18n::text("choose")
         } else {
-            "Select"
+            lxb_toolkit::i18n::text("select")
         },
         "pad-south",
         "key-space",
     )];
     if purpose.answers_with_a_head_row() {
-        hints.push(one("Approve", "pad-start", "key-enter"));
+        hints.push(one(
+            lxb_toolkit::i18n::text("approve"),
+            "pad-start",
+            "key-enter",
+        ));
     }
-    hints.push(one("Options", "pad-north", "mouse-right"));
-    hints.push(one("Cancel", "pad-east", "key-escape"));
+    hints.push(one(
+        lxb_toolkit::i18n::text("options"),
+        "pad-north",
+        "mouse-right",
+    ));
+    hints.push(one(
+        lxb_toolkit::i18n::text("cancel"),
+        "pad-east",
+        "key-escape",
+    ));
     hints
 }
 
 fn picker_title(purpose: PickerPurpose, selection: PickerSelection) -> &'static str {
     match purpose {
         PickerPurpose::OneFile => match selection {
-            PickerSelection::File => "Choose a file",
-            PickerSelection::Image => "Choose an image",
-            PickerSelection::Scenery => "Choose scenery",
-            PickerSelection::Folder => "Choose a folder",
+            PickerSelection::File => lxb_toolkit::i18n::text("choose-a-file"),
+            PickerSelection::Image => lxb_toolkit::i18n::text("choose-an-image"),
+            PickerSelection::Scenery => lxb_toolkit::i18n::text("choose-scenery"),
+            PickerSelection::Folder => lxb_toolkit::i18n::text("choose-a-folder"),
         },
         asked => asked.asking(),
     }
@@ -3349,7 +3361,7 @@ impl FilePicker {
                 if let Some(level) = self.active_level() {
                     if !level.picker.kinds().is_empty() {
                         rows.push(
-                            Entry::new("Types")
+                            Entry::new(lxb_toolkit::i18n::text("types"))
                                 .glyph("file-page")
                                 .detail(level.picker.showing()),
                         );
@@ -3357,16 +3369,16 @@ impl FilePicker {
                 }
                 let group = u8::from(!rows.is_empty());
                 rows.push(
-                    Entry::new("Sort")
+                    Entry::new(lxb_toolkit::i18n::text("sort"))
                         .glyph("sort")
                         .detail(self.sort.label())
                         .group(group),
                 );
                 rows.push(
                     Entry::new(if self.hidden {
-                        "Hide hidden files"
+                        lxb_toolkit::i18n::text("hide-hidden-files")
                     } else {
-                        "Show hidden files"
+                        lxb_toolkit::i18n::text("show-hidden-files")
                     })
                     .glyph(if self.hidden {
                         "chosen"
@@ -3384,7 +3396,10 @@ impl FilePicker {
                         rows.push(ticked_row(kind.name, self.filtered));
                     }
                 }
-                rows.push(ticked_row("Everything".to_string(), !self.filtered));
+                rows.push(ticked_row(
+                    lxb_toolkit::i18n::text("everything").to_string(),
+                    !self.filtered,
+                ));
                 rows
             }
             PickerMenu::Sorts => PickerSort::ALL
@@ -3411,7 +3426,7 @@ impl FilePicker {
     pub fn narrowed_to(&self) -> String {
         if matches!(self.purpose, PickerPurpose::ANewFile) {
             let name = match self.name.trim() {
-                "" => "Untitled",
+                "" => lxb_toolkit::i18n::text("untitled"),
                 name => name,
             };
             let typing = self
@@ -3419,15 +3434,15 @@ impl FilePicker {
                 .and_then(PickerLevel::focused_head)
                 .is_some_and(|row| matches!(row, PickerHeadRow::Name));
             return match typing {
-                true => format!("Saving as  {name}|"),
-                false => format!("Saving as  {name}"),
+                true => lxb_toolkit::message!("saving-as-typing", "name" => name.to_string()),
+                false => lxb_toolkit::message!("saving-as", "name" => name.to_string()),
             };
         }
         let kinds = self
             .active_level()
             .map(|level| level.picker.showing())
-            .unwrap_or_else(|| "Everything".to_string());
-        format!("Showing  {kinds}")
+            .unwrap_or_else(|| lxb_toolkit::i18n::text("everything").to_string());
+        lxb_toolkit::message!("showing-kinds", "kinds" => kinds)
     }
 
     fn asking(&self) -> PickerAsking<'_> {
@@ -4552,26 +4567,30 @@ fn picker_row_content(
         return match head {
             PickerHeadRow::NewFolder => (
                 if level.making.is_empty() {
-                    "New folder".to_string()
+                    lxb_toolkit::i18n::text("new-folder").to_string()
                 } else {
                     level.making.clone()
                 },
-                "Make a folder here".to_string(),
+                lxb_toolkit::i18n::text("make-a-folder-here").to_string(),
                 "new-folder",
                 false,
             ),
             PickerHeadRow::Name => (
                 if asked.name.trim().is_empty() {
-                    "Name".to_string()
+                    lxb_toolkit::i18n::text("name").to_string()
                 } else {
                     asked.name.to_string()
                 },
-                "What the file will be called".to_string(),
+                lxb_toolkit::i18n::text("what-the-file-will-be-called").to_string(),
                 "rename",
                 false,
             ),
             PickerHeadRow::Answer => (
-                asked.purpose.accept().unwrap_or("Choose this").to_string(),
+                asked
+                    .purpose
+                    .accept()
+                    .unwrap_or_else(|| lxb_toolkit::i18n::text("choose-this"))
+                    .to_string(),
                 picker_answer_note(asked, level),
                 if asked.purpose.takes_several() {
                     "select-multiple"
@@ -4583,17 +4602,13 @@ fn picker_row_content(
             PickerHeadRow::SearchField => {
                 let query = level.picker.query();
                 let detail = if query.is_empty() {
-                    "Search this folder by name".to_string()
+                    lxb_toolkit::i18n::text("search-this-folder-by-name").to_string()
                 } else {
-                    let matches = level.picker.entries().len();
-                    format!(
-                        "{matches} matching item{}",
-                        if matches == 1 { "" } else { "s" }
-                    )
+                    lxb_toolkit::message!("matching-items", "count" => level.picker.entries().len())
                 };
                 (
                     if query.is_empty() {
-                        "Search".to_string()
+                        lxb_toolkit::i18n::text("search").to_string()
                     } else {
                         query.to_string()
                     },
@@ -4603,8 +4618,8 @@ fn picker_row_content(
                 )
             }
             PickerHeadRow::SearchClear => (
-                "Clear search".to_string(),
-                "Show every item in this folder".to_string(),
+                lxb_toolkit::i18n::text("clear-search").to_string(),
+                lxb_toolkit::i18n::text("show-every-item-in-this-folder").to_string(),
                 "search-clear",
                 false,
             ),
@@ -4619,27 +4634,27 @@ fn picker_row_content(
 fn picker_answer_note(asked: PickerAsking<'_>, level: &PickerLevel) -> String {
     match asked.purpose {
         PickerPurpose::ManyFiles => match asked.ticked.len() {
-            0 => "Nothing chosen yet".to_string(),
-            1 => "1 file chosen".to_string(),
-            many => format!("{many} files chosen"),
+            0 => lxb_toolkit::i18n::text("nothing-chosen-yet").to_string(),
+            chosen => lxb_toolkit::message!("files-chosen", "count" => chosen),
         },
         PickerPurpose::ANewFile => match asked.name.trim() {
-            "" => "Give the file a name first".to_string(),
-            name => format!("Save as {name}"),
+            "" => lxb_toolkit::i18n::text("give-the-file-a-name-first").to_string(),
+            name => lxb_toolkit::message!("save-as-name", "name" => name.to_string()),
         },
         _ => level
             .picker
             .location()
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "Use this folder".to_string()),
+            .unwrap_or_else(|| lxb_toolkit::i18n::text("use-this-folder").to_string()),
     }
 }
 
 fn picker_entry_facts(entry: &lxb_toolkit::picker::Entry) -> (String, &'static str, bool) {
     match entry.kind {
         EntryKind::Folder => (
-            picker_modified_note(&entry.path).unwrap_or_else(|| "Folder".to_string()),
+            picker_modified_note(&entry.path)
+                .unwrap_or_else(|| lxb_toolkit::i18n::text("folder").to_string()),
             "file-folder",
             false,
         ),
@@ -4647,14 +4662,17 @@ fn picker_entry_facts(entry: &lxb_toolkit::picker::Entry) -> (String, &'static s
             let detail = std::fs::metadata(&entry.path)
                 .ok()
                 .map(|facts| {
-                    let modified = facts
-                        .modified()
-                        .ok()
-                        .map(picker_time_note)
-                        .unwrap_or_else(|| "Modified date unknown".to_string());
+                    let modified =
+                        facts
+                            .modified()
+                            .ok()
+                            .map(picker_time_note)
+                            .unwrap_or_else(|| {
+                                lxb_toolkit::i18n::text("modified-date-unknown").to_string()
+                            });
                     format!("{} · {modified}", picker_size_note(facts.len()))
                 })
-                .unwrap_or_else(|| "File".to_string());
+                .unwrap_or_else(|| lxb_toolkit::i18n::text("file").to_string());
             (detail, picker_file_glyph(&entry.path), true)
         }
     }
@@ -4667,24 +4685,18 @@ fn picker_modified_note(path: &std::path::Path) -> Option<String> {
 
 fn picker_time_note(modified: std::time::SystemTime) -> String {
     let Ok(seconds) = modified.duration_since(std::time::SystemTime::UNIX_EPOCH) else {
-        return "Modified date unknown".to_string();
+        return lxb_toolkit::i18n::text("modified-date-unknown").to_string();
     };
     let (year, month, day) = picker_civil_date((seconds.as_secs() / 86_400) as i64);
-    const MONTHS: [&str; 12] = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ];
-    format!("{day} {} {year}", MONTHS[month as usize - 1])
+    // The whole date to the catalog at once, month included: the order of the
+    // three is the language's, and so is the form of the month — Polish writes
+    // *1 stycznia*, which is not the name of the month on its own.
+    lxb_toolkit::message!(
+        "file-date",
+        "day" => day.to_string(),
+        "month" => lxb_toolkit::i18n::month(month as usize),
+        "year" => year.to_string()
+    )
 }
 
 fn picker_civil_date(days: i64) -> (i32, u8, u8) {
@@ -4715,7 +4727,7 @@ fn picker_size_note(bytes: u64) -> String {
     } else if value >= 10.0 {
         format!("{value:.0} {}", UNITS[unit])
     } else {
-        format!("{value:.1} {}", UNITS[unit])
+        lxb_toolkit::i18n::decimal(format!("{value:.1} {}", UNITS[unit]))
     }
 }
 
@@ -6384,11 +6396,63 @@ mod tests {
     fn picker_dates_follow_the_shells_written_calendar_style() {
         use std::time::{Duration, SystemTime};
 
-        assert_eq!(picker_time_note(SystemTime::UNIX_EPOCH), "1 January 1970");
+        // Written in the session's language, so the date is asked of the
+        // catalog the same way the row asks for it. What the two languages
+        // make of it is below.
+        let written = |day: &str, month: usize, year: &str| {
+            lxb_toolkit::message!(
+                "file-date",
+                "day" => day.to_string(),
+                "month" => lxb_toolkit::i18n::month(month),
+                "year" => year.to_string()
+            )
+        };
+        assert_eq!(
+            picker_time_note(SystemTime::UNIX_EPOCH),
+            written("1", 1, "1970")
+        );
         assert_eq!(picker_civil_date(0), (1970, 1, 1));
         assert_eq!(
             picker_time_note(SystemTime::UNIX_EPOCH + Duration::from_secs(86_400 * 59)),
-            "1 March 1970"
+            written("1", 3, "1970")
+        );
+    }
+
+    /// The same date in both shipped languages, which is the half the test
+    /// above cannot state: Polish writes the month in the genitive.
+    #[test]
+    fn a_date_is_written_the_way_each_language_writes_one() {
+        let catalog = lxb_toolkit::i18n::Catalog::new(lxb_toolkit::i18n::RESOURCES);
+        let written = |locale: &str, month: &str| {
+            let mut args = lxb_toolkit::i18n::FluentArgs::new();
+            args.set("day", "1");
+            args.set("month", catalog.text_for(locale, month).to_string());
+            args.set("year", "1970");
+            catalog.format_for(locale, "file-date", &args)
+        };
+        assert_eq!(written("en-GB", "month-march"), "1 March 1970");
+        assert_eq!(written("pl", "month-march"), "1 marca 1970");
+        assert_eq!(written("fr", "month-march"), "1 mars 1970");
+        // Spanish fences the month with *de* on both sides, which is why the
+        // whole date is one message rather than a separator and three values.
+        assert_eq!(written("es", "month-march"), "1 de marzo de 1970");
+        // America puts the month first and fences the year off with a comma,
+        // which is the whole of why `en-US.ftl` exists.
+        assert_eq!(written("en-US", "month-march"), "March 1, 1970");
+        // And an English that is neither reads out of the British catalog.
+        assert_eq!(written("en_AU.UTF-8", "month-march"), "1 March 1970");
+    }
+
+    /// Every message this crate asks for is one the toolkit's catalogs have.
+    ///
+    /// A label reached by an identifier nothing translates is drawn as the
+    /// identifier, in every language including English, and no amount of
+    /// checking the catalogs against each other would see it.
+    #[test]
+    fn every_message_the_components_ask_for_is_one_the_catalogs_have() {
+        lxb_toolkit::i18n::Catalog::check_references(
+            env!("CARGO_MANIFEST_DIR"),
+            lxb_toolkit::i18n::RESOURCES,
         );
     }
 

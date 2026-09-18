@@ -12,7 +12,7 @@ python3 main.py
 ```
 
 `import lxb_toolkit` opens `liblxb_toolkit`, which answers what the language is
-and carries no dependencies at all. The first use of `lxb.App` opens the second
+and carries no GPU stack with it. The first use of `lxb.App` opens the second
 library, `liblxb_app`, which carries the renderer, the window system, the
 controllers and the audio device. A program that only wants the answers never
 loads it.

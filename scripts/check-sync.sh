@@ -1117,6 +1117,26 @@ if ! cmp -s "$project_font_license" "$toolkit_font_license"; then
     fail_mismatch assets.font.license "$project_font_license" "$toolkit_font_license"
 fi
 
+# The two faces for the scripts Roboto has not got, and their licences. The
+# Han face is a subset the shell cuts from Noto Sans CJK SC, so the file is
+# the shell's to regenerate (scripts/subset-han-face.py) and this side's to
+# copy; a byte of difference is a subset cut twice.
+for face in \
+    "NotoSansDevanagariUI/NotoSansDevanagariUI-Regular.ttf:NotoSansDevanagariUI-Regular.ttf" \
+    "NotoSansDevanagariUI/NotoSansDevanagariUI-Bold.ttf:NotoSansDevanagariUI-Bold.ttf" \
+    "NotoSansDevanagariUI/OFL.txt:LICENSE-NotoSansDevanagariUI.txt" \
+    "NotoSansCJKsc/NotoSansCJKsc-Regular.ttf:NotoSansCJKsc-Regular.ttf" \
+    "NotoSansCJKsc/NotoSansCJKsc-Bold.ttf:NotoSansCJKsc-Bold.ttf" \
+    "NotoSansCJKsc/OFL.txt:LICENSE-NotoSansCJKsc.txt"; do
+    project_face="$project_root/font/${face%%:*}"
+    toolkit_face="$toolkit_root/crates/lxb-toolkit/assets/fonts/${face##*:}"
+    require_file assets.fonts "$project_face"
+    require_file assets.fonts "$toolkit_face"
+    if ! cmp -s "$project_face" "$toolkit_face"; then
+        fail_mismatch "assets.font.${face##*:}" "$project_face" "$toolkit_face"
+    fi
+done
+
 # --- what the user pressed, and what it means -------------------------------
 #
 # The cadence a held direction walks at, the two distances a stick engages and

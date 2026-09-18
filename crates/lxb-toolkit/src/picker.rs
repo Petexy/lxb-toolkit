@@ -49,8 +49,11 @@ impl Selection {
     pub fn kind(self) -> Option<Kind> {
         let (name, names): (&str, Vec<&str>) = match self {
             Self::File | Self::Folder => return None,
-            Self::Image => ("Images", IMAGES.to_vec()),
-            Self::Scenery => ("Images and films", [IMAGES, VIDEOS].concat()),
+            Self::Image => (crate::i18n::text("images"), IMAGES.to_vec()),
+            Self::Scenery => (
+                crate::i18n::text("images-and-films"),
+                [IMAGES, VIDEOS].concat(),
+            ),
         };
         Some(Kind {
             name: name.to_string(),
@@ -111,21 +114,21 @@ impl Purpose {
         !matches!(self, Self::OneFile)
     }
 
-    pub const fn accept(self) -> Option<&'static str> {
+    pub fn accept(self) -> Option<&'static str> {
         match self {
             Self::OneFile => None,
-            Self::ManyFiles => Some("Open"),
-            Self::AFolder => Some("Use this folder"),
-            Self::ANewFile => Some("Save here"),
+            Self::ManyFiles => Some(crate::i18n::text("open")),
+            Self::AFolder => Some(crate::i18n::text("use-this-folder")),
+            Self::ANewFile => Some(crate::i18n::text("save-here")),
         }
     }
 
-    pub const fn asking(self) -> &'static str {
+    pub fn asking(self) -> &'static str {
         match self {
-            Self::OneFile => "Choose a file",
-            Self::ManyFiles => "Choose some files",
-            Self::AFolder => "Choose a folder",
-            Self::ANewFile => "Choose somewhere to save",
+            Self::OneFile => crate::i18n::text("choose-a-file"),
+            Self::ManyFiles => crate::i18n::text("choose-some-files"),
+            Self::AFolder => crate::i18n::text("choose-a-folder"),
+            Self::ANewFile => crate::i18n::text("choose-somewhere-to-save"),
         }
     }
 
@@ -186,17 +189,17 @@ pub const SORTS: [Sort; 9] = [
 impl Sort {
     pub const ALL: [Self; 9] = SORTS;
 
-    pub const fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Self::NameAscending => "Name (A to Z)",
-            Self::NameDescending => "Name (Z to A)",
-            Self::LargestFirst => "Size (largest first)",
-            Self::SmallestFirst => "Size (smallest first)",
-            Self::Type => "Type",
-            Self::NewestFirst => "Created (newest first)",
-            Self::OldestFirst => "Created (oldest first)",
-            Self::LastChangedFirst => "Modified (newest first)",
-            Self::LongestUntouchedFirst => "Modified (oldest first)",
+            Self::NameAscending => crate::i18n::text("name-a-to-z"),
+            Self::NameDescending => crate::i18n::text("name-z-to-a"),
+            Self::LargestFirst => crate::i18n::text("size-largest-first"),
+            Self::SmallestFirst => crate::i18n::text("size-smallest-first"),
+            Self::Type => crate::i18n::text("file-type"),
+            Self::NewestFirst => crate::i18n::text("created-newest-first"),
+            Self::OldestFirst => crate::i18n::text("created-oldest-first"),
+            Self::LastChangedFirst => crate::i18n::text("modified-newest-first"),
+            Self::LongestUntouchedFirst => crate::i18n::text("modified-oldest-first"),
         }
     }
 
@@ -406,7 +409,7 @@ impl Picker {
     pub fn showing(&self) -> String {
         match self.kind().and_then(|_| self.selection.kind()) {
             Some(kind) => kind.name,
-            None => "Everything".to_string(),
+            None => crate::i18n::text("everything").to_string(),
         }
     }
 
@@ -529,16 +532,17 @@ pub fn writable(directory: &Path) -> bool {
 pub fn make_folder(inside: &Path, name: &str) -> Result<PathBuf, String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err("A folder needs a name".to_string());
+        return Err(crate::i18n::text("a-folder-needs-a-name").to_string());
     }
     if name == "." || name == ".." || name.contains('/') || name.contains('\0') {
-        return Err("That is not a name a folder can have".to_string());
+        return Err(crate::i18n::text("that-is-not-a-name-a-folder-can-have").to_string());
     }
     let made = inside.join(name);
     if made.exists() {
-        return Err("Something here is called that already".to_string());
+        return Err(crate::i18n::text("something-here-is-called-that-already").to_string());
     }
-    std::fs::create_dir(&made).map_err(|err| format!("The folder could not be made: {err}"))?;
+    std::fs::create_dir(&made)
+        .map_err(|err| crate::message!("folder-could-not-be-made", "why" => err.to_string()))?;
     Ok(made)
 }
 
@@ -559,7 +563,12 @@ fn listing(
     hidden: bool,
 ) -> (Vec<Entry>, String, bool, usize) {
     let Ok(reading) = std::fs::read_dir(directory) else {
-        return (Vec::new(), "This cannot be opened".to_string(), false, 0);
+        return (
+            Vec::new(),
+            crate::i18n::text("this-cannot-be-opened").to_string(),
+            false,
+            0,
+        );
     };
 
     let mut folders = 0usize;
@@ -684,26 +693,21 @@ fn matched(name: &str, query: &str) -> bool {
 }
 
 fn note(folders: usize, files: usize, left_out: usize) -> String {
-    let plural = |count: usize, one: &str, many: &str| {
-        if count == 1 {
-            format!("{count} {one}")
-        } else {
-            format!("{count} {many}")
-        }
-    };
+    // Counts go to the catalog as numbers rather than as text, because the
+    // form of the noun is the language's decision and it makes that decision
+    // by looking at the number. Both counts at once where there are two, so
+    // that a language can put them in its own order.
     let counted = match (folders, files) {
-        (0, 0) => "Empty".to_string(),
-        (0, files) => plural(files, "file", "files"),
-        (folders, 0) => plural(folders, "folder", "folders"),
-        (folders, files) => format!(
-            "{}, {}",
-            plural(folders, "folder", "folders"),
-            plural(files, "file", "files")
-        ),
+        (0, 0) => crate::i18n::text("empty").to_string(),
+        (0, files) => crate::message!("count-files", "count" => files),
+        (folders, 0) => crate::message!("count-folders", "count" => folders),
+        (folders, files) => {
+            crate::message!("folder-contents", "folders" => folders, "files" => files)
+        }
     };
     match left_out {
         0 => counted,
-        left_out => format!("{counted}, {left_out} more not shown"),
+        more => crate::message!("folder-more-not-shown", "counted" => counted, "more" => more),
     }
 }
 
@@ -965,7 +969,7 @@ mod tests {
         assert_eq!(Selection::File.kind(), None);
         assert_eq!(Selection::Folder.kind(), None);
         let images = Selection::Image.kind().expect("images are a kind");
-        assert_eq!(images.name, "Images");
+        assert_eq!(images.name, crate::i18n::text("images"));
         assert_eq!(images.patterns.len(), IMAGES.len());
         assert!(images
             .patterns
@@ -974,7 +978,7 @@ mod tests {
             .patterns
             .contains(&Pattern::Glob("*.[cC][rR]2".to_string())));
         let scenery = Selection::Scenery.kind().expect("scenery is a kind");
-        assert_eq!(scenery.name, "Images and films");
+        assert_eq!(scenery.name, crate::i18n::text("images-and-films"));
         assert_eq!(scenery.patterns.len(), IMAGES.len() + VIDEOS.len());
         assert!(!scenery.patterns[0].is_mime());
         assert_eq!(scenery.patterns[0].text(), "*.[jJ][pP][gG]");
@@ -1032,12 +1036,12 @@ mod tests {
 
         let mut picker = Picker::new(Selection::Image, directory.path());
         assert_eq!(picker.kind(), Some(0));
-        assert_eq!(picker.showing(), "Images");
+        assert_eq!(picker.showing(), crate::i18n::text("images"));
         assert_eq!(names(&picker), [("cover.png", EntryKind::File)]);
 
         assert!(picker.show_kind(None), "everything on the disk");
         assert_eq!(picker.kind(), None);
-        assert_eq!(picker.showing(), "Everything");
+        assert_eq!(picker.showing(), crate::i18n::text("everything"));
         assert_eq!(
             names(&picker),
             [
@@ -1115,9 +1119,45 @@ mod tests {
     fn names_and_count_notes_cover_the_public_values() {
         assert_eq!(Selection::named("SCENERY"), Some(Selection::Scenery));
         assert_eq!(EntryKind::named("folder"), Some(EntryKind::Folder));
-        assert_eq!(note(0, 0, 0), "Empty");
-        assert_eq!(note(1, 0, 0), "1 folder");
-        assert_eq!(note(0, 1, 0), "1 file");
-        assert_eq!(note(2, 3, 4), "2 folders, 3 files, 4 more not shown");
+        // Said in the session's language, so the words are asked of the
+        // catalog rather than written out here: this machine's session is not
+        // part of what the note is supposed to get right, and a run under a
+        // Polish one used to fail on the English in these lines.
+        let catalog = crate::i18n::Catalog::new(crate::i18n::RESOURCES);
+        let said = |id, count: usize| {
+            let mut args = crate::i18n::FluentArgs::new();
+            args.set("count", count);
+            catalog.format(id, &args)
+        };
+        assert_eq!(note(0, 0, 0), crate::i18n::text("empty"));
+        assert_eq!(note(1, 0, 0), said("count-folders", 1));
+        assert_eq!(note(0, 1, 0), said("count-files", 1));
+        let mut both = crate::i18n::FluentArgs::new();
+        both.set("folders", 2);
+        both.set("files", 3);
+        let mut more = crate::i18n::FluentArgs::new();
+        more.set("counted", catalog.format("folder-contents", &both));
+        more.set("more", 4);
+        assert_eq!(
+            note(2, 3, 4),
+            catalog.format("folder-more-not-shown", &more)
+        );
+    }
+
+    #[test]
+    fn a_count_note_is_written_in_the_language_asked_for() {
+        // What the lines above cannot say, because they are in whatever
+        // language this session speaks: the English and the Polish of it.
+        let catalog = crate::i18n::Catalog::new(crate::i18n::RESOURCES);
+        let said = |locale, id, count: usize| {
+            let mut args = crate::i18n::FluentArgs::new();
+            args.set("count", count);
+            catalog.format_for(locale, id, &args)
+        };
+        assert_eq!(said("en-GB", "count-folders", 1), "1 folder");
+        assert_eq!(said("en-GB", "count-files", 3), "3 files");
+        assert_eq!(said("pl", "count-folders", 1), "1 folder");
+        assert_eq!(said("pl", "count-files", 3), "3 pliki");
+        assert_eq!(said("pl", "count-files", 5), "5 plików");
     }
 }

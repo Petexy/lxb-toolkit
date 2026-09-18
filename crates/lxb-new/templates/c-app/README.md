@@ -14,8 +14,8 @@ make && ./{{SLUG}}
 One library, found through pkg-config: `pkg-config --cflags --libs lxb-app`. It
 brings the renderer, the window system, the controllers and the audio device
 with it, so there is nothing else to link. `liblxb_toolkit` is the other half
-of the pair and carries no dependencies at all; link that one alone if all you
-want is what the language answers.
+of the pair and carries no GPU stack, no window system and no audio device;
+link that one alone if all you want is what the language answers.
 
 ## One frame, drawn to a file
 

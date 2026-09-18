@@ -174,6 +174,35 @@ pub const FONT_REGULAR: &[u8] = include_bytes!("../assets/fonts/Roboto-Regular.t
 pub const FONT_BOLD: &[u8] = include_bytes!("../assets/fonts/Roboto-Bold.ttf");
 pub const FONT_LICENSE: &[u8] = include_bytes!("../assets/fonts/LICENSE-Roboto.txt");
 
+/// The two alphabets Roboto has not got and the toolkit's languages are
+/// written in: Devanagari for Hindi, Han for Chinese. The shell's own four
+/// files, byte for byte — see `scripts/check-sync.sh` — read after Roboto and
+/// before the machine's fonts, so a word in either script is shaped in the
+/// face the layout was measured against rather than in whichever the machine
+/// has. Devanagari is the whole block; Han is the 6,763 characters of GB 2312,
+/// cut by the shell's `scripts/subset-han-face.py`, because the whole face is
+/// twenty megabytes a weight. See [`crate::typography::Script`].
+pub const FONT_DEVANAGARI_REGULAR: &[u8] =
+    include_bytes!("../assets/fonts/NotoSansDevanagariUI-Regular.ttf");
+pub const FONT_DEVANAGARI_BOLD: &[u8] =
+    include_bytes!("../assets/fonts/NotoSansDevanagariUI-Bold.ttf");
+pub const FONT_DEVANAGARI_LICENSE: &[u8] =
+    include_bytes!("../assets/fonts/LICENSE-NotoSansDevanagariUI.txt");
+pub const FONT_HAN_REGULAR: &[u8] = include_bytes!("../assets/fonts/NotoSansCJKsc-Regular.ttf");
+pub const FONT_HAN_BOLD: &[u8] = include_bytes!("../assets/fonts/NotoSansCJKsc-Bold.ttf");
+pub const FONT_HAN_LICENSE: &[u8] = include_bytes!("../assets/fonts/LICENSE-NotoSansCJKsc.txt");
+
+/// Every face the toolkit ships, in the order a fallback walk reads them: the
+/// type first, then the two scripts it has not got, regular before bold.
+pub const FONTS: [&[u8]; 6] = [
+    FONT_REGULAR,
+    FONT_BOLD,
+    FONT_DEVANAGARI_REGULAR,
+    FONT_DEVANAGARI_BOLD,
+    FONT_HAN_REGULAR,
+    FONT_HAN_BOLD,
+];
+
 pub const GLASS_WGSL: &[u8] = include_bytes!("../assets/shaders/lxb_glass.wgsl");
 
 pub const GLYPH_WGSL: &[u8] = include_bytes!("../assets/shaders/lxb_glyph.wgsl");

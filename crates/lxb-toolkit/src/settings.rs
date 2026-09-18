@@ -179,6 +179,43 @@ fn button_hints_from(raw: &str) -> Option<bool> {
     }
 }
 
+/// Whether a time of day is written with AM or PM after it.
+///
+/// Settings > System > Clock, out of the same file the accent and the button
+/// hints come from — `clock = "12-hour"` or `"24-hour"`. One answer for the
+/// whole session rather than a rule about one of the shell's screens: somebody
+/// who set their console to the twelve-hour clock set it for the application
+/// they open next as well.
+///
+/// Unlike the keys around it this answers for itself rather than handing back
+/// `None`, because there is a right answer for a machine that has never been
+/// asked: the **language** decides, and American English and Hindi are the
+/// two that write `8:10 PM` — the clock America and India both read. A
+/// machine with no such file — running under GNOME or Plasma — and one whose
+/// owner has never pressed the row therefore get the same thing, which is
+/// what both of them want.
+pub fn twelve_hour_clock() -> bool {
+    twelve_hour_clock_from(
+        settings_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .as_deref()
+            .unwrap_or_default(),
+        crate::i18n::language(),
+    )
+}
+
+fn twelve_hour_clock_from(raw: &str, language: &str) -> bool {
+    match top_level_string(raw, "clock").as_deref() {
+        Some("12-hour") => true,
+        Some("24-hour") => false,
+        // `language` is what the shell writes when nobody has chosen, and an
+        // unknown word is read the same way — the file is one the user is
+        // entitled to open, and a word this build has no clock for is not a
+        // reason to invent one.
+        _ => matches!(language, "en-US" | "hi"),
+    }
+}
+
 /// The keyboard arrangement the shell is set to, as an xkb layout and variant.
 ///
 /// The answer somebody gave on Settings > Input > Keyboard > Keyboard layout,
@@ -325,6 +362,36 @@ mod tests {
             button_hints_from("[media-sort]\nbutton-hints = false\n"),
             None
         );
+    }
+
+    /// The clock, and the language behind it.
+    ///
+    /// Unlike the keys around it this one always answers, because there *is*
+    /// a right answer for a machine nobody has asked: American English writes
+    /// `8:10 PM` and everything else writes `20:10`.
+    #[test]
+    fn the_clock_is_read_off_the_file_and_falls_back_to_the_language() {
+        assert!(twelve_hour_clock_from(
+            "accent = \"purple\"\nclock = \"12-hour\"\n",
+            "pl"
+        ));
+        assert!(!twelve_hour_clock_from("clock = '24-hour'\n", "en-US"));
+
+        // Nothing said, by any of the ways a file says nothing.
+        for raw in [
+            "",
+            "accent = \"jade\"\n",
+            "clock = \"language\"\n",
+            "clock = \"sundial\"\n",
+            // Under a table header it is a different key and not this one.
+            "[media-sort]\nclock = \"12-hour\"\n",
+        ] {
+            assert!(twelve_hour_clock_from(raw, "en-US"), "{raw:?}");
+            assert!(twelve_hour_clock_from(raw, "hi"), "{raw:?}");
+            for language in ["en-GB", "de", "es", "fr", "pl", "pt-BR", "ru", "zh-CN"] {
+                assert!(!twelve_hour_clock_from(raw, language), "{language} {raw:?}");
+            }
+        }
     }
 
     #[test]

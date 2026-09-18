@@ -572,6 +572,7 @@ for _name, _argtypes, _restype in [
     ("lxb_picker_search", [ctypes.c_void_p, _STR], None),
     ("lxb_picker_choose", [ctypes.c_void_p], _STR),
     ("lxb_font", [ctypes.c_int], _Bytes),
+    ("lxb_font_for", [ctypes.c_char_p, ctypes.c_int], _Bytes),
     ("lxb_version", [], _STR),
     ("lxb_menu_layout_new",
      [ctypes.POINTER(_MenuRow), _SIZE, ctypes.c_uint,
@@ -2158,10 +2159,15 @@ class Wheel:
         self._carried = ctypes.c_float(0.0)
 
 
-def font(bold: bool = False) -> bytes:
-    """Roboto, as one of the two faces. TTF."""
-    got = _bytes(_lib.lxb_font(1 if bold else 0))
-    assert got is not None
+def font(bold: bool = False, script: str = "latin") -> bytes:
+    """Roboto, as one of the two faces, or the face for a script it has not
+    got: ``"devanagari"`` for Hindi, ``"han"`` for Chinese. TTF."""
+    if script == "latin":
+        got = _bytes(_lib.lxb_font(1 if bold else 0))
+    else:
+        got = _bytes(_lib.lxb_font_for(script.encode(), 1 if bold else 0))
+    if got is None:
+        raise ValueError(f"no face is shipped for the script {script!r}")
     return got
 
 

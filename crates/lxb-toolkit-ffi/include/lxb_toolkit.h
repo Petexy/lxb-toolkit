@@ -550,6 +550,8 @@ int lxb_wheel_notches(float *carried, float notches);
 
 lxb_bytes lxb_font(int bold);
 
+lxb_bytes lxb_font_for(const char *script, int bold);
+
 const char *lxb_version(void);
 
 lxb_scene lxb_scene_for(unsigned long palette, float time);

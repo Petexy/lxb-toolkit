@@ -80,6 +80,48 @@ pub enum Face {
     Bold,
 }
 
+/// The three writing systems the toolkit ships a face for.
+///
+/// One face carries the first three alphabets — Roboto has Latin, Greek and
+/// Cyrillic, which is eight of the ten languages — and the other two are each
+/// a face of their own. See [`Face::bytes_for`] and `assets::FONTS`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Script {
+    /// Latin, Greek and Cyrillic: Roboto.
+    Latin,
+    /// Hindi: Noto Sans Devanagari UI, the whole block.
+    Devanagari,
+    /// Chinese: Noto Sans CJK SC, cut to GB 2312.
+    Han,
+}
+
+impl Script {
+    pub const ALL: [Self; 3] = [Self::Latin, Self::Devanagari, Self::Han];
+
+    /// The name a C or Python caller asks by — see `lxb_font_for`.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Latin => "latin",
+            Self::Devanagari => "devanagari",
+            Self::Han => "han",
+        }
+    }
+
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|script| script.name() == name)
+    }
+
+    /// The family name the face declares, which is what a text engine that
+    /// picks a fallback by name looks for.
+    pub const fn family(self) -> &'static str {
+        match self {
+            Self::Latin => "Roboto",
+            Self::Devanagari => "Noto Sans Devanagari UI",
+            Self::Han => "Noto Sans CJK SC",
+        }
+    }
+}
+
 impl Face {
     pub const fn name(self) -> &'static str {
         match self {
@@ -103,6 +145,22 @@ impl Face {
         match self {
             Face::Regular => 400,
             Face::Bold => 700,
+        }
+    }
+
+    /// The same face, for a script Roboto has not got.
+    ///
+    /// Roboto carries Latin, Greek and Cyrillic; a word in Devanagari or in
+    /// Han is drawn from one of the two Noto faces bundled beside it, at the
+    /// same weight. A program with a painter of its own that wants to draw
+    /// every language the toolkit speaks takes all three from here.
+    pub const fn bytes_for(self, script: Script) -> &'static [u8] {
+        match (script, self) {
+            (Script::Latin, _) => self.bytes(),
+            (Script::Devanagari, Face::Regular) => crate::assets::FONT_DEVANAGARI_REGULAR,
+            (Script::Devanagari, Face::Bold) => crate::assets::FONT_DEVANAGARI_BOLD,
+            (Script::Han, Face::Regular) => crate::assets::FONT_HAN_REGULAR,
+            (Script::Han, Face::Bold) => crate::assets::FONT_HAN_BOLD,
         }
     }
 }

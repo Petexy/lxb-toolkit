@@ -30,7 +30,8 @@ all.
 `lxb.App` opens a *second* library, `liblxb_app`, the first time it is used —
 it carries the GPU stack, the window system, the controllers and the audio
 device. Importing this package never asks for it, so a program that only wants
-what the language answers keeps a dependency-free library and nothing else.
+what the language answers keeps a library with no GPU stack in it and nothing
+else.
 
 ```python
 from lxb_toolkit import (

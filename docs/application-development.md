@@ -9,7 +9,9 @@ The toolkit has six layers, and most applications meet only the last two:
 
 - `lxb-toolkit` is the renderer-neutral source of truth for colour, material,
   motion, type, metrics, marks, sound and what a control means. Rust, C and
-  Python all read the same values, and it carries no dependencies at all.
+  Python all read the same values. It links no GPU stack, no window system and
+  no audio device; its one dependency is the Fluent catalogs the words in its
+  own controls come from — see [localization](localization.md).
 - `lxb-render` draws them. One call per thing — `ui.pane`, `ui.button`,
   `ui.icon`, `ui.context_menu` — each of which is the real material rather than
   a shape with the right colour in it. It owns the shader, the passes, the mark
@@ -80,8 +82,8 @@ in this language is checked without a screen.
 
 C and Python get all of it, through a second shared library: `liblxb_app`,
 which carries the GPU stack, the window system, the controllers and the audio
-device. `liblxb_toolkit` goes on carrying nothing at all, so a program that
-only wants the language's answers still links a library with no dependencies.
+device. `liblxb_toolkit` goes on carrying none of that, so a program that only
+wants the language's answers still links a library with no GPU stack in it.
 
 ```c
 #include <lxb_app.h>

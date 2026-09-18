@@ -2,7 +2,7 @@
 
 Every function the toolkit answers, in the order its headers declare them.
 
-229 functions in all.
+230 functions in all.
 
 The reference is the authoritative documentation. `scripts/make-reference.py`
 refreshes every C signature from the two headers and refuses missing, extra, or
@@ -14,9 +14,9 @@ Three shapes repeat and are not written out each time. `X_count` answers how man
 
 ## `lxb_toolkit.h`
 
-What the language answers: colours, sizes, motion, type, marks, recordings and the shapes of its panels. Links nothing.
+What the language answers: colours, sizes, motion, type, marks, recordings, the shapes of its panels and the words the controls it draws say. Links no GPU stack, no window system and no audio device.
 
-164 functions.
+165 functions.
 
 ### palettes
 
@@ -1112,12 +1112,18 @@ How many whole steps of a wheel `notches` is worth, keeping the rest in `carried
 int lxb_wheel_notches(float *carried, float notches);
 ```
 
-Roboto, as the two faces anything here is set in.
+Roboto, as the two faces anything here is set in — and the two Noto faces bundled beside it for the scripts Roboto has not got, Devanagari for Hindi and Han for Chinese, so a program with a painter of its own can draw every language the toolkit speaks. `lxb_font_for` takes `"latin"`, `"devanagari"` or `"han"` and answers empty for anything else.
 
 `lxb_font`
 
 ```c
 lxb_bytes lxb_font(int bold);
+```
+
+`lxb_font_for`
+
+```c
+lxb_bytes lxb_font_for(const char *script, int bold);
 ```
 
 `lxb_version`

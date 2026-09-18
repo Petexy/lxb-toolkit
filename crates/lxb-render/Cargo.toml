@@ -15,7 +15,7 @@ lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.0" }
 lxb-portal = { path = "../lxb-portal", version = "0.9.0" }
 
 # One clock reading: the monotonic sample a wallpaper handoff is anchored to.
-# `lxb-toolkit` owns the record itself and carries no dependencies at all, so
+# `lxb-toolkit` owns the record itself and links nothing but its catalogs, so
 # the one call that needs the C library is made from the crate every program
 # drawing the wallpaper already has.
 libc = "0.2"

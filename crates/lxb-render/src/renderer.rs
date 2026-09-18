@@ -552,13 +552,20 @@ impl Ui {
             mapped_at_creation: false,
         });
 
-        let mut font_system = FontSystem::new();
-        font_system
-            .db_mut()
-            .load_font_data(assets::FONT_REGULAR.to_vec());
-        font_system
-            .db_mut()
-            .load_font_data(assets::FONT_BOLD.to_vec());
+        // The toolkit's own faces first and the machine's after them, in the
+        // order a run with no glyph in Roboto is offered the rest of the
+        // database: a Devanagari or a Han word is shaped in the face the
+        // layout was measured against, and a title in a script none of the
+        // six carry still has the machine's fonts behind it. The locale
+        // decides which CJK face a Han run is offered first, which is the
+        // session's language rather than the machine's.
+        let mut db = glyphon::fontdb::Database::new();
+        for face in assets::FONTS {
+            db.load_font_data(face.to_vec());
+        }
+        db.load_system_fonts();
+        let font_system =
+            FontSystem::new_with_locale_and_db(lxb_toolkit::i18n::language().to_owned(), db);
 
         let cache = Cache::new(&device);
         let mut text_atlas_offscreen = TextAtlas::new(&device, &queue, &cache, TARGET);

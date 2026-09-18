@@ -5,9 +5,12 @@ build an application for LineXinBar on a machine that has never seen this
 checkout. Three packages come out of one source tree:
 
 * **`lxb-toolkit`** — the shared library. What anything linking the C ABI needs
-  at run time, and what the Python binding loads. It has no dependencies of its
-  own, which is the point of it: a design language that dragged a dependency
-  tree behind it would be a dependency tree.
+  at run time, and what the Python binding loads. It carries no GPU stack, no
+  window system and no audio device, which is the point of it: a design
+  language that dragged a dependency tree behind it would be a dependency
+  tree. Its one dependency is the Fluent catalogs the controls it draws speak
+  from, compiled in — there is no separate translation package and nothing to
+  install at run time.
 * **`lxb-toolkit-dev`** (`-devel` on Fedora) — the header, the static archive,
   the pkg-config file, the `lxb-new` generator, and both Rust crates as
   sources. Everything needed to *make* an application and nothing needed to run
@@ -101,7 +104,7 @@ checkout is on. Not `${TMPDIR:-/tmp}`, which is the obvious choice and the wrong
 one: on a systemd machine /tmp is a tmpfs sized at a fraction of RAM, so
 building there means building in memory.
 
-This dependency graph is small — the library has no dependencies at all — but
+This dependency graph is small — the library carries only its catalogs — but
 the `cargo test` that makepkg's `check()` and rpmbuild's `%check` run pulls in
 naga to prove the shipped WGSL parses, and a release-plus-test build measures
 about 310 MiB. That is enough to exhaust a small tmpfs, which reports it as `No

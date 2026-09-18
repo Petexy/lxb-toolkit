@@ -1,4 +1,5 @@
 mod components;
+pub mod faces;
 mod files;
 mod pointing;
 mod renderer;

@@ -65,9 +65,15 @@ _lxb_toolkit_licenses() {
         "$pkgdir/usr/share/licenses/$1/GPL-3.0-only.txt"
     # Roboto is compiled into the library rather than loaded from a theme,
     # because the machine this is for may have no font service at all. Apache-2.0
-    # asks for its notice to travel with what carries it.
+    # asks for its notice to travel with what carries it, and the Open Font
+    # License asks the same of the two Noto faces beside it — the scripts
+    # Roboto has not got, for Hindi and Chinese.
     install -Dm0644 crates/lxb-toolkit/assets/fonts/LICENSE-Roboto.txt \
         "$pkgdir/usr/share/licenses/$1/Roboto-Apache-2.0.txt"
+    install -Dm0644 crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansDevanagariUI.txt \
+        "$pkgdir/usr/share/licenses/$1/NotoSansDevanagariUI-OFL-1.1.txt"
+    install -Dm0644 crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansCJKsc.txt \
+        "$pkgdir/usr/share/licenses/$1/NotoSansCJKsc-OFL-1.1.txt"
 }
 
 package_lxb-toolkit() {
