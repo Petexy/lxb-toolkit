@@ -60,7 +60,7 @@ fi
 
 require_command rpmbuild
 require_command cargo
-require_rust_version 1.85
+require_rust_version 1.89
 
 work="$(package_work_dir lxb-toolkit-fedora)"
 cleanup() {

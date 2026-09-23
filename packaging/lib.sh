@@ -62,17 +62,26 @@ host_is_like() {
     )
 }
 
+# require_rust_version [MINIMUM] [HINT]
+#
+# HINT is a line added to the refusal, for a builder that knows how its own
+# distribution gets a newer Rust.
 require_rust_version() {
-    local minimum="${1:-1.85}"
+    local minimum="${1:-1.89}"
+    local hint="${2:-}"
     local actual
     local first
 
     require_command rustc
     require_command cargo
-    actual="$(rustc --version | awk '{print $2}')"
+    # Empty when rustc does not answer, which is how rustup reads before a
+    # toolchain has been chosen — and `|| true` because under the builders'
+    # pipefail that failure would otherwise end the script before a word is said.
+    actual="$(rustc --version 2>/dev/null | awk '{print $2}')" || true
     first="$(printf '%s\n%s\n' "$minimum" "$actual" | sort -V | head -n 1)"
     if [[ "$first" != "$minimum" ]]; then
-        package_die "Rust $minimum or newer is required by the locked dependency graph (found $actual)"
+        package_die "Rust $minimum or newer is required by the locked dependency graph (found ${actual:-none})${hint:+
+$hint}"
     fi
 }
 

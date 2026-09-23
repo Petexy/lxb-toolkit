@@ -12,11 +12,14 @@ pkgdesc='The LineXinBar design language, for applications built to sit beside it
 arch=('x86_64' 'aarch64')
 url='https://github.com/petexy/lxb-toolkit'
 license=('GPL-3.0-only' 'Apache-2.0')
-# The library has no dependencies of its own — that is deliberate, and the
-# reason it is a design language rather than a dependency tree. What is left is
-# what any Rust binary links.
-depends=('glibc' 'gcc-libs')
-makedepends=('cargo')
+# The design language itself has no dependencies of its own — that is
+# deliberate, and the reason it is a design language rather than a dependency
+# tree. liblxb_app, the application layer beside it in this package, links
+# what a window on this desktop needs: alsa-lib for its sounds, systemd-libs
+# (libudev) for the game controllers and libxkbcommon for the keyboard. What
+# is left is what any Rust binary links.
+depends=('glibc' 'gcc-libs' 'alsa-lib' 'systemd-libs' 'libxkbcommon')
+makedepends=('cargo' 'pkgconf')
 options=(!lto)
 source=("$pkgbase-$pkgver.tar.gz")
 sha256sums=('@SOURCE_SHA256@')

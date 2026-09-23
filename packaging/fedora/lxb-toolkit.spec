@@ -23,10 +23,16 @@ ExclusiveArch:  x86_64 aarch64
 # handing %install the unexpanded macro name as if it were a path.
 %{!?python3_sitelib: %global python3_sitelib %(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))" 2>/dev/null || echo /usr/lib/python3/site-packages)}
 
-BuildRequires:  cargo >= 1.85
-BuildRequires:  rust >= 1.85
+BuildRequires:  cargo >= 1.89
+BuildRequires:  rust >= 1.89
 BuildRequires:  gcc
 BuildRequires:  pkgconfig
+# What liblxb_app links outright, each asked for as a pkg-config name, which
+# is what the Rust bindings look for: ALSA for the interface sounds, libudev
+# for the game controllers and xkbcommon for the keyboard.
+BuildRequires:  pkgconfig(alsa)
+BuildRequires:  pkgconfig(libudev)
+BuildRequires:  pkgconfig(xkbcommon)
 BuildRequires:  python3-devel
 
 %description

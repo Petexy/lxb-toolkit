@@ -102,7 +102,7 @@ done
 
 if [[ "$build" == true ]]; then
     package_note "building the release artefacts"
-    require_rust_version 1.85
+    require_rust_version 1.89
     # Every crate the payload needs. This list was short by lxb-app and
     # lxb-app-ffi and the check still passed, because install.sh found a
     # liblxb_app.so an earlier build had left in target/release — a clean tree

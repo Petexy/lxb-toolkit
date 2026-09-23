@@ -158,7 +158,11 @@ its real SHA-256 checksum before running `makepkg`. Artifacts are copied to
 
 ## Debian
 
-Build on Debian, Ubuntu, or another Debian-derived system with `dpkg-dev`:
+Build on Debian, Ubuntu, or another Debian-derived system. The builder checks
+everything it needs before compiling and names whatever is missing in one
+`apt install` line — Rust among it as `rustup`, because Debian 13's own is
+older than the locked graph allows. A distrobox or toolbox container on a plain
+`debian` image is enough:
 
 ```sh
 ./packaging/build.sh debian
@@ -168,6 +172,10 @@ The builder uses `dpkg-shlibdeps` on the locally linked shared object and on
 `lxb-new`, stages three policy-shaped binary packages, and writes them to
 `packaging/out/debian/`. The library goes under the host's multiarch triplet,
 which is why `install.sh` takes `--libdir` at all.
+
+It compiles into `target/debian` rather than `target/` (or into
+`$CARGO_TARGET_DIR` when that is set), so a build in a container that shares
+the checkout never replaces the host's own binaries.
 
 `--allow-foreign-host` exists for package-structure testing only, and says so
 twice: a `.deb` built against another distribution's libc must not be deployed
@@ -185,7 +193,12 @@ promise that has not been made.
 
 ## Fedora
 
+Build on Fedora with the RPM tools and what the spec asks for, which
+`dnf builddep` reads from the spec itself:
+
 ```sh
+sudo dnf install rpm-build dnf5-plugins git-core
+sudo dnf builddep packaging/fedora/lxb-toolkit.spec
 ./packaging/build.sh fedora
 ./packaging/build.sh fedora --no-check
 ```
