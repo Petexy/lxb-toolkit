@@ -9,10 +9,10 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.0" }
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.1" }
 # How a file question is put to the desktop. Std only — no window, no GPU, no
 # runtime — so a component that draws a chooser can also decline to draw one.
-lxb-portal = { path = "../lxb-portal", version = "0.9.0" }
+lxb-portal = { path = "../lxb-portal", version = "0.9.1" }
 
 # One clock reading: the monotonic sample a wallpaper handoff is anchored to.
 # `lxb-toolkit` owns the record itself and links nothing but its catalogs, so

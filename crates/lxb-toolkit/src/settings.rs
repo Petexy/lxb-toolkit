@@ -62,11 +62,14 @@ impl WallpaperStyle {
     }
 }
 
+pub const PARTICLES_KEY: &str = "theme-particles";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShellTheme {
     pub accent: &'static Palette,
     pub wallpaper: WallpaperStyle,
     pub icons: IconStyle,
+    pub particles: bool,
 }
 
 impl Default for ShellTheme {
@@ -75,6 +78,7 @@ impl Default for ShellTheme {
             accent: &PURPLE,
             wallpaper: WallpaperStyle::Default,
             icons: IconStyle::Default,
+            particles: true,
         }
     }
 }
@@ -109,10 +113,14 @@ impl ShellTheme {
             .or(legacy.as_deref())
             .and_then(IconStyle::named)
             .unwrap_or_default();
+        // On unless the file says false, as the shell is: a key that is not a
+        // switch is no answer.
+        let particles = top_level_word(raw, PARTICLES_KEY).as_deref() != Some("false");
         Self {
             accent,
             wallpaper,
             icons,
+            particles,
         }
     }
 }
@@ -441,6 +449,19 @@ mod tests {
         assert_eq!(theme.accent.name, "Blue");
         assert_eq!(theme.wallpaper, WallpaperStyle::Custom);
         assert_eq!(theme.icons, IconStyle::Simple);
+    }
+
+    #[test]
+    fn the_sparkles_are_off_only_where_the_shell_says_so() {
+        assert!(ShellTheme::default().particles);
+        assert!(ShellTheme::from_toml("").particles);
+        assert!(ShellTheme::from_toml("theme-particles = true\n").particles);
+        assert!(!ShellTheme::from_toml("theme-particles = false\n").particles);
+        assert!(ShellTheme::from_toml("theme-particles = \"false\"\n").particles);
+        assert!(ShellTheme::from_toml("[display.HDMI]\ntheme-particles = false\n").particles);
+        let theme = ShellTheme::from_toml("accent = \"Blue\"\ntheme-particles = false # off\n");
+        assert_eq!(theme.accent.name, "Blue");
+        assert!(!theme.particles);
     }
 
     #[test]

@@ -205,6 +205,8 @@ pub struct Scene {
 
     pub style: WallpaperStyle,
 
+    pub particles: bool,
+
     pub palette: ShaderPalette,
 }
 
@@ -214,6 +216,7 @@ impl Scene {
             time,
             soften: 0.0,
             style: WallpaperStyle::Default,
+            particles: true,
             palette: ShaderPalette::from_palette(palette),
         }
     }
@@ -325,13 +328,21 @@ pub fn sample(scene: &Scene, uv: [f32; 2], aspect: f32, footprint: [f32; 2]) -> 
         current_light * 0.035 * mix(1.0, 0.40, soften),
     );
 
-    color = match scene.style {
-        WallpaperStyle::Simple => silk(color, scene, uv, aspect),
+    let spine = match scene.style {
+        WallpaperStyle::Simple => {
+            color = silk(color, scene, uv, aspect);
+            silk_spine(u, time, aspect)
+        }
 
         WallpaperStyle::Default | WallpaperStyle::Custom => {
-            water(color, scene, uv, aspect, footprint)
+            let spine = spine_at(u, time, aspect);
+            color = water(color, scene, uv, aspect, footprint, spine);
+            spine
         }
     };
+    if scene.particles {
+        color = sparkles(color, scene, uv, aspect, footprint, spine);
+    }
 
     let upper_center =
         0.28 + (u * 2.6 + time * 0.16).sin() * 0.10 + (u * 5.4 - time * 0.11).sin() * 0.040;
@@ -382,12 +393,38 @@ fn bevel_slope(inset: f32) -> f32 {
     (1.0 - inset) / bevel_rise(inset).max(0.16)
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Spine {
+    gather: f32,
+    height: f32,
+    slope: f32,
+}
+
+const SPINE_REST: f32 = 0.62;
+
+fn spine_at(u: f32, t: f32, aspect: f32) -> Spine {
+    let gather = 0.28 + 0.72 * (std::f32::consts::PI * u).sin();
+    let gather_slope = 0.72 * std::f32::consts::PI * (std::f32::consts::PI * u).cos();
+
+    let spine_a = u * 6.8 + t * 0.56;
+    let spine_b = u * 3.4 - t * 0.39 + 0.8;
+    let swing = spine_a.sin() * 0.055 + spine_b.sin() * 0.085;
+    let swing_slope = spine_a.cos() * 0.055 * 6.8 + spine_b.cos() * 0.085 * 3.4;
+
+    Spine {
+        gather,
+        height: SPINE_REST + swing * gather,
+        slope: (swing_slope * gather + swing * gather_slope) / aspect,
+    }
+}
+
 fn water(
     into: [f32; 3],
     scene: &Scene,
     uv: [f32; 2],
     aspect: f32,
     footprint: [f32; 2],
+    spine: Spine,
 ) -> [f32; 3] {
     let (u, v) = (uv[0], uv[1]);
     let time = scene.time;
@@ -404,18 +441,11 @@ fn water(
     let key = normalize3(WALLPAPER_KEY_LIGHT);
     let half_vector = normalize3([key[0], key[1], key[2] + 1.0]);
 
-    let gather = 0.28 + 0.72 * (std::f32::consts::PI * u).sin();
-    let gather_slope = 0.72 * std::f32::consts::PI * (std::f32::consts::PI * u).cos();
-
-    let spine_a = u * 6.8 + time * 0.56;
-    let spine_b = u * 3.4 - time * 0.39 + 0.8;
-    let swing = spine_a.sin() * 0.055 + spine_b.sin() * 0.085;
-    let swing_slope = spine_a.cos() * 0.055 * 6.8 + spine_b.cos() * 0.085 * 3.4;
-    let spine = 0.62 + swing * gather;
-    let slope = (swing_slope * gather + swing * gather_slope) / aspect;
+    let gather = spine.gather;
+    let slope = spine.slope;
     let across = normalize2([slope, -1.0]);
     let along = [-across[1], across[0]];
-    let band = (v - spine) / (1.0 + slope * slope).sqrt();
+    let band = (v - spine.height) / (1.0 + slope * slope).sqrt();
     let sample_size = (across[0] * footprint[0] * aspect).abs() + (across[1] * footprint[1]).abs();
 
     let mut tilt = [0.0_f32; 3];
@@ -596,6 +626,321 @@ fn silk(into: [f32; 3], scene: &Scene, uv: [f32; 2], aspect: f32) -> [f32; 3] {
                 * gloss_strength,
         );
     }
+    color
+}
+
+fn silk_spine(u: f32, t: f32, aspect: f32) -> Spine {
+    let speed = 0.56;
+    let x_scale = 2.6;
+    let x = u * x_scale;
+    let phase_a = x * 2.6 + t * speed + 2.1;
+    let phase_b = x * 1.3 - t * speed * 0.7 + 0.8;
+    Spine {
+        gather: 1.0,
+        height: SPINE_REST + phase_a.sin() * 0.055 + phase_b.sin() * 0.085,
+        slope: (phase_a.cos() * 0.055 * 2.6 + phase_b.cos() * 0.085 * 1.3) * x_scale / aspect,
+    }
+}
+
+const SPARKLE_LANE: f32 = 0.28;
+
+const SPARKLE_BIRTH: f32 = 0.03;
+
+const SPARKLE_SQUEEZE: f32 = 0.85;
+
+const SPARKLE_SINK: f32 = 0.6;
+
+const SPARKLE_STEEPEST: f32 = 0.95;
+
+#[derive(Debug, Clone, Copy)]
+struct SparkleLayer {
+    seed: u32,
+    cell: [f32; 2],
+    drift: f32,
+    rise: f32,
+    density: f32,
+    core: f32,
+    reach: f32,
+    travel: [f32; 2],
+    smallest: f32,
+    brightness: [f32; 2],
+    push: [f32; 2],
+    hold: [f32; 2],
+}
+
+const SPARKLE_DUST: SparkleLayer = SparkleLayer {
+    seed: 0,
+    cell: [0.020, 0.023],
+    drift: 0.018,
+    rise: 0.016,
+    density: 0.90,
+    core: 0.0020,
+    reach: 0.0070,
+    travel: [0.05, 0.14],
+    smallest: 0.60,
+    brightness: [1.00, 0.15],
+    push: [0.03, 0.03],
+    hold: [0.45, 0.15],
+};
+
+const SPARKLE_GLINTS: SparkleLayer = SparkleLayer {
+    seed: 1013904223,
+    cell: [0.075, 0.085],
+    drift: 0.022,
+    rise: 0.018,
+    density: 0.60,
+    core: 0.0048,
+    reach: 0.026,
+    travel: [0.07, 0.18],
+    smallest: 0.35,
+    brightness: [0.85, 0.22],
+    push: [0.06, 0.02],
+    hold: [0.35, 0.15],
+};
+
+fn sparkle_hash(value: u32) -> u32 {
+    let state = value.wrapping_mul(747796405).wrapping_add(2891336453);
+    let word = ((state >> ((state >> 28) + 4)) ^ state).wrapping_mul(277803737);
+    (word >> 22) ^ word
+}
+
+fn sparkle_unit(value: u32) -> f32 {
+    (value >> 8) as f32 / 16777216.0
+}
+
+fn sparkle_bits(value: u32, shift: u32, mask: u32) -> f32 {
+    ((value >> shift) & mask) as f32 / (mask + 1) as f32
+}
+
+fn sparkle_pushed(drift: f32, push: [f32; 2]) -> f32 {
+    drift + push[0] * drift / (push[1] + drift.abs())
+}
+
+fn sparkle_unpushed(out: f32, push: [f32; 2]) -> f32 {
+    let d = out.abs();
+    let b = push[1] + push[0] - d;
+    let root = (b * b + 4.0 * d * push[1]).sqrt();
+    let drift = if b > 0.0 {
+        2.0 * d * push[1] / (b + root)
+    } else {
+        0.5 * (root - b)
+    };
+    drift.copysign(out)
+}
+
+fn sparkle_hold(out: f32, hold: [f32; 2]) -> f32 {
+    let a = out.max(0.0);
+    (hold[1] + hold[0] * a) / (hold[1] + a)
+}
+
+fn sparkle_unheld(offset: f32, held: f32, hold: [f32; 2]) -> f32 {
+    if offset <= held {
+        return offset - held;
+    }
+    let b = hold[1] + held * hold[0] - offset;
+    let c = 4.0 * hold[1] * (offset - held);
+    let root = (b * b + c).sqrt();
+    if b > 0.0 {
+        2.0 * hold[1] * (offset - held) / (b + root)
+    } else {
+        0.5 * (root - b)
+    }
+}
+
+fn sparkle_bump(x: f32) -> f32 {
+    let q = (1.0 - x * x).max(0.0);
+    q * q * q
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SparkleAt {
+    offset: f32,
+    swing: f32,
+    along: f32,
+    slope: f32,
+    lane: f32,
+    t: f32,
+    sample: f32,
+    soften: f32,
+}
+
+fn sparkle_half(layer: &SparkleLayer, side: f32, at: SparkleAt) -> [f32; 2] {
+    let SparkleAt {
+        offset,
+        swing,
+        along,
+        slope,
+        lane,
+        t,
+        sample,
+        soften,
+    } = at;
+    let mut light = [0.0_f32; 2];
+    let reach_across = layer.reach * (1.0 + slope * slope).sqrt();
+    let rise = layer.rise * if side < 0.0 { 1.0 } else { SPARKLE_SINK };
+    let half_seed = layer.seed ^ if side < 0.0 { 0x9e3779b9 } else { 0 };
+    let out_here = sparkle_unheld(side * offset, side * swing, layer.hold);
+    let row_at = (sparkle_unpushed(out_here, layer.push) - rise * t) / layer.cell[1];
+    let row_here = row_at.floor();
+    let row_in = row_at - row_here;
+    let row_side = if row_in >= 0.5 { 1.0 } else { -1.0 };
+    let row_gap = if row_in >= 0.5 { 1.0 - row_in } else { row_in } * layer.cell[1];
+    let rows = if row_gap * SPARKLE_SQUEEZE < reach_across {
+        2
+    } else {
+        1
+    };
+    for r in 0..rows {
+        let row = row_here + r as f32 * row_side;
+        let row_seed = sparkle_hash(((row as i32) as u32).wrapping_add(half_seed));
+        let drifted = along - layer.drift * (0.6 + 0.8 * sparkle_unit(row_seed)) * t;
+        let column_at = drifted / layer.cell[0];
+        let column_here = column_at.floor();
+        let column_in = column_at - column_here;
+        let column_side = if column_in >= 0.5 { 1.0 } else { -1.0 };
+        let column_gap = if column_in >= 0.5 {
+            1.0 - column_in
+        } else {
+            column_in
+        } * layer.cell[0];
+        let columns = if column_gap < layer.reach { 2 } else { 1 };
+        for c in 0..columns {
+            let column = column_here + c as f32 * column_side;
+            let cell_seed = sparkle_hash(row_seed.wrapping_add((column as i32) as u32));
+            if sparkle_unit(cell_seed) >= layer.density {
+                continue;
+            }
+
+            let shape = sparkle_hash(cell_seed);
+            let look = sparkle_hash(shape);
+            let phase = 2.0 * std::f32::consts::PI * sparkle_bits(look, 24, 0xff);
+            let sway = (t * (0.12 + 0.20 * sparkle_bits(cell_seed, 0, 0xff)) + 2.0 * phase + 1.0)
+                .sin()
+                * 0.18;
+            let d_along = (column + 0.5 + 0.60 * (sparkle_bits(shape, 0, 0xffff) - 0.5) + sway)
+                * layer.cell[0]
+                - drifted;
+            if d_along.abs() >= layer.reach {
+                continue;
+            }
+            let strength = sparkle_bits(look, 0, 0xff);
+            let grain = sparkle_bits(look, 8, 0xff);
+            let pace = sparkle_bits(look, 16, 0xff);
+            let wander = (t * (0.15 + 0.25 * pace) + phase).sin() * 0.22;
+            let out = sparkle_pushed(
+                (row + 0.5 + 0.56 * (sparkle_bits(shape, 16, 0xffff) - 0.5) + wander)
+                    * layer.cell[1]
+                    + rise * t,
+                layer.push,
+            );
+            let hold = sparkle_hold(out, layer.hold);
+            let d_across = hold * swing + side * out - offset + hold * slope * d_along;
+            let apart = (d_along * d_along + d_across * d_across).sqrt();
+            let size = mix(layer.smallest, 1.0, grain * grain);
+            let reach = layer.reach * size;
+            if apart >= reach {
+                continue;
+            }
+
+            let fate = sparkle_hash(look);
+            let birth = SPARKLE_BIRTH * sparkle_bits(fate, 0, 0xffff);
+            let travel = mix(
+                layer.travel[0],
+                layer.travel[1],
+                sparkle_bits(fate, 16, 0xffff),
+            );
+            let journey = out - birth;
+            let left = (1.0 - journey / travel).clamp(0.0, 1.0);
+            let life = smoothstep(0.0, 0.015, journey) * left * left * (3.0 - 2.0 * left);
+            let twinkle = 0.75 + 0.25 * (t * (1.5 + 2.5 * grain) + phase).sin();
+            let fade = sparkle_bump(out / lane);
+            let amount = (0.35 + 0.65 * strength * strength) * life * twinkle * fade * size;
+
+            let radius = layer.core * size;
+            let spread =
+                (radius * radius + 2.25 * sample * sample + 0.25 * reach * reach * soften * soften)
+                    .sqrt()
+                    .min(reach);
+            let kept = radius / spread;
+            let fall = 1.0 - apart / reach;
+            light[0] += amount * sparkle_bump(apart / spread) * kept * kept;
+            light[1] += amount * fall * fall * fall;
+        }
+    }
+    light
+}
+
+fn sparkle_layer(layer: &SparkleLayer, at: SparkleAt) -> [f32; 2] {
+    let SparkleAt {
+        offset,
+        swing,
+        slope,
+        lane,
+        ..
+    } = at;
+    let side = if offset >= swing { 1.0 } else { -1.0 };
+    let reach_across = layer.reach * (1.0 + slope * slope).sqrt();
+    let lag = if side * swing < 0.0 {
+        (1.0 - layer.hold[0]) * swing.abs()
+    } else {
+        0.0
+    };
+    if (offset - swing).abs() >= lane + lag + reach_across {
+        return [0.0, 0.0];
+    }
+    let mut light = sparkle_half(layer, side, at);
+    if (offset - swing).abs() < reach_across {
+        let other = sparkle_half(layer, -side, at);
+        light[0] += other[0];
+        light[1] += other[1];
+    }
+    light
+}
+
+fn sparkles(
+    into: [f32; 3],
+    scene: &Scene,
+    uv: [f32; 2],
+    aspect: f32,
+    footprint: [f32; 2],
+    spine: Spine,
+) -> [f32; 3] {
+    let accent = |index: usize| {
+        let c = scene.palette.accent[index];
+        [c[0], c[1], c[2]]
+    };
+    let offset = uv[1] - SPINE_REST;
+    let swing = spine.height - SPINE_REST;
+    let slope = spine.slope.clamp(-SPARKLE_STEEPEST, SPARKLE_STEEPEST);
+    let lane = SPARKLE_LANE * (0.45 + 0.55 * spine.gather);
+    let behind = (offset - swing) * swing < 0.0;
+    let lag = if behind {
+        (1.0 - SPARKLE_DUST.hold[0].min(SPARKLE_GLINTS.hold[0])) * swing.abs()
+    } else {
+        0.0
+    };
+    if (offset - swing).abs() >= lane + lag + SPARKLE_GLINTS.reach * (1.0 + slope * slope).sqrt() {
+        return into;
+    }
+    let at = SparkleAt {
+        offset,
+        swing,
+        along: uv[0] * aspect,
+        slope,
+        lane,
+        t: scene.time,
+        sample: (footprint[0] * aspect).max(footprint[1]),
+        soften: scene.soften,
+    };
+    let dust = sparkle_layer(&SPARKLE_DUST, at);
+    let glints = sparkle_layer(&SPARKLE_GLINTS, at);
+    let core = dust[0] * SPARKLE_DUST.brightness[0] + glints[0] * SPARKLE_GLINTS.brightness[0];
+    let glow = dust[1] * SPARKLE_DUST.brightness[1] + glints[1] * SPARKLE_GLINTS.brightness[1];
+    let hot = mix3(accent(1), [1.0, 1.0, 1.0], 0.45);
+    let haze = mix3(accent(0), accent(1), 0.5);
+    let mut color = into;
+    accumulate(&mut color, hot, core * mix(1.0, 0.5, scene.soften));
+    accumulate(&mut color, haze, glow * mix(1.0, 0.5, scene.soften));
     color
 }
 
@@ -1410,6 +1755,39 @@ mod tests {
         assert!(quiet(1.0) < sharp, "a fully softened scene is not dimmer");
         assert!(quiet(crate::wallpaper::SOFTEN) < sharp);
         assert!(quiet(crate::wallpaper::SOFTEN) > quiet(1.0));
+    }
+
+    #[test]
+    fn the_sparkles_are_light_added_and_only_where_asked_for() {
+        assert!(Scene::new(&PURPLE, 0.0).particles);
+        for style in [WallpaperStyle::Default, WallpaperStyle::Simple] {
+            let mut off = Scene::new(&PURPLE, 0.0);
+            off.style = style;
+            off.particles = false;
+            let mut differs = 0;
+            for step in 0..6 {
+                off.time = 5.0 + step as f32 * 13.7;
+                let on = Scene {
+                    particles: true,
+                    ..off
+                };
+                for row in 0..=90 {
+                    for column in 0..=160 {
+                        let uv = [column as f32 / 160.0, row as f32 / 90.0];
+                        let footprint = [1.0 / 1920.0, 1.0 / 1080.0];
+                        let with = sample(&on, uv, 16.0 / 9.0, footprint);
+                        let without = sample(&off, uv, 16.0 / 9.0, footprint);
+                        for channel in 0..3 {
+                            assert!(without[channel] <= with[channel], "{uv:?} {style:?}");
+                        }
+                        if with != without {
+                            differs += 1;
+                        }
+                    }
+                }
+            }
+            assert!(differs > 0, "no sparkle was drawn over {style:?}");
+        }
     }
 
     #[test]

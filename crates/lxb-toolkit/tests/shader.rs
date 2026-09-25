@@ -161,4 +161,5 @@ fn the_shader_and_the_library_agree_about_the_wallpaper() {
     assert!(source.contains(&format!("vec3<f32>({x}, {y}, {z})")));
     assert!(source.contains("fn lxb_wallpaper("));
     assert!(source.contains("style > 0.5 && style < 1.5"));
+    assert!(source.contains("if (particles > 0.5) {"));
 }

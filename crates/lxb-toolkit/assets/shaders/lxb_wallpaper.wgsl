@@ -23,6 +23,30 @@ fn lxb_wallpaper_ambient_field(
     return exp(-dot(q, q) * 1.65);
 }
 
+struct LxbWallpaperSpine {
+    gather: f32,
+    height: f32,
+    slope: f32,
+};
+
+const LXB_WALLPAPER_SPINE_REST: f32 = 0.62;
+
+fn lxb_wallpaper_spine_at(u: f32, t: f32, aspect: f32) -> LxbWallpaperSpine {
+    let gather = 0.28 + 0.72 * sin(LXB_WALLPAPER_PI * u);
+    let gather_slope = 0.72 * LXB_WALLPAPER_PI * cos(LXB_WALLPAPER_PI * u);
+
+    let spine_a = u * 6.8 + t * 0.56;
+    let spine_b = u * 3.4 - t * 0.39 + 0.8;
+    let swing = sin(spine_a) * 0.055 + sin(spine_b) * 0.085;
+    let swing_slope = cos(spine_a) * 0.055 * 6.8 + cos(spine_b) * 0.085 * 3.4;
+
+    var spine: LxbWallpaperSpine;
+    spine.gather = gather;
+    spine.height = LXB_WALLPAPER_SPINE_REST + swing * gather;
+    spine.slope = (swing_slope * gather + swing * gather_slope) / aspect;
+    return spine;
+}
+
 fn lxb_wallpaper_water(
     into: vec3<f32>,
     uv: vec2<f32>,
@@ -30,6 +54,7 @@ fn lxb_wallpaper_water(
     time: f32,
     soften: f32,
     footprint: vec2<f32>,
+    spine: LxbWallpaperSpine,
     accent: array<vec4<f32>, 3>,
 ) -> vec3<f32> {
     var color = into;
@@ -39,18 +64,11 @@ fn lxb_wallpaper_water(
     let key = normalize(LXB_WALLPAPER_KEY_LIGHT);
     let half_vector = normalize(key + vec3<f32>(0.0, 0.0, 1.0));
 
-    let gather = 0.28 + 0.72 * sin(LXB_WALLPAPER_PI * uv.x);
-    let gather_slope = 0.72 * LXB_WALLPAPER_PI * cos(LXB_WALLPAPER_PI * uv.x);
-
-    let spine_a = uv.x * 6.8 + time * 0.56;
-    let spine_b = uv.x * 3.4 - time * 0.39 + 0.8;
-    let swing = sin(spine_a) * 0.055 + sin(spine_b) * 0.085;
-    let swing_slope = cos(spine_a) * 0.055 * 6.8 + cos(spine_b) * 0.085 * 3.4;
-    let spine = 0.62 + swing * gather;
-    let slope = (swing_slope * gather + swing * gather_slope) / aspect;
+    let gather = spine.gather;
+    let slope = spine.slope;
     let across = normalize(vec2<f32>(slope, -1.0));
     let along = vec2<f32>(-across.y, across.x);
-    let band = (uv.y - spine) / sqrt(1.0 + slope * slope);
+    let band = (uv.y - spine.height) / sqrt(1.0 + slope * slope);
     let sample = abs(across.x * footprint.x * aspect) + abs(across.y * footprint.y);
 
     var tilt = array<f32, 3>(0.0, 0.0, 0.0);
@@ -219,12 +237,271 @@ fn lxb_wallpaper_silk(
     return color;
 }
 
+fn lxb_wallpaper_silk_spine(u: f32, t: f32, aspect: f32) -> LxbWallpaperSpine {
+    let speed = 0.56;
+    let x_scale = 2.6;
+    let x = u * x_scale;
+    let phase_a = x * 2.6 + t * speed + 2.1;
+    let phase_b = x * 1.3 - t * speed * 0.7 + 0.8;
+    var spine: LxbWallpaperSpine;
+    spine.gather = 1.0;
+    spine.height = LXB_WALLPAPER_SPINE_REST + sin(phase_a) * 0.055 + sin(phase_b) * 0.085;
+    spine.slope = (cos(phase_a) * 0.055 * 2.6 + cos(phase_b) * 0.085 * 1.3) * x_scale / aspect;
+    return spine;
+}
+
+const LXB_WALLPAPER_SPARKLE_LANE: f32 = 0.28;
+
+const LXB_WALLPAPER_SPARKLE_BIRTH: f32 = 0.03;
+
+const LXB_WALLPAPER_SPARKLE_SQUEEZE: f32 = 0.85;
+
+const LXB_WALLPAPER_SPARKLE_SINK: f32 = 0.6;
+
+const LXB_WALLPAPER_SPARKLE_STEEPEST: f32 = 0.95;
+
+struct LxbWallpaperSparkleLayer {
+    seed: u32,
+    cell: vec2<f32>,
+    drift: f32,
+    rise: f32,
+    density: f32,
+    core: f32,
+    reach: f32,
+    travel: vec2<f32>,
+    smallest: f32,
+    brightness: vec2<f32>,
+    push: vec2<f32>,
+    hold: vec2<f32>,
+};
+
+const LXB_WALLPAPER_SPARKLE_DUST: LxbWallpaperSparkleLayer = LxbWallpaperSparkleLayer(
+    0u,
+    vec2<f32>(0.020, 0.023),
+    0.018,
+    0.016,
+    0.90,
+    0.0020,
+    0.0070,
+    vec2<f32>(0.05, 0.14),
+    0.60,
+    vec2<f32>(1.00, 0.15),
+    vec2<f32>(0.03, 0.03),
+    vec2<f32>(0.45, 0.15),
+);
+
+const LXB_WALLPAPER_SPARKLE_GLINTS: LxbWallpaperSparkleLayer = LxbWallpaperSparkleLayer(
+    1013904223u,
+    vec2<f32>(0.075, 0.085),
+    0.022,
+    0.018,
+    0.60,
+    0.0048,
+    0.026,
+    vec2<f32>(0.07, 0.18),
+    0.35,
+    vec2<f32>(0.85, 0.22),
+    vec2<f32>(0.06, 0.02),
+    vec2<f32>(0.35, 0.15),
+);
+
+fn lxb_wallpaper_sparkle_hash(value: u32) -> u32 {
+    let state = value * 747796405u + 2891336453u;
+    let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+fn lxb_wallpaper_sparkle_unit(value: u32) -> f32 {
+    return f32(value >> 8u) / 16777216.0;
+}
+
+fn lxb_wallpaper_sparkle_bits(value: u32, shift: u32, mask: u32) -> f32 {
+    return f32((value >> shift) & mask) / f32(mask + 1u);
+}
+
+fn lxb_wallpaper_sparkle_pushed(drift: f32, push: vec2<f32>) -> f32 {
+    return drift + push.x * drift / (push.y + abs(drift));
+}
+
+fn lxb_wallpaper_sparkle_unpushed(out: f32, push: vec2<f32>) -> f32 {
+    let d = abs(out);
+    let b = push.y + push.x - d;
+    let root = sqrt(b * b + 4.0 * d * push.y);
+    let drift = select(0.5 * (root - b), 2.0 * d * push.y / (b + root), b > 0.0);
+    return sign(out) * drift;
+}
+
+fn lxb_wallpaper_sparkle_hold(out: f32, hold: vec2<f32>) -> f32 {
+    let a = max(out, 0.0);
+    return (hold.y + hold.x * a) / (hold.y + a);
+}
+
+fn lxb_wallpaper_sparkle_unheld(offset: f32, held: f32, hold: vec2<f32>) -> f32 {
+    if (offset <= held) {
+        return offset - held;
+    }
+    let b = hold.y + held * hold.x - offset;
+    let c = 4.0 * hold.y * (offset - held);
+    let root = sqrt(b * b + c);
+    return select(0.5 * (root - b), 2.0 * hold.y * (offset - held) / (b + root), b > 0.0);
+}
+
+fn lxb_wallpaper_sparkle_bump(x: f32) -> f32 {
+    let q = max(1.0 - x * x, 0.0);
+    return q * q * q;
+}
+
+fn lxb_wallpaper_sparkle_half(
+    layer: LxbWallpaperSparkleLayer,
+    side: f32,
+    offset: f32,
+    swing: f32,
+    along: f32,
+    slope: f32,
+    lane: f32,
+    t: f32,
+    sample: f32,
+    soften: f32,
+) -> vec2<f32> {
+    var light = vec2<f32>(0.0);
+    let reach_across = layer.reach * sqrt(1.0 + slope * slope);
+    let rise = layer.rise * select(LXB_WALLPAPER_SPARKLE_SINK, 1.0, side < 0.0);
+    let half_seed = layer.seed ^ select(0u, 0x9e3779b9u, side < 0.0);
+    let out_here = lxb_wallpaper_sparkle_unheld(side * offset, side * swing, layer.hold);
+    let row_at = (lxb_wallpaper_sparkle_unpushed(out_here, layer.push) - rise * t) / layer.cell.y;
+    let row_here = floor(row_at);
+    let row_in = row_at - row_here;
+    let row_side = select(-1.0, 1.0, row_in >= 0.5);
+    let row_gap = select(row_in, 1.0 - row_in, row_in >= 0.5) * layer.cell.y;
+    let rows = select(1, 2, row_gap * LXB_WALLPAPER_SPARKLE_SQUEEZE < reach_across);
+    for (var r = 0; r < rows; r = r + 1) {
+        let row = row_here + f32(r) * row_side;
+        let row_seed = lxb_wallpaper_sparkle_hash(bitcast<u32>(i32(row)) + half_seed);
+        let drifted = along - layer.drift * (0.6 + 0.8 * lxb_wallpaper_sparkle_unit(row_seed)) * t;
+        let column_at = drifted / layer.cell.x;
+        let column_here = floor(column_at);
+        let column_in = column_at - column_here;
+        let column_side = select(-1.0, 1.0, column_in >= 0.5);
+        let column_gap = select(column_in, 1.0 - column_in, column_in >= 0.5) * layer.cell.x;
+        let columns = select(1, 2, column_gap < layer.reach);
+        for (var c = 0; c < columns; c = c + 1) {
+            let column = column_here + f32(c) * column_side;
+            let cell_seed = lxb_wallpaper_sparkle_hash(row_seed + bitcast<u32>(i32(column)));
+            if (lxb_wallpaper_sparkle_unit(cell_seed) >= layer.density) {
+                continue;
+            }
+
+            let shape = lxb_wallpaper_sparkle_hash(cell_seed);
+            let look = lxb_wallpaper_sparkle_hash(shape);
+            let phase = 2.0 * LXB_WALLPAPER_PI * lxb_wallpaper_sparkle_bits(look, 24u, 0xffu);
+            let sway = sin(t * (0.12 + 0.20 * lxb_wallpaper_sparkle_bits(cell_seed, 0u, 0xffu)) + 2.0 * phase + 1.0)
+                * 0.18;
+            let d_along = (column + 0.5 + 0.60 * (lxb_wallpaper_sparkle_bits(shape, 0u, 0xffffu) - 0.5) + sway)
+                * layer.cell.x - drifted;
+            if (abs(d_along) >= layer.reach) {
+                continue;
+            }
+            let strength = lxb_wallpaper_sparkle_bits(look, 0u, 0xffu);
+            let grain = lxb_wallpaper_sparkle_bits(look, 8u, 0xffu);
+            let pace = lxb_wallpaper_sparkle_bits(look, 16u, 0xffu);
+            let wander = sin(t * (0.15 + 0.25 * pace) + phase) * 0.22;
+            let out = lxb_wallpaper_sparkle_pushed((row + 0.5 + 0.56 * (lxb_wallpaper_sparkle_bits(shape, 16u, 0xffffu) - 0.5)
+                + wander) * layer.cell.y + rise * t, layer.push);
+            let hold = lxb_wallpaper_sparkle_hold(out, layer.hold);
+            let d_across = hold * swing + side * out - offset + hold * slope * d_along;
+            let apart = sqrt(d_along * d_along + d_across * d_across);
+            let size = mix(layer.smallest, 1.0, grain * grain);
+            let reach = layer.reach * size;
+            if (apart >= reach) {
+                continue;
+            }
+
+            let fate = lxb_wallpaper_sparkle_hash(look);
+            let birth = LXB_WALLPAPER_SPARKLE_BIRTH * lxb_wallpaper_sparkle_bits(fate, 0u, 0xffffu);
+            let travel = mix(layer.travel.x, layer.travel.y, lxb_wallpaper_sparkle_bits(fate, 16u, 0xffffu));
+            let journey = out - birth;
+            let left = clamp(1.0 - journey / travel, 0.0, 1.0);
+            let life = smoothstep(0.0, 0.015, journey) * left * left * (3.0 - 2.0 * left);
+            let twinkle = 0.75 + 0.25 * sin(t * (1.5 + 2.5 * grain) + phase);
+            let fade = lxb_wallpaper_sparkle_bump(out / lane);
+            let amount = (0.35 + 0.65 * strength * strength) * life * twinkle * fade * size;
+
+            let radius = layer.core * size;
+            let spread = min(sqrt(radius * radius + 2.25 * sample * sample
+                + 0.25 * reach * reach * soften * soften), reach);
+            let kept = radius / spread;
+            let fall = 1.0 - apart / reach;
+            light += amount * vec2<f32>(
+                lxb_wallpaper_sparkle_bump(apart / spread) * kept * kept,
+                fall * fall * fall,
+            );
+        }
+    }
+    return light;
+}
+
+fn lxb_wallpaper_sparkle_layer(
+    layer: LxbWallpaperSparkleLayer,
+    offset: f32,
+    swing: f32,
+    along: f32,
+    slope: f32,
+    lane: f32,
+    t: f32,
+    sample: f32,
+    soften: f32,
+) -> vec2<f32> {
+    let side = select(-1.0, 1.0, offset >= swing);
+    let reach_across = layer.reach * sqrt(1.0 + slope * slope);
+    let lag = select(0.0, (1.0 - layer.hold.x) * abs(swing), side * swing < 0.0);
+    if (abs(offset - swing) >= lane + lag + reach_across) {
+        return vec2<f32>(0.0);
+    }
+    var light = lxb_wallpaper_sparkle_half(layer, side, offset, swing, along, slope, lane, t, sample, soften);
+    if (abs(offset - swing) < reach_across) {
+        light += lxb_wallpaper_sparkle_half(layer, -side, offset, swing, along, slope, lane, t, sample, soften);
+    }
+    return light;
+}
+
+fn lxb_wallpaper_sparkles(
+    into: vec3<f32>,
+    uv: vec2<f32>,
+    aspect: f32,
+    t: f32,
+    soften: f32,
+    footprint: vec2<f32>,
+    spine: LxbWallpaperSpine,
+    accent: array<vec4<f32>, 3>,
+) -> vec3<f32> {
+    let offset = uv.y - LXB_WALLPAPER_SPINE_REST;
+    let swing = spine.height - LXB_WALLPAPER_SPINE_REST;
+    let slope = clamp(spine.slope, -LXB_WALLPAPER_SPARKLE_STEEPEST, LXB_WALLPAPER_SPARKLE_STEEPEST);
+    let lane = LXB_WALLPAPER_SPARKLE_LANE * (0.45 + 0.55 * spine.gather);
+    let behind = (offset - swing) * swing < 0.0;
+    let lag = select(0.0, (1.0 - min(LXB_WALLPAPER_SPARKLE_DUST.hold.x, LXB_WALLPAPER_SPARKLE_GLINTS.hold.x)) * abs(swing),
+                     behind);
+    if (abs(offset - swing) >= lane + lag + LXB_WALLPAPER_SPARKLE_GLINTS.reach * sqrt(1.0 + slope * slope)) {
+        return into;
+    }
+    let along = uv.x * aspect;
+    let sample = max(footprint.x * aspect, footprint.y);
+    let dust = lxb_wallpaper_sparkle_layer(LXB_WALLPAPER_SPARKLE_DUST, offset, swing, along, slope, lane, t, sample, soften);
+    let glints = lxb_wallpaper_sparkle_layer(LXB_WALLPAPER_SPARKLE_GLINTS, offset, swing, along, slope, lane, t, sample, soften);
+    let core = dust.x * LXB_WALLPAPER_SPARKLE_DUST.brightness.x + glints.x * LXB_WALLPAPER_SPARKLE_GLINTS.brightness.x;
+    let glow = dust.y * LXB_WALLPAPER_SPARKLE_DUST.brightness.y + glints.y * LXB_WALLPAPER_SPARKLE_GLINTS.brightness.y;
+    let hot = mix(accent[1].rgb, vec3<f32>(1.0), 0.45);
+    let haze = mix(accent[0].rgb, accent[1].rgb, 0.5);
+    return into + (hot * core + haze * glow) * mix(1.0, 0.5, soften);
+}
+
 fn lxb_wallpaper(
     uv: vec2<f32>,
     aspect: f32,
     time: f32,
     soften: f32,
     style: f32,
+    particles: f32,
     sky: array<vec4<f32>, 4>,
     accent: array<vec4<f32>, 3>,
     glow: vec4<f32>,
@@ -295,8 +572,10 @@ fn lxb_wallpaper(
     color += accent[0].rgb * current_light * 0.035
         * mix(1.0, 0.40, soften);
 
+    var spine = lxb_wallpaper_spine_at(uv.x, time, aspect);
     if (style > 0.5 && style < 1.5) {
         color = lxb_wallpaper_silk(color, uv, aspect, time, soften, accent);
+        spine = lxb_wallpaper_silk_spine(uv.x, time, aspect);
     } else {
         color = lxb_wallpaper_water(
             color,
@@ -305,6 +584,19 @@ fn lxb_wallpaper(
             time,
             soften,
             footprint,
+            spine,
+            accent,
+        );
+    }
+    if (particles > 0.5) {
+        color = lxb_wallpaper_sparkles(
+            color,
+            uv,
+            aspect,
+            time,
+            soften,
+            footprint,
+            spine,
             accent,
         );
     }

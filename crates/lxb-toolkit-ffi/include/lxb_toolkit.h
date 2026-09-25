@@ -169,6 +169,7 @@ typedef struct {
     unsigned long accent;
     int wallpaper;
     int icons;
+    int particles;
 } lxb_shell_theme;
 
 typedef struct lxb_accent lxb_accent;
@@ -199,6 +200,7 @@ typedef struct {
     lxb_rgba sky[4];
     lxb_rgba accent[3];
     lxb_rgba glow;
+    int particles;
 } lxb_scene;
 
 typedef struct {

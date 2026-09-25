@@ -192,10 +192,18 @@ mechanisms rather than relying on shell-private behavior.
 
 ## Theme and scale
 
-`ShellTheme::load()` reads the current user's `accent`, `theme-wallpaper`, and
-`theme-icons` from `$XDG_CONFIG_HOME/lxb/shell.toml` (or
+`ShellTheme::load()` reads the current user's `accent`, `theme-wallpaper`,
+`theme-icons` and `theme-particles` from `$XDG_CONFIG_HOME/lxb/shell.toml` (or
 `~/.config/lxb/shell.toml`), including the older single `theme` key. Missing,
-unreadable and unknown values safely produce Purple and the Default materials.
+unreadable and unknown values safely produce Purple, the Default materials and
+the sparkles.
+
+`particles` is the shell's Settings > Appearance > Theme > Particles: whether
+the wallpaper's current carries its sparkles — glitter born in the middle of
+the ribbon, pushed out of it and fading as it goes. The shell draws them until
+somebody turns them off, and only `theme-particles = false` turns them off
+here. Pass it to `Ui::begin` beside the wallpaper's material; `lxb-app` does
+that for you, and the processor's copy takes it as `Scene::particles`.
 
 This is a startup snapshot, not a live theme protocol: LineXinBar currently
 publishes no accent-change protocol to ordinary applications. Reload it when
@@ -220,7 +228,7 @@ It reads `LXB_BACKGROUND_HANDOFF` — a `key=value` record, `;` separated, ASCII
 at most 1024 bytes:
 
 ```text
-v=1;visual=lxb-wallpaper-v2;clock=linux-monotonic;boot=<boot id>;sample-ns=<n>;scene-ns=<n>;accent=<palette>[;theme=<Default|Simple>]
+v=1;visual=lxb-wallpaper-v6;clock=linux-monotonic;boot=<boot id>;sample-ns=<n>;scene-ns=<n>;accent=<palette>[;theme=<Default|Simple>][;particles=<on|off>]
 ```
 
 `sample-ns` is `CLOCK_MONOTONIC` when the record was written and `scene-ns` is
@@ -233,7 +241,10 @@ not from the future, and is under thirty seconds old. Anything else is refused
 with a line on stderr and the window comes up at the beginning of the
 animation, which is what a window with nothing to continue from does anyway.
 The accent in the record is **not** applied: `shell.toml` is the setting and a
-record that disagrees with it only says so. And the record is consumed — taken
+record that disagrees with it only says so. The same goes for `theme` and
+`particles`, which say what the login screen was drawing for a reader that
+cannot see the account's settings; they are read, kept canonical and written on
+again, and anything but `on` or `off` is no answer rather than a broken record. And the record is consumed — taken
 out of the environment before the window opens — so no child of the application
 inherits a one-shot record meant for it.
 
@@ -259,10 +270,22 @@ let clock = WallpaperClock::from_environment(theme.accent.name)
     .unwrap_or_else(WallpaperClock::local);
 
 // The wallpaper's second, which is the only one that came from elsewhere.
-ui.begin(width, height, clock.elapsed_secs(), &accent, theme.wallpaper, theme.icons);
+ui.begin(
+    width,
+    height,
+    clock.elapsed_secs(),
+    &accent,
+    theme.wallpaper,
+    theme.particles,
+    theme.icons,
+);
 
 // And handing it on to something you start yourself.
-if let Some(record) = clock.capture(theme.accent.name, Some(theme.wallpaper.name())) {
+if let Some(record) = clock.capture(
+    theme.accent.name,
+    Some(theme.wallpaper.name()),
+    Some(theme.particles),
+) {
     command.env(lxb_toolkit::handoff::ENV, record.encode());
 }
 ```
@@ -673,7 +696,7 @@ The same four calls exist in all three languages under the same names, and
 
 ```rust
 let mut ui = Ui::new(&instance, Some(&surface), format, width, height).await?;
-ui.begin(width, height, seconds, &accent, theme.wallpaper, theme.icons);
+ui.begin(width, height, seconds, &accent, theme.wallpaper, theme.particles, theme.icons);
 ui.pane(rect, Overlay::Dialog);          // real glass over the real wallpaper
 ui.icon(rect, "launch", theme.icons);    // a bead of water, not the SVG
 ui.spot(PLAY, rect);                     // where a pointer landing here lands

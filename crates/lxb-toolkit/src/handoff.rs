@@ -23,6 +23,7 @@ pub struct Handoff {
     pub scene_ns: u64,
     pub accent: String,
     pub theme: Option<String>,
+    pub particles: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +86,7 @@ impl Handoff {
         scene_ns: u64,
         accent: &str,
         theme: Option<&str>,
+        particles: Option<bool>,
     ) -> Option<Self> {
         if !valid_boot_id(&boot_id) || !canonical_accent(accent) {
             return None;
@@ -95,6 +97,7 @@ impl Handoff {
             scene_ns,
             accent: accent.to_string(),
             theme: theme.and_then(canonical_theme).map(str::to_string),
+            particles,
         })
     }
 
@@ -114,6 +117,7 @@ impl Handoff {
         let mut scene_ns = None;
         let mut accent = None;
         let mut theme = None;
+        let mut particles = None;
 
         for field in record.split(';') {
             let (key, value) = field.split_once('=').ok_or(Rejection::MalformedField)?;
@@ -130,6 +134,7 @@ impl Handoff {
                 "scene-ns" => &mut scene_ns,
                 "accent" => &mut accent,
                 "theme" => &mut theme,
+                "particles" => &mut particles,
                 _ => return Err(Rejection::UnknownField),
             };
             if slot.replace(value).is_some() {
@@ -167,6 +172,7 @@ impl Handoff {
             scene_ns: parse_decimal(scene_ns).ok_or(Rejection::InvalidScene)?,
             accent: accent.to_string(),
             theme: theme.and_then(canonical_theme).map(str::to_string),
+            particles: particles.and_then(canonical_particles),
         })
     }
 
@@ -178,6 +184,10 @@ impl Handoff {
         if let Some(theme) = &self.theme {
             record.push_str(";theme=");
             record.push_str(theme);
+        }
+        if let Some(particles) = self.particles {
+            record.push_str(";particles=");
+            record.push_str(if particles { "on" } else { "off" });
         }
         record
     }
@@ -208,6 +218,14 @@ pub fn canonical_theme(value: &str) -> Option<&'static str> {
     match WallpaperStyle::configured(value)? {
         WallpaperStyle::Default | WallpaperStyle::Custom => Some(WallpaperStyle::Default.name()),
         WallpaperStyle::Simple => Some(WallpaperStyle::Simple.name()),
+    }
+}
+
+pub fn canonical_particles(value: &str) -> Option<bool> {
+    match value {
+        "on" => Some(true),
+        "off" => Some(false),
+        _ => None,
     }
 }
 
@@ -260,7 +278,7 @@ mod tests {
     fn canonical_fixture_matches_the_display_manager_encoder() {
         assert_eq!(
             valid_record(),
-            "v=1;visual=lxb-wallpaper-v2;clock=linux-monotonic;boot=01234567-89ab-cdef-0123-456789abcdef;sample-ns=10000000000;scene-ns=42000000000;accent=Blue"
+            "v=1;visual=lxb-wallpaper-v6;clock=linux-monotonic;boot=01234567-89ab-cdef-0123-456789abcdef;sample-ns=10000000000;scene-ns=42000000000;accent=Blue"
         );
     }
 
@@ -272,6 +290,7 @@ mod tests {
         assert_eq!(handoff.scene_ns, 42_000_000_000);
         assert_eq!(handoff.accent, "Blue");
         assert_eq!(handoff.theme, None);
+        assert_eq!(handoff.particles, None);
     }
 
     #[test]
@@ -280,17 +299,33 @@ mod tests {
         assert_eq!(handoff.encode(), valid_record());
         assert_eq!(handoff.environment(), format!("{ENV}={}", valid_record()));
 
-        let dressed = Handoff::of(BOOT_ID.to_string(), 2, 4, "Blue", Some("Simple"))
+        let dressed = Handoff::of(BOOT_ID.to_string(), 2, 4, "Blue", Some("Simple"), None)
             .expect("a canonical accent");
         assert!(dressed.encode().ends_with(";theme=Simple"));
         assert_eq!(Handoff::parse(&dressed.encode()), Ok(dressed));
 
+        let lit = Handoff::of(
+            BOOT_ID.to_string(),
+            2,
+            4,
+            "Blue",
+            Some("Default"),
+            Some(true),
+        )
+        .expect("a canonical accent");
+        assert!(lit.encode().ends_with(";theme=Default;particles=on"));
+        assert_eq!(Handoff::parse(&lit.encode()), Ok(lit));
+        let dark = Handoff::of(BOOT_ID.to_string(), 2, 4, "Blue", None, Some(false))
+            .expect("a canonical accent");
+        assert!(dark.encode().ends_with(";accent=Blue;particles=off"));
+        assert_eq!(Handoff::parse(&dark.encode()), Ok(dark));
+
         assert_eq!(
-            Handoff::of(BOOT_ID.to_string(), 2, 4, "Chartreuse", None),
+            Handoff::of(BOOT_ID.to_string(), 2, 4, "Chartreuse", None, None),
             None
         );
         assert_eq!(
-            Handoff::of("not-a-boot-id".to_string(), 2, 4, "Blue", None),
+            Handoff::of("not-a-boot-id".to_string(), 2, 4, "Blue", None, None),
             None
         );
     }
@@ -374,6 +409,23 @@ mod tests {
         );
         assert_eq!(
             Handoff::parse(&format!("{plain};theme=Simple;theme=Default")).unwrap_err(),
+            Rejection::DuplicateField
+        );
+    }
+
+    #[test]
+    fn sparkles_it_cannot_read_are_no_answer_rather_than_a_broken_record() {
+        let plain = valid_record();
+        let particles = |field: &str| {
+            Handoff::parse(&format!("{plain};{field}"))
+                .expect("still a usable phase")
+                .particles
+        };
+        assert_eq!(particles("particles=on"), Some(true));
+        assert_eq!(particles("particles=off"), Some(false));
+        assert_eq!(particles("particles=sometimes"), None);
+        assert_eq!(
+            Handoff::parse(&format!("{plain};particles=on;particles=off")).unwrap_err(),
             Rejection::DuplicateField
         );
     }

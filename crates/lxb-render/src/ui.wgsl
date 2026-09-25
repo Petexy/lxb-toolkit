@@ -18,6 +18,8 @@ struct Frame {
     sky: array<vec4<f32>, 4>,
     accent: array<vec4<f32>, 3>,
     glow: vec4<f32>,
+
+    wallpaper: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -92,7 +94,8 @@ fn wallpaper_at(pixel: vec2<f32>, soften: f32) -> vec3<f32> {
         resolution.x / resolution.y,
         frame.resolution.z,
         clamp(soften, 0.0, 1.0),
-        frame.resolution.w,
+        frame.wallpaper.x,
+        frame.wallpaper.y,
         frame.sky,
         frame.accent,
         frame.glow,

@@ -17,6 +17,7 @@ fn main() -> Result<(), String> {
         8.0,
         &accent,
         theme.wallpaper,
+        theme.particles,
         theme.icons,
     );
 

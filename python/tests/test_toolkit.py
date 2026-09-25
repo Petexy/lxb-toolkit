@@ -125,7 +125,8 @@ def test_the_current_shell_theme_crosses_all_three_languages():
         settings.write_text(
             'accent = "Yellow"\n'
             'theme-wallpaper = "Custom wallpaper"\n'
-            'theme-icons = "Simple"\n',
+            'theme-icons = "Simple"\n'
+            'theme-particles = false\n',
             encoding="utf-8",
         )
         previous = os.environ.get("XDG_CONFIG_HOME")
@@ -135,12 +136,14 @@ def test_the_current_shell_theme_crosses_all_three_languages():
             assert theme.accent.name == "Yellow"
             assert theme.wallpaper is lxb.WallpaperStyle.CUSTOM
             assert theme.icons is lxb.IconStyle.SIMPLE
+            assert theme.particles is False
 
             settings.write_text('accent = "Green"\ntheme = "Simple"\n', encoding="utf-8")
             legacy = lxb.ShellTheme.load()
             assert legacy.accent.name == "Green"
             assert legacy.wallpaper is lxb.WallpaperStyle.SIMPLE
             assert legacy.icons is lxb.IconStyle.SIMPLE
+            assert legacy.particles is True
         finally:
             if previous is None:
                 os.environ.pop("XDG_CONFIG_HOME", None)
@@ -471,7 +474,7 @@ def test_a_press_is_a_journey_rather_than_a_state():
 
 
 def test_the_assets_are_really_here():
-    assert len(lxb.GLYPHS) == 108
+    assert len(lxb.GLYPHS) == 109
     assert len(lxb.SOUNDS) == 14
     assert len(lxb.SHELL_SOUNDS) == 12
     assert set(lxb.SOUNDS) - set(lxb.SHELL_SOUNDS) == {"trash", "error"}
@@ -587,6 +590,16 @@ def test_the_painter_draws_the_material_rather_than_a_picture_of_it():
     assert at(2, 2) != at(40, 30), "a wallpaper with one colour in it is a fill"
     assert all(pixels[i] == 0xFF for i in range(3, len(pixels), 4))
 
+    # The sparkles are on unless turned off, and they only add light.
+    assert scene.particles is True
+    wide, tall = 320, 180
+    plain = bytearray(wide * 4 * tall)
+    lit = bytearray(wide * 4 * tall)
+    paint.wallpaper(paint.Canvas(plain, wide, tall, wide * 4),
+                    paint.scene(lxb.PALETTES[0], 10.0, particles=False))
+    paint.wallpaper(paint.Canvas(lit, wide, tall, wide * 4), scene)
+    assert lit != plain, "no sparkle was drawn"
+    assert all(a >= b for a, b in zip(lit, plain)), "the sparkles took light away"
     quiet = bytearray(stride * height)
     scene.soften = paint.WALLPAPER_SOFTEN
     paint.wallpaper(paint.Canvas(quiet, width, height, stride), scene)

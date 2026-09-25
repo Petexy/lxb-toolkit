@@ -234,7 +234,15 @@ fn start(
     height: f32,
     seconds: f32,
 ) -> [f32; 4] {
-    ui.begin(width, height, seconds, accent, theme.wallpaper, theme.icons);
+    ui.begin(
+        width,
+        height,
+        seconds,
+        accent,
+        theme.wallpaper,
+        theme.particles,
+        theme.icons,
+    );
     if !app.page {
         return [0.0, 0.0, width, height];
     }
@@ -1793,6 +1801,7 @@ mod tests {
                     now_ns,
                     42_000_000_000,
                     accent,
+                    None,
                     None,
                 )
                 .expect("a canonical accent and this machine's boot id")

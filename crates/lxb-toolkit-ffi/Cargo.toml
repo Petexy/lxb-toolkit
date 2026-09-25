@@ -13,4 +13,4 @@ name = "lxb_toolkit"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.0" }
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.1" }

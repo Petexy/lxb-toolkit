@@ -4830,6 +4830,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
 
@@ -4952,6 +4953,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
 
@@ -5027,6 +5029,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
 
@@ -5077,6 +5080,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
 
@@ -5146,6 +5150,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
 
@@ -5216,6 +5221,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
 
@@ -5252,6 +5258,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
 
@@ -5318,6 +5325,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
 
@@ -5354,6 +5362,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
 
@@ -5386,6 +5395,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
 
@@ -5435,6 +5445,7 @@ mod tests {
                 10.0,
                 &accent,
                 lxb_toolkit::settings::WallpaperStyle::Default,
+                false,
                 IconStyle::Default,
             );
             let rows = 16;
@@ -5552,6 +5563,7 @@ mod tests {
                 10.0,
                 &accent,
                 lxb_toolkit::settings::WallpaperStyle::Default,
+                false,
                 IconStyle::Default,
             );
             let rows = 16;
@@ -6485,6 +6497,7 @@ mod tests {
                 10.0,
                 &accent,
                 lxb_toolkit::settings::WallpaperStyle::Default,
+                false,
                 IconStyle::Default,
             );
             ui.file_picker(&mut picker);
@@ -6568,6 +6581,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
         ui.file_picker(&mut picker);
@@ -6647,6 +6661,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
         ui.file_picker(&mut picker);
@@ -6726,6 +6741,7 @@ mod tests {
             10.0,
             &accent,
             lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
             IconStyle::Default,
         );
         ui.pane([20.0, 20.0, 1240.0, 760.0], Overlay::Dialog);

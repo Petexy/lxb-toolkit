@@ -214,6 +214,7 @@ pub(crate) struct Scene {
     pub height: f32,
     pub time: f32,
     pub wallpaper_style: f32,
+    pub particles: f32,
     pub sky: [[f32; 4]; 4],
     pub accent: [[f32; 4]; 3],
     pub glow: [f32; 4],
@@ -228,6 +229,7 @@ struct Frame {
     sky: [[f32; 4]; 4],
     accent: [[f32; 4]; 3],
     glow: [f32; 4],
+    wallpaper: [f32; 4],
 }
 
 struct Target {
@@ -1200,7 +1202,7 @@ impl Ui {
             &self.frame_buffer,
             0,
             bytemuck::bytes_of(&Frame {
-                resolution: [scene.width, scene.height, scene.time, scene.wallpaper_style],
+                resolution: [scene.width, scene.height, scene.time, 0.0],
                 atlas_size: [
                     1.0 / self.atlas_size[0],
                     1.0 / self.atlas_size[1],
@@ -1210,6 +1212,7 @@ impl Ui {
                 sky: scene.sky,
                 accent: scene.accent,
                 glow: scene.glow,
+                wallpaper: [scene.wallpaper_style, scene.particles, 0.0, 0.0],
             }),
         );
 
@@ -1576,6 +1579,7 @@ pub struct Written {
 }
 
 impl Ui {
+    #[allow(clippy::too_many_arguments)]
     pub fn begin(
         &mut self,
         width: f32,
@@ -1583,6 +1587,7 @@ impl Ui {
         seconds: f32,
         accent: &lxb_toolkit::accent::Accent,
         wallpaper: lxb_toolkit::settings::WallpaperStyle,
+        particles: bool,
         icons: lxb_toolkit::settings::IconStyle,
     ) {
         self.thumbnail_frame = self.thumbnail_frame.wrapping_add(1);
@@ -1611,6 +1616,7 @@ impl Ui {
             height,
             time: seconds,
             wallpaper_style: lxb_toolkit::wallpaper::shader_style(wallpaper),
+            particles: lxb_toolkit::wallpaper::shader_particles(particles),
             sky: [
                 role(lxb_toolkit::palette::Role::SkyTop),
                 role(lxb_toolkit::palette::Role::SkyBottom),

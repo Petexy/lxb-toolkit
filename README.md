@@ -9,7 +9,7 @@ not the shell can be built out of the same material and sit beside it.
 ![The toolkit's own tour: the colour roles, and all 108 marks](docs/tour.png)
 
 [![Licence](https://img.shields.io/badge/licence-GPL--3.0--only-blue)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.9.0-informational)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.9.1-informational)](VERSION)
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange)](Cargo.toml)
 [![API](https://img.shields.io/badge/API-Rust%20%7C%20C%20%7C%20Python%20%7C%20CSS-brightgreen)](docs/api-reference.md)
 

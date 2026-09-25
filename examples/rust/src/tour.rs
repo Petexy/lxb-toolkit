@@ -285,6 +285,7 @@ impl Tour {
             elapsed,
             &self.accent,
             self.theme.wallpaper,
+            self.theme.particles,
             self.theme.icons,
         );
 

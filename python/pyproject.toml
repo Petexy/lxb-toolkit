@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lxb-toolkit"
-version = "0.9.0"
+version = "0.9.1"
 description = "The LineXinBar design language: colour roles, glass, motion, type, marks and sounds"
 readme = "README.md"
 requires-python = ">=3.9"

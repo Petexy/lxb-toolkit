@@ -3,11 +3,15 @@ use crate::{
     settings::WallpaperStyle,
 };
 
-pub const VISUAL: &str = "lxb-wallpaper-v2";
+pub const VISUAL: &str = "lxb-wallpaper-v6";
 
 pub const STYLE_DEFAULT: f32 = 0.0;
 
 pub const STYLE_SIMPLE: f32 = 1.0;
+
+pub const PARTICLES_OFF: f32 = 0.0;
+
+pub const PARTICLES_ON: f32 = 1.0;
 
 pub const KEY_LIGHT: [f32; 3] = [-0.42, -0.66, 0.62];
 
@@ -55,6 +59,14 @@ pub const fn shader_style(style: WallpaperStyle) -> f32 {
     }
 }
 
+pub const fn shader_particles(particles: bool) -> f32 {
+    if particles {
+        PARTICLES_ON
+    } else {
+        PARTICLES_OFF
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,6 +77,13 @@ mod tests {
         assert_eq!(shader_style(WallpaperStyle::Default), STYLE_DEFAULT);
         assert_eq!(shader_style(WallpaperStyle::Simple), STYLE_SIMPLE);
         assert_eq!(shader_style(WallpaperStyle::Custom), STYLE_DEFAULT);
+    }
+
+    #[test]
+    fn particles_are_one_where_drawn_and_nought_where_not() {
+        assert_eq!(shader_particles(true), PARTICLES_ON);
+        assert_eq!(shader_particles(false), PARTICLES_OFF);
+        assert_eq!(PARTICLES_OFF, 0.0);
     }
 
     #[test]

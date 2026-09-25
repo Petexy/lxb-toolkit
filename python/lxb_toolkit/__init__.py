@@ -365,6 +365,7 @@ class _Scene(ctypes.Structure):
         ("sky", _Rgba * 4),
         ("accent", _Rgba * 3),
         ("glow", _Rgba),
+        ("particles", ctypes.c_int),
     ]
 
 
@@ -415,7 +416,8 @@ class _Bytes(ctypes.Structure):
 class _ShellTheme(ctypes.Structure):
     _fields_ = [("accent", ctypes.c_ulong),
                 ("wallpaper", ctypes.c_int),
-                ("icons", ctypes.c_int)]
+                ("icons", ctypes.c_int),
+                ("particles", ctypes.c_int)]
 
 
 _SIZE = ctypes.c_ulong
@@ -853,15 +855,18 @@ PALETTES: tuple[Palette, ...] = tuple(
 
 @dataclass(frozen=True)
 class ShellTheme:
-    """The current shell accent, wallpaper and icon materials.
+    """The current shell accent, wallpaper and icon materials, and whether the
+    wallpaper's current carries its sparkles.
 
     Applications only read this setting. Missing, unreadable and unknown
-    configuration is represented by Purple and the Default materials.
+    configuration is represented by Purple, the Default materials and the
+    sparkles.
     """
 
     accent: Palette
     wallpaper: WallpaperStyle
     icons: IconStyle
+    particles: bool = True
 
     @classmethod
     def load(cls) -> "ShellTheme":
@@ -876,7 +881,7 @@ class ShellTheme:
             icons = IconStyle(got.icons)
         except ValueError:
             icons = IconStyle.DEFAULT
-        return cls(accent, wallpaper, icons)
+        return cls(accent, wallpaper, icons, bool(got.particles))
 
 
 def palette(name: str) -> Palette | None:

@@ -141,6 +141,9 @@ class Scene:
     1 for the blurred, dimmed variant — :data:`WALLPAPER_SOFTEN` is the amount
     to use when an interface is standing on it. A custom wallpaper is not
     something arithmetic can produce, so it draws the Default water.
+    ``particles`` draws the sparkles the current carries, which the shell
+    draws until somebody turns them off — pass
+    :attr:`~lxb_toolkit.ShellTheme.particles` to follow it.
     """
 
     time: float = 0.0
@@ -149,6 +152,7 @@ class Scene:
     sky: tuple = ()
     accent: tuple = ()
     glow: tuple = field(default=(0.0, 0.0, 0.0, 1.0))
+    particles: bool = True
 
     def _raw(self) -> _Scene:
         raw = _Scene()
@@ -162,11 +166,13 @@ class Scene:
         for index, colour in enumerate(self.accent):
             raw.accent[index] = _rgba(colour)
         raw.glow = _rgba(self.glow)
+        raw.particles = 1 if self.particles else 0
         return raw
 
 
 def scene(palette, time: float, soften: float = 0.0,
-          style: WallpaperStyle = WallpaperStyle.DEFAULT) -> Scene:
+          style: WallpaperStyle = WallpaperStyle.DEFAULT,
+          particles: bool = True) -> Scene:
     """The scene a palette draws, at a moment.
 
     ``palette`` is a :class:`~lxb_toolkit.Palette` or a travelling
@@ -186,6 +192,7 @@ def scene(palette, time: float, soften: float = 0.0,
         sky=tuple((c.r, c.g, c.b, c.a) for c in got.sky),
         accent=tuple((c.r, c.g, c.b, c.a) for c in got.accent),
         glow=(got.glow.r, got.glow.g, got.glow.b, got.glow.a),
+        particles=particles,
     )
 
 

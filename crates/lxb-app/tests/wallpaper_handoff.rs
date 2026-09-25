@@ -12,9 +12,16 @@ fn the_environment_hands_the_phase_over_once_and_then_says_nothing() {
         return;
     };
     let theme = lxb_toolkit::settings::ShellTheme::load();
-    let record = Handoff::of(boot_id, now_ns, 42_000_000_000, theme.accent.name, None)
-        .expect("a canonical accent and this machine's boot id")
-        .encode();
+    let record = Handoff::of(
+        boot_id,
+        now_ns,
+        42_000_000_000,
+        theme.accent.name,
+        None,
+        None,
+    )
+    .expect("a canonical accent and this machine's boot id")
+    .encode();
 
     std::env::set_var(handoff::ENV, &record);
     let clock = WallpaperClock::from_environment(theme.accent.name)

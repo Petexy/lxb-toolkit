@@ -229,6 +229,7 @@ pub struct LxbShellTheme {
     pub accent: Size,
     pub wallpaper: c_int,
     pub icons: c_int,
+    pub particles: c_int,
 }
 
 impl From<ShellTheme> for LxbShellTheme {
@@ -237,6 +238,7 @@ impl From<ShellTheme> for LxbShellTheme {
             accent: lxb_toolkit::palette::palette_index(theme.accent.name).unwrap_or(0) as Size,
             wallpaper: theme.wallpaper as c_int,
             icons: theme.icons as c_int,
+            particles: c_int::from(theme.particles),
         }
     }
 }
@@ -1895,6 +1897,7 @@ pub struct LxbScene {
     pub sky: [LxbRgba; 4],
     pub accent: [LxbRgba; 3],
     pub glow: LxbRgba,
+    pub particles: c_int,
 }
 
 #[repr(C)]
@@ -2005,6 +2008,7 @@ fn scene_of(scene: &lxb_toolkit::paint::Scene) -> LxbScene {
             rgba(scene.palette.accent[2]),
         ],
         glow: rgba(scene.palette.glow),
+        particles: c_int::from(scene.particles),
     }
 }
 
@@ -2015,6 +2019,7 @@ fn scene_from(scene: &LxbScene) -> lxb_toolkit::paint::Scene {
         style: *WallpaperStyle::ALL
             .get(scene.style as usize)
             .unwrap_or(&WallpaperStyle::Default),
+        particles: scene.particles != 0,
         palette: lxb_toolkit::wallpaper::ShaderPalette {
             sky: [
                 linear(scene.sky[0]),
@@ -2677,6 +2682,7 @@ mod tests {
         assert_eq!(theme.accent, 0);
         assert_eq!(theme.wallpaper, WallpaperStyle::Default as c_int);
         assert_eq!(theme.icons, IconStyle::Default as c_int);
+        assert_eq!(theme.particles, 1);
         assert_eq!(lxb_wallpaper_style_count(), 3);
         assert_eq!(lxb_icon_style_count(), 2);
         let shader = lxb_wallpaper_wgsl();
@@ -2943,7 +2949,15 @@ mod tests {
         );
         assert_eq!(
             header_struct("lxb_scene"),
-            ["time", "soften", "style", "sky[4]", "accent[3]", "glow"]
+            [
+                "time",
+                "soften",
+                "style",
+                "sky[4]",
+                "accent[3]",
+                "glow",
+                "particles"
+            ]
         );
         let pane = [
             "x", "y", "width", "height", "radius", "power", "glass", "tint", "opacity",
@@ -2976,6 +2990,15 @@ mod tests {
         let back = scene_from(&scene);
         assert_eq!(back.time, 7.5);
         assert_eq!(back.palette.sky[0], sky);
+        assert_eq!(scene.particles, 1);
+        assert!(back.particles);
+        assert!(
+            !scene_from(&LxbScene {
+                particles: 0,
+                ..scene
+            })
+            .particles
+        );
         assert_eq!(lxb_wallpaper_soften(), lxb_toolkit::wallpaper::SOFTEN);
     }
 

@@ -13,13 +13,13 @@ publish = false
 [workspace]
 
 [dependencies]
-lxb-toolkit = { path = "../../crates/lxb-toolkit", version = "0.9.0" }
-lxb-render = { path = "../../crates/lxb-render", version = "0.9.0" }
-lxb-input = { path = "../../crates/lxb-input", version = "0.9.0", features = [
+lxb-toolkit = { path = "../../crates/lxb-toolkit", version = "0.9.1" }
+lxb-render = { path = "../../crates/lxb-render", version = "0.9.1" }
+lxb-input = { path = "../../crates/lxb-input", version = "0.9.1", features = [
     "winit",
 ] }
-lxb-sound = { path = "../../crates/lxb-sound", version = "0.9.0" }
-lxb-portal = { path = "../../crates/lxb-portal", version = "0.9.0" }
+lxb-sound = { path = "../../crates/lxb-sound", version = "0.9.1" }
+lxb-portal = { path = "../../crates/lxb-portal", version = "0.9.1" }
 
 png = "0.17"
 pollster = "0.4"

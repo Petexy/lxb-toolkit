@@ -272,6 +272,57 @@ shader_body_hash() {
         | grep -v '^$' | sha256sum | awk '{print $1}'
 }
 
+# The same, for the wallpaper module: its names carry the module's own prefix
+# as well as the library's, so the shell's `sparkle_hash` and the shipped
+# `lxb_wallpaper_sparkle_hash` — and the shell's `Spine` and the shipped
+# `LxbWallpaperSpine` — hash the same when they are the same arithmetic. The
+# one thing the shipped module is handed rather than reading from a uniform is
+# the accent, so the shell's `globals.accent` is read as that argument and the
+# argument's own declaration goes.
+wallpaper_body() {
+    printf '%s\n' "$1" \
+        | sed -e 's#//.*##' -e 's/LXB_WALLPAPER_//g' -e 's/lxb_wallpaper_//g' \
+              -e 's/LxbWallpaper//g' -e 's/globals\.accent/accent/g' \
+              -e 's/[[:space:]]//g' -e '/^accent:array<vec4<f32>,3>,$/d' \
+        | grep -v '^$' | sha256sum | awk '{print $1}'
+}
+
+wallpaper_function_hash() {
+    local label=$1
+    local file=$2
+    local name=$3
+    local body
+    body=$(sed -n "/^fn $name(/,/^}/p" "$file")
+    [[ -n "$body" ]] || fail_setup "$label" "function $name not found in $file"
+    wallpaper_body "$body"
+}
+
+# One top-level declaration: a constant up to its semicolon, or a structure up
+# to its closing brace.
+declaration() {
+    local label=$1
+    local file=$2
+    local name=$3
+    local body
+    body=$(awk -v name="$name" '
+        !found && index($0, "const " name ":") == 1 { found = 1 }
+        found { print; if ($0 ~ /;[[:space:]]*$/) exit }' "$file")
+    [[ -n "$body" ]] || body=$(awk -v name="$name" '
+        !found && index($0, "struct " name " {") == 1 { found = 1 }
+        found { print; if ($0 ~ /^}/) exit }' "$file")
+    [[ -n "$body" ]] || fail_setup "$label" "declaration $name not found in $file"
+    printf '%s\n' "$body"
+}
+
+# Every number in a declaration, in order — whole numbers too, because a seed
+# is one — for a constant written as a WGSL constructor on one side and a Rust
+# struct literal on the other.
+declaration_numbers() {
+    printf '%s\n' "$1" \
+        | sed -e 's#//.*##' -e 's/vec[234]<f32>//g' -e 's/[fiu]32//g' \
+        | grep -oE '[0-9][0-9_]*(\.[0-9]+)?' | tr -d '_' | tr '\n' ' '
+}
+
 # A line the file has to contain, verbatim once whitespace is normalised.
 file_contains() {
     local label=$1
@@ -628,6 +679,17 @@ for mapping in \
     "water $toolkit_wallpaper_shader lxb_wallpaper_water water" \
     "silk $toolkit_wallpaper_shader lxb_wallpaper_silk silk" \
     "field $toolkit_wallpaper_shader lxb_wallpaper_ambient_field ambient_field" \
+    "spine $toolkit_wallpaper_shader lxb_wallpaper_spine_at spine_at" \
+    "silk-spine $toolkit_wallpaper_shader lxb_wallpaper_silk_spine silk_spine" \
+    "sparkle-unit $toolkit_wallpaper_shader lxb_wallpaper_sparkle_unit sparkle_unit" \
+    "sparkle-pushed $toolkit_wallpaper_shader lxb_wallpaper_sparkle_pushed sparkle_pushed" \
+    "sparkle-unpushed $toolkit_wallpaper_shader lxb_wallpaper_sparkle_unpushed sparkle_unpushed" \
+    "sparkle-hold $toolkit_wallpaper_shader lxb_wallpaper_sparkle_hold sparkle_hold" \
+    "sparkle-unheld $toolkit_wallpaper_shader lxb_wallpaper_sparkle_unheld sparkle_unheld" \
+    "sparkle-bump $toolkit_wallpaper_shader lxb_wallpaper_sparkle_bump sparkle_bump" \
+    "sparkle-half $toolkit_wallpaper_shader lxb_wallpaper_sparkle_half sparkle_half" \
+    "sparkle-layer $toolkit_wallpaper_shader lxb_wallpaper_sparkle_layer sparkle_layer" \
+    "sparkles $toolkit_wallpaper_shader lxb_wallpaper_sparkles sparkles" \
     "glyph-simple $toolkit_glyph_shader lxb_glyph_simple glyph_simple" \
     "glyph-default $toolkit_glyph_shader lxb_glyph_default glyph_default" \
     "glyph-coverage $toolkit_glyph_shader lxb_glyph_coverage coverage_of"; do
@@ -948,9 +1010,9 @@ for mapping in \
         "$(wgsl_scalar "wallpaper.$label.asset" "$toolkit_wallpaper_shader" "$shader_name")"
 done
 for mapping in \
-    'water 68f6fd6b4b3f202d479e21b3586d5ea276c04d9cd23e14644a921b236e0bf35b' \
+    'water c8ab8ac33019654e9836b86bcd6c4799b88e6d666e7dc2ab0e61b64a37c28544' \
     'silk 3ab33633ad66658c4f0a8b3e75051373c04038f7dc73eaf37e440240486831ad' \
-    'wallpaper 636cc1610a4cf73c95debc952da61cb1e8fa1aa16b93ead75077e3aea2cadb5a' \
+    'wallpaper 6fa870d7761f37fba79043465b020c3a4faa4e318a3dcdefc6e52d3c11e545e5' \
     'over_the_wallpaper b1e529ca0a75e9aa04d71613b25127e867dd3f1de0dd40c19a6bf53ecd05df40' \
     'ambient_field 4ddb8b9a40e94f936978b46f768ae416d1014e31048df4759affc0c9a8f86cc5' \
     'bevel_rise 69807eaf7ef5ba36426bcaf86c7f8b219747afd33d0781392ae42f3ff08b76ff' \
@@ -959,6 +1021,41 @@ for mapping in \
     compare_text "wallpaper.arithmetic.$function" \
         "$(function_hash "wallpaper.arithmetic.$function" "$project_shader" "$function")" \
         "$expected"
+done
+
+# The sparkles the current carries, and the spine they are shed from. These
+# the shipped module takes from the shell whole, so they are compared as the
+# shell's own text rather than pinned: a change there fails here until it has
+# been carried over, and the shipped copy cannot drift on its own.
+for name in spine_at silk_spine sparkle_hash sparkle_unit sparkle_bits \
+    sparkle_pushed sparkle_unpushed sparkle_hold sparkle_unheld sparkle_bump \
+    sparkle_half sparkle_layer sparkles; do
+    compare_text "wallpaper.sparkles.$name" \
+        "$(wallpaper_function_hash "wallpaper.sparkles.$name.project" "$project_shader" "$name")" \
+        "$(wallpaper_function_hash "wallpaper.sparkles.$name.toolkit" \
+            "$toolkit_wallpaper_shader" "lxb_wallpaper_$name")"
+done
+for name in Spine SPINE_REST SPARKLE_LANE SPARKLE_BIRTH SPARKLE_SQUEEZE \
+    SPARKLE_SINK SPARKLE_STEEPEST SparkleLayer SPARKLE_DUST SPARKLE_GLINTS; do
+    case $name in
+        [A-Z][a-z]*) toolkit_name="LxbWallpaper$name" ;;
+        *) toolkit_name="LXB_WALLPAPER_$name" ;;
+    esac
+    compare_text "wallpaper.sparkles.$name" \
+        "$(wallpaper_body "$(declaration "wallpaper.sparkles.$name.project" \
+            "$project_shader" "$name")")" \
+        "$(wallpaper_body "$(declaration "wallpaper.sparkles.$name.toolkit" \
+            "$toolkit_wallpaper_shader" "$toolkit_name")")"
+done
+# And the constants the processor's copy draws with, number for number in the
+# order they are written: a depth's seed, its cells, its pace and its light.
+for name in SPINE_REST SPARKLE_LANE SPARKLE_BIRTH SPARKLE_SQUEEZE SPARKLE_SINK \
+    SPARKLE_STEEPEST SPARKLE_DUST SPARKLE_GLINTS; do
+    compare_text "paint.constant.$name" \
+        "$(declaration_numbers "$(declaration "paint.constant.$name.shader" \
+            "$toolkit_wallpaper_shader" "LXB_WALLPAPER_$name")")" \
+        "$(declaration_numbers "$(declaration "paint.constant.$name.cpu" \
+            "$toolkit_paint" "$name")")"
 done
 
 # Colour, by role. Twelve palettes of fourteen roles each: 168 authored

@@ -170,7 +170,7 @@ unsigned long lxb_wallpaper_style_count(void);
 const char *lxb_wallpaper_style_name(unsigned long index);
 ```
 
-Read $XDG_CONFIG_HOME/lxb/shell.toml, falling back through HOME. Missing, unreadable and unknown values safely return Purple and Default.
+Read $XDG_CONFIG_HOME/lxb/shell.toml, falling back through HOME. Missing, unreadable and unknown values safely return Purple, Default and the sparkles: `particles` is 0 only where the file says `theme-particles = false`.
 
 `lxb_shell_theme_load`
 
@@ -643,7 +643,7 @@ The shading itself, in WGSL. See the comment at the top of that file.
 lxb_bytes lxb_glass_wgsl(void);
 ```
 
-The binding-free current Default-water / Simple-silk wallpaper module.
+The binding-free current Default-water / Simple-silk wallpaper module, with the sparkles its current carries. `lxb_wallpaper(uv, aspect, time, soften, style, particles, sky, accent, glow, footprint)` draws them where `particles` is above one half.
 
 `lxb_wallpaper_wgsl`
 
@@ -1138,7 +1138,9 @@ Three of the four things above ship as WGSL, and running WGSL needs a renderer. 
 
 Each returns 1, or 0 for a canvas it cannot draw on. Each draws on every core the machine has. The scene is thirty-odd transcendental functions per pixel, so a program that wants it cheaply should fill a smaller canvas and scale that up with its own painter — every term in it is broad enough to survive that.
 
-lxb_canvas canvas = { data, width, height, stride }; lxb_scene scene = lxb_scene_for(theme.accent, seconds); scene.soften = lxb_wallpaper_soften(); lxb_paint_wallpaper(&canvas, &scene); lxb_paint_glass(&canvas, &pane);
+lxb_canvas canvas = { data, width, height, stride }; lxb_scene scene = lxb_scene_for(theme.accent, seconds); scene.soften = lxb_wallpaper_soften(); scene.particles = theme.particles; lxb_paint_wallpaper(&canvas, &scene); lxb_paint_glass(&canvas, &pane);
+
+A scene comes back with `particles` at 1, which is the shell's own default; set it from `lxb_shell_theme` to leave the sparkles out where the user has turned them off.
 
 `lxb_scene_for`
 

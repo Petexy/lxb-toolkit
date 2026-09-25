@@ -12,4 +12,4 @@ publish = false
 [workspace]
 
 [dependencies]
-lxb-app = { path = "../../crates/lxb-app", version = "0.9.0" }
+lxb-app = { path = "../../crates/lxb-app", version = "0.9.1" }

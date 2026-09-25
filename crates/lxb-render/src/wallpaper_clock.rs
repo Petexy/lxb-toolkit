@@ -64,13 +64,19 @@ impl WallpaperClock {
         handoff::scene_seconds(self.elapsed_ns())
     }
 
-    pub fn capture(&self, accent: &str, theme: Option<&str>) -> Option<Handoff> {
+    pub fn capture(
+        &self,
+        accent: &str,
+        theme: Option<&str>,
+        particles: Option<bool>,
+    ) -> Option<Handoff> {
         Handoff::of(
             handoff::boot_id().ok()?,
             monotonic_now_ns().ok()?,
             self.elapsed_ns(),
             accent,
             theme,
+            particles,
         )
     }
 }
@@ -107,7 +113,7 @@ mod tests {
             started: Instant::now(),
             scene_ns_at_start: scene_ns,
         }
-        .capture("Purple", None)
+        .capture("Purple", None, None)
         .expect("a machine with a monotonic clock and a boot id")
         .encode()
     }
@@ -150,9 +156,10 @@ mod tests {
         let carried = WallpaperClock::from_record(&record(9_000_000_000), "Purple")
             .expect("a record this machine wrote a moment ago");
         let onwards = carried
-            .capture("Purple", Some("Simple"))
+            .capture("Purple", Some("Simple"), Some(true))
             .expect("a machine with a monotonic clock and a boot id");
         assert_eq!(onwards.theme.as_deref(), Some("Simple"));
+        assert_eq!(onwards.particles, Some(true));
 
         let next = WallpaperClock::from_record(&onwards.encode(), "Purple")
             .expect("the record it just wrote");

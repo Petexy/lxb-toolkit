@@ -13,4 +13,4 @@ name = "lxb_app"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-lxb-app = { path = "../lxb-app", version = "0.9.0" }
+lxb-app = { path = "../lxb-app", version = "0.9.1" }

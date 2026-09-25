@@ -1,5 +1,5 @@
 Name:           lxb-toolkit
-Version:        0.9.0
+Version:        0.9.1
 Release:        1%{?dist}
 Summary:        The LineXinBar design language, for applications built to sit beside it
 
@@ -156,6 +156,24 @@ cargo test --offline --locked -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lx
 %{python3_sitelib}/lxb_toolkit-%{version}.dist-info/
 
 %changelog
+* Thu Sep 24 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.9.1-1
+- Released with LineXinBar 0.9.1 and transcribed from it. The controls the
+  toolkit draws speak the session's language, in the ten the shell does —
+  Deutsch, English (UK) and (US), Español, Français, हिन्दी, Polski,
+  Português (Brasil), Русский and 简体中文 — with the two Noto faces that make
+  Hindi and Chinese drawable on a machine that has no fonts of its own.
+- The wallpaper carries the shell's sparkles and follows Theme > Particles.
+  Ui::begin and lxb_wallpaper() take a particles argument, and lxb_scene and
+  lxb_shell_theme each grew a trailing field, so C programs need building
+  again.
+- The file picker's board is a picture of this machine's keyboard layout, and
+  an application is as quiet about its buttons as the shell's Button hints.
+- A pane of glass fades with the page it was drawn on, and the Menu key is
+  pinned to the context menu.
+- The package builds say what they lack before compiling, ask for Rust 1.89,
+  and no longer compile the debuginfo Fedora's flags asked for and nothing
+  packaged, which an 8 GiB machine could not afford.
+
 * Sun Aug 30 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.9.0-1
 - One number, across four projects. LineXinBar, this toolkit, the greeter and
   the store now release under the same version, so that what somebody has
