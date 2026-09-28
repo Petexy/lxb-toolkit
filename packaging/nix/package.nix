@@ -3,6 +3,9 @@
   rustPlatform,
   pkg-config,
   python3,
+  alsa-lib,
+  udev,
+  libxkbcommon,
   src ? ../..,
   # Nix does not split a library from its header: a store path is referenced by
   # what needs it, so there is no dependency graph to keep apart and no file
@@ -52,8 +55,15 @@ rustPlatform.buildRustPackage {
 
   strictDeps = true;
   nativeBuildInputs = [ pkg-config ] ++ lib.optional withPython python3;
-  # None. The library has no dependencies of its own, which is the point of it.
-  buildInputs = [ ];
+  # alsa-lib is here for the vendored lxb-gilrs: its alsa-sys crate needs
+  # alsa.pc on pkg-config's path or the build script fails in the sandbox.
+  # udev likewise: gilrs's libudev-sys needs libudev.pc. libxkbcommon is
+  # linked directly by lxb-app-ffi's keyboard handling.
+  buildInputs = [
+    alsa-lib
+    udev
+    libxkbcommon
+  ];
 
   # The crate the installed generator points new projects at, normalised by
   # Cargo so that it parses outside this workspace. Made in the build phase,
@@ -69,10 +79,18 @@ rustPlatform.buildRustPackage {
   installPhase = ''
     runHook preInstall
 
-    # install.sh reads the release directory of a target dir; buildRustPackage
-    # builds under a target triple, so point it at the parent of that.
-    targetDir="$(dirname "$(dirname "$(readlink -f target/*/release 2>/dev/null || echo target/release)")")"
-    if [ -d "target/release" ]; then targetDir="target"; fi
+    # install.sh reads the release directory of a target dir. The cargo hooks
+    # pass --target, so the real artifacts live under the triple dir; cargo
+    # still creates an empty-ish target/release for package/check side
+    # outputs, so detect by the library's presence rather than by directory
+    # name or glob order.
+    targetDir="target"
+    for d in target/*/release target/release; do
+      if [ -e "$d/liblxb_toolkit.so" ]; then
+        targetDir="$(dirname "$d")"
+        break
+      fi
+    done
 
     bash packaging/install.sh \
       --destdir "$out" \
