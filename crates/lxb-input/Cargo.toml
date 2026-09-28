@@ -9,9 +9,9 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.1" }
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.2" }
 
-gilrs = "0.11.2"
+gilrs = { package = "lxb-gilrs", path = "../../third_party/lxb-gilrs", version = "0.11.2" }
 
 winit = { version = "0.30", default-features = false, features = [
     "wayland",
@@ -22,3 +22,6 @@ winit = { version = "0.30", default-features = false, features = [
 [features]
 default = []
 winit = ["dep:winit"]
+
+[dev-dependencies]
+evdev = "0.13"

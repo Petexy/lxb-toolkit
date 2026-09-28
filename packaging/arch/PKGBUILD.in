@@ -11,7 +11,7 @@ pkgrel=1
 pkgdesc='The LineXinBar design language, for applications built to sit beside it'
 arch=('x86_64' 'aarch64')
 url='https://github.com/petexy/lxb-toolkit'
-license=('GPL-3.0-only' 'Apache-2.0')
+license=('GPL-3.0-only' 'Apache-2.0' 'MIT')
 # The design language itself has no dependencies of its own — that is
 # deliberate, and the reason it is a design language rather than a dependency
 # tree. liblxb_app, the application layer beside it in this package, links
@@ -77,6 +77,11 @@ _lxb_toolkit_licenses() {
         "$pkgdir/usr/share/licenses/$1/NotoSansDevanagariUI-OFL-1.1.txt"
     install -Dm0644 crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansCJKsc.txt \
         "$pkgdir/usr/share/licenses/$1/NotoSansCJKsc-OFL-1.1.txt"
+    # GilRs, which lxb-input reads controllers through and which is carried in
+    # this tree for a fix of its own. It is linked into liblxb_app and shipped
+    # as sources beside the toolkit's crates. Dual-licensed; MIT is the notice.
+    install -Dm0644 third_party/lxb-gilrs/LICENSE-MIT \
+        "$pkgdir/usr/share/licenses/$1/GilRs-MIT.txt"
 }
 
 package_lxb-toolkit() {

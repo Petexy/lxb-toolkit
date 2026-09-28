@@ -1,11 +1,11 @@
 Name:           lxb-toolkit
-Version:        0.9.1
+Version:        0.9.2
 Release:        1%{?dist}
 Summary:        The LineXinBar design language, for applications built to sit beside it
 
 # The library itself, the embedded Roboto and Noto faces, and the locked Rust dependency
 # graph the tests build against.
-License:        GPL-3.0-only AND Apache-2.0 AND MIT AND Apache-2.0 WITH LLVM-exception AND Unicode-3.0
+License:        GPL-3.0-only AND Apache-2.0 AND MIT AND Apache-2.0 WITH LLVM-exception AND Unicode-3.0 AND Zlib
 URL:            https://github.com/petexy/lxb-toolkit
 Source0:        lxb-toolkit-%{version}.tar.gz
 
@@ -132,13 +132,13 @@ fi
 cargo test --offline --locked -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lxb-app-ffi -p lxb-new --all-targets -j"$build_jobs"
 
 %files
-%license LICENSE
+%license LICENSE third_party/lxb-gilrs/LICENSE-MIT
 %doc README.md
 %{_libdir}/liblxb_toolkit.so
 %{_libdir}/liblxb_app.so
 
 %files devel
-%license LICENSE crates/lxb-toolkit/assets/fonts/LICENSE-Roboto.txt crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansDevanagariUI.txt crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansCJKsc.txt
+%license LICENSE crates/lxb-toolkit/assets/fonts/LICENSE-Roboto.txt crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansDevanagariUI.txt crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansCJKsc.txt third_party/lxb-gilrs/LICENSE-MIT
 %doc docs/design-language.md docs/application-development.md docs/api-reference.md
 %{_bindir}/lxb-new
 %{_includedir}/lxb_toolkit.h
@@ -156,6 +156,14 @@ cargo test --offline --locked -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lx
 %{python3_sitelib}/lxb_toolkit-%{version}.dist-info/
 
 %changelog
+* Sun Sep 27 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.9.2-1
+- Released with LineXinBar 0.9.2 and transcribed from it. A controller
+  turned off and on again is read again: lxb-input reads pads through
+  LineXinBar's copy of GilRs, which no longer leaves the second of two
+  hot-plug events unread, and the devel package installs that copy beside
+  the toolkit's crates so an application reading a pad itself uses the same
+  one. Its MIT notice ships with the libraries. No interface changed.
+
 * Thu Sep 24 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.9.1-1
 - Released with LineXinBar 0.9.1 and transcribed from it. The controls the
   toolkit draws speak the session's language, in the ten the shell does —

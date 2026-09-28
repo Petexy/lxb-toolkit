@@ -185,7 +185,11 @@ for expected in \
     usr/share/lxb-toolkit/crates/lxb-input/src/lib.rs \
     usr/share/lxb-toolkit/crates/lxb-input/src/from_winit.rs \
     usr/share/lxb-toolkit/crates/lxb-sound/src/lib.rs \
-    usr/share/lxb-toolkit/crates/lxb-app/src/lib.rs; do
+    usr/share/lxb-toolkit/crates/lxb-app/src/lib.rs \
+    usr/share/lxb-toolkit/crates/lxb-gilrs/Cargo.toml \
+    usr/share/lxb-toolkit/crates/lxb-gilrs/LICENSE-MIT \
+    usr/share/lxb-toolkit/crates/lxb-gilrs-core/Cargo.toml \
+    usr/share/lxb-toolkit/crates/lxb-gilrs-core/src/platform/linux/gamepad.rs; do
     printf '%s\n' "$all_files" | grep -Fqx "$expected" \
         || package_die "the staged payload is missing $expected"
 done
@@ -253,6 +257,18 @@ for installed in lxb-render lxb-input lxb-sound lxb-app; do
     grep -Fq 'path = "../lxb-toolkit"' "$installed_manifest" \
         || package_die "the installed $installed does not point at the toolkit beside it"
 done
+
+# lxb-input reads controllers through the fixed GilRs installed beside it, and
+# the fix has to be the one that was installed: a crate pointing back at the
+# checkout's third_party/ resolves nowhere once it is on somebody's machine.
+lxb_input_manifest="$stage/all/usr/share/lxb-toolkit/crates/lxb-input/Cargo.toml"
+grep -Fq 'package = "lxb-gilrs", path = "../lxb-gilrs"' "$lxb_input_manifest" \
+    || package_die "the installed lxb-input does not read GilRs from the fork beside it"
+grep -Fq 'path = "../lxb-gilrs-core"' "$stage/all/usr/share/lxb-toolkit/crates/lxb-gilrs/Cargo.toml" \
+    || package_die "the installed lxb-gilrs does not stand on the lxb-gilrs-core beside it"
+grep -Fq 'LineXinBar: a hot-plug message' \
+    "$stage/all/usr/share/lxb-toolkit/crates/lxb-gilrs-core/src/platform/linux/gamepad.rs" \
+    || package_die "the installed lxb-gilrs-core does not carry the hot-plug fix"
 
 package_note "checking the pkg-config file answers"
 if command -v pkg-config >/dev/null 2>&1; then

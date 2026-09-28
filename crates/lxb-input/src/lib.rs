@@ -339,3 +339,124 @@ mod tests {
         assert_eq!(controls.poll(at(350)), [Action::Down]);
     }
 }
+
+#[cfg(test)]
+mod hot_plug {
+    use std::time::{Duration, Instant};
+
+    use ::evdev::uinput::VirtualDevice;
+    use ::evdev::{
+        AbsInfo, AbsoluteAxisCode, AttributeSet, BusType, InputId, KeyCode, KeyEvent,
+        UinputAbsSetup,
+    };
+    use gilrs::{EventType, Gilrs, GilrsBuilder};
+
+    const NAME: &str = "lxb-input Test Pad Off And On";
+
+    fn uinput_is_available() -> bool {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/uinput")
+            .is_ok()
+    }
+
+    fn pad(product: u16) -> VirtualDevice {
+        let mut keys = AttributeSet::<KeyCode>::new();
+        keys.insert(KeyCode::BTN_SOUTH);
+        keys.insert(KeyCode::BTN_EAST);
+        let axis = AbsInfo::new(0, -32768, 32767, 16, 128, 0);
+        VirtualDevice::builder()
+            .expect("uinput")
+            .name(NAME)
+            .input_id(InputId::new(BusType::BUS_USB, 0xf00d, product, 1))
+            .with_keys(&keys)
+            .expect("keys")
+            .with_absolute_axis(&UinputAbsSetup::new(AbsoluteAxisCode::ABS_X, axis))
+            .expect("x")
+            .with_absolute_axis(&UinputAbsSetup::new(AbsoluteAxisCode::ABS_Y, axis))
+            .expect("y")
+            .build()
+            .expect("a test pad can be made")
+    }
+
+    fn ours(gilrs: &Gilrs) -> usize {
+        gilrs
+            .gamepads()
+            .filter(|(_, gamepad)| gamepad.os_name() == NAME)
+            .count()
+    }
+
+    fn settle(gilrs: &mut Gilrs, want: usize) -> usize {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            while gilrs.next_event().is_some() {}
+            if ours(gilrs) == want {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        ours(gilrs)
+    }
+
+    fn quiet() {
+        std::thread::sleep(Duration::from_millis(300));
+    }
+
+    #[test]
+    fn a_pad_and_its_copy_going_together_are_both_seen_to_go() {
+        if !uinput_is_available() {
+            eprintln!("skipped: /dev/uinput cannot be opened here");
+            return;
+        }
+        let mut gilrs = match GilrsBuilder::new().with_force_feedback(false).build() {
+            Ok(gilrs) => gilrs,
+            Err(err) => {
+                eprintln!("skipped: no gamepad API here ({err})");
+                return;
+            }
+        };
+
+        let original = pad(0x0b01);
+        if settle(&mut gilrs, 1) != 1 {
+            eprintln!("skipped: the gamepad API never saw the test pad");
+            return;
+        }
+        let copy = pad(0x0b02);
+        if settle(&mut gilrs, 2) != 2 {
+            eprintln!("skipped: the gamepad API never saw the test pads");
+            return;
+        }
+
+        drop(original);
+        drop(copy);
+        quiet();
+        assert_eq!(
+            settle(&mut gilrs, 0),
+            0,
+            "both pads that went in the same moment have gone"
+        );
+
+        let _original = pad(0x0b01);
+        let mut copy = pad(0x0b02);
+        quiet();
+        assert_eq!(
+            settle(&mut gilrs, 2),
+            2,
+            "both pads that came back are seen"
+        );
+
+        copy.emit(&[*KeyEvent::new(KeyCode::BTN_SOUTH, 1)])
+            .expect("the test pad can report a button");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut pressed = false;
+        while !pressed && Instant::now() < deadline {
+            while let Some(event) = gilrs.next_event() {
+                pressed |= matches!(event.event, EventType::ButtonPressed(..))
+                    && gilrs.gamepad(event.id).os_name() == NAME;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(pressed, "a button on the pad that came back is read");
+    }
+}

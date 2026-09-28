@@ -96,6 +96,8 @@ rustPlatform.buildRustPackage {
       "$out/share/licenses/lxb-toolkit/NotoSansDevanagariUI-OFL-1.1.txt"
     install -Dm0644 crates/lxb-toolkit/assets/fonts/LICENSE-NotoSansCJKsc.txt \
       "$out/share/licenses/lxb-toolkit/NotoSansCJKsc-OFL-1.1.txt"
+    install -Dm0644 third_party/lxb-gilrs/LICENSE-MIT \
+      "$out/share/licenses/lxb-toolkit/GilRs-MIT.txt"
     install -Dm0644 README.md "$out/share/doc/lxb-toolkit/README.md"
     install -Dm0644 docs/api-reference.md "$out/share/doc/lxb-toolkit/api-reference.md"
 
@@ -116,7 +118,7 @@ rustPlatform.buildRustPackage {
   meta = {
     description = "The LineXinBar design language, for applications built to sit beside it";
     homepage = "https://github.com/petexy/lxb-toolkit";
-    license = with lib.licenses; [ gpl3Only asl20 ];
+    license = with lib.licenses; [ gpl3Only asl20 mit ];
     platforms = lib.platforms.linux;
     mainProgram = "lxb-new";
   };

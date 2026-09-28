@@ -226,6 +226,21 @@ stage_crate_sources() {
             "$PROJECT_ROOT/crates/$sibling/Cargo.toml" > "$crates/$sibling/Cargo.toml"
     done
 
+    # And the two forks lxb-input reads controllers through, beside them, with
+    # lxb-input pointed at the installed copy rather than at third_party/. They
+    # are shipped rather than left to the registry because the fix they carry
+    # is not on it: see third_party/lxb-gilrs-core/README.LXB.md. An
+    # application that reads a pad itself names this same lxb-gilrs, so one
+    # copy of GilRs ends up in it, and it is the fixed one. Their manifests are
+    # already the normalised ones cargo publishes, so they are copied whole.
+    local fork
+    for fork in lxb-gilrs lxb-gilrs-core; do
+        mkdir -p "$crates/$fork"
+        cp -r "$PROJECT_ROOT/third_party/$fork/." "$crates/$fork/"
+    done
+    sed -i 's|path = "\.\./\.\./third_party/lxb-gilrs"|path = "../lxb-gilrs"|' \
+        "$crates/lxb-input/Cargo.toml"
+
     # tar and cp restore whatever modes they carried; make them a package's.
     find "$crates" -type d -exec chmod 0755 {} +
     find "$crates" -type f -exec chmod 0644 {} +
