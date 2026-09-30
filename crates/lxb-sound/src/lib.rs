@@ -43,6 +43,8 @@ struct Music {
     going: Option<(Instant, f32)>,
 }
 
+const QUIET_FOR: Duration = Duration::from_secs(20);
+
 pub struct Sounds {
     device: Option<MixerDeviceSink>,
 
@@ -144,6 +146,21 @@ impl Sounds {
                 .add(clip.amplify_normalized(self.level.value));
 
             self.played[index] = Some(now);
+        }
+    }
+
+    pub fn rest(&mut self, now: Instant) {
+        if self.device.is_none() || self.music.is_some() {
+            return;
+        }
+        let quiet = self
+            .played
+            .iter()
+            .flatten()
+            .max()
+            .is_none_or(|last| now.saturating_duration_since(*last) >= QUIET_FOR);
+        if quiet {
+            self.device = None;
         }
     }
 

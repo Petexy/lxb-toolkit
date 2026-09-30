@@ -272,6 +272,27 @@ pub unsafe extern "C" fn lxb_page_quit(page: *mut Page<'static>) {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn lxb_page_keep_awake(
+    page: *mut Page<'static>,
+    screen: c_int,
+    sleep: c_int,
+) {
+    if let Some(page) = page.as_mut() {
+        page.keep_awake(lxb_app::portal::Hold {
+            screen: screen != 0,
+            sleep: sleep != 0,
+        });
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_redraw_within(page: *mut Page<'static>, seconds: c_float) {
+    if let (Some(page), true) = (page.as_mut(), seconds.is_finite()) {
+        page.redraw_within(std::time::Duration::from_secs_f32(seconds.max(0.0)));
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn lxb_page_play(page: *mut Page<'static>, sound: Size) {
     if let Some(page) = page.as_mut() {
         page.play(pick(&Sound::ALL, sound));

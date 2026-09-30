@@ -2,7 +2,7 @@
 
 Every function the toolkit answers, in the order its headers declare them.
 
-230 functions in all.
+236 functions in all.
 
 The reference is the authoritative documentation. `scripts/make-reference.py`
 refreshes every C signature from the two headers and refuses missing, extra, or
@@ -16,7 +16,7 @@ Three shapes repeat and are not written out each time. `X_count` answers how man
 
 What the language answers: colours, sizes, motion, type, marks, recordings, the shapes of its panels and the words the controls it draws say. Links no GPU stack, no window system and no audio device.
 
-165 functions.
+169 functions.
 
 ### palettes
 
@@ -471,6 +471,35 @@ void lxb_spring(double *position, double *velocity, double target, double rate,
 
 ```c
 double lxb_card_spring(void);
+```
+
+A column and the page beside it, on a window that may be too narrow for both. Everything here is sized by the window's height, so a window standing on its side has far less width for a page than it was laid out for; rather than squeeze the column, the view slides between the two with the focus, as LineXinBar's Home menu slides over to its cards. `lxb_layout_beside` answers where the page stands — `page_x` just beyond the column, `page_w` wide — and `reach`, how far the view slides left while the page has the focus: nought where the page has at least `least` beside the column, which is every window wide enough, and otherwise far enough for the page, laid out as wide as the window less its margins and a peek, to stand whole. `lxb_peek` is that peek, as a share of the window. Rust: `layout::beside`, `layout::PEEK`; Python: `lxb.beside`, `lxb.PEEK`.
+
+`lxb_layout_beside`
+
+```c
+lxb_beside lxb_layout_beside(float window, float margin, float column,
+                             float gap, float least);
+```
+
+`lxb_peek`
+
+```c
+float lxb_peek(void);
+```
+
+The slide itself, on the cards' spring. Keep an `lxb_slide`, zeroed to begin with, and hand it to `lxb_slide_follow` every frame with `0` while the column has the focus and `reach` while the page has it; it answers how far the view stands slid. The first frame stands there without sliding. `lxb_slide_moving` is whether it wants another frame. Rust: `layout::Slide`; Python: `lxb.Slide`.
+
+`lxb_slide_follow`
+
+```c
+float lxb_slide_follow(lxb_slide *slide, float target, float dt);
+```
+
+`lxb_slide_moving`
+
+```c
+int lxb_slide_moving(const lxb_slide *slide);
 ```
 
 `lxb_duration_count`
@@ -1224,7 +1253,7 @@ void lxb_string_free(char *text);
 
 The window, the frame loop, the controls and the sounds — and the page an application draws into. Carries the GPU stack.
 
-65 functions.
+67 functions.
 
 A new application. `app_id` is the stable name the desktop entry, the executable and StartupWMClass all have to agree on; `title` is what a person sees. Never null; free it with lxb_app_free.
 
@@ -1400,6 +1429,22 @@ Close the window at the end of this frame.
 
 ```c
 void lxb_page_quit(lxb_page *page);
+```
+
+Keep the screen lit, the machine awake, or both, for as long as it is said with a non-zero flag, and say it with zeros to let go. A film playing holds both; music holds only sleep. The desktop is asked once, when the answer changes, over the interfaces it answers for that — `org.freedesktop.ScreenSaver` and `org.freedesktop.PowerManagement.Inhibit`, or the portal's Inhibit from inside a sandbox — and a desktop that answers neither leaves the program running as it would have.
+
+`lxb_page_keep_awake`
+
+```c
+void lxb_page_keep_awake(lxb_page *page, int screen, int sleep);
+```
+
+Draw the next frame no later than this many seconds from now. Only low-end hardware mode waits between frames at all — once a second while nothing moves — so a page with something running that only the frame notices, such as a song coming to its end, says so here. Never sooner than 33 ms.
+
+`lxb_page_redraw_within`
+
+```c
+void lxb_page_redraw_within(lxb_page *page, float seconds);
 ```
 
 Play one of the language's recordings, by its index in lxb_sound_name's list. The interface's own sounds are played for you; this is for a program with something of its own to say.

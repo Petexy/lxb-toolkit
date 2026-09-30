@@ -163,6 +163,9 @@ fn shot(arguments: &[String]) -> Result<(), String> {
             .iter()
             .position(|name| name.eq_ignore_ascii_case(page))
             .ok_or_else(|| format!("no such page: {page} ({})", PAGES.join(", ")))?;
+        // A picture of a page is a picture of the page: on a window standing
+        // on its side, the view slid over to it rather than to the list.
+        tour.reading = true;
     }
     let overlay = arguments.get(3).map(String::as_str);
     if !matches!(
@@ -389,6 +392,9 @@ impl ApplicationHandler for Application {
                 return;
             }
         };
+        // Made again from the window, so a machine with no Vulkan driver can
+        // still draw through GL: wgpu's GL backend needs the display.
+        self.instance = lxb_render::instance_for(window.clone());
         let surface = match self.instance.create_surface(window.clone()) {
             Ok(surface) => surface,
             Err(err) => {
@@ -691,6 +697,45 @@ mod tests {
         for frame in 0..2 {
             tour.draw(ui, width as f32, height as f32, 10.0 + frame as f32);
         }
+    }
+
+    /// On a window standing on its side the list of pages and the page slide
+    /// with the focus, as LineXinBar's Home menu slides between its column and
+    /// its cards: a press on the page peeking in at the right brings the view
+    /// over to it, and one on the strip of list left beside it brings the view
+    /// back. A landscape window has no such places to press, and nothing moves.
+    #[test]
+    fn a_window_standing_on_its_side_slides_between_the_list_and_the_page() {
+        let (width, height) = (1080, 1920);
+        let mut ui = Ui::headless(width, height).expect("a device to draw with");
+        let mut tour = Tour::new();
+        drawn(&mut tour, &mut ui, width, height);
+        assert!(!tour.reading, "the list has the focus to begin with");
+        // The page peeking in at the right-hand edge.
+        let peek = ui.at(width as f32 - 8.0, height as f32 * 0.9);
+        assert_eq!(peek, Spot::Control(0xF1), "the peeking page is not a place");
+        assert_eq!(tour.press_at(peek, false), Some(Sound::Move));
+        assert!(tour.reading);
+        // A second of frames, and the list is a strip at the left.
+        for frame in 0..60 {
+            tour.draw(&mut ui, width as f32, height as f32, 11.0 + frame as f32 / 60.0);
+        }
+        let strip = ui.at(8.0, height as f32 * 0.9);
+        assert_eq!(strip, Spot::Control(0xF0), "the strip of list is not a place");
+        assert_eq!(tour.press_at(strip, false), Some(Sound::Move));
+        assert!(!tour.reading);
+        // Up and Down are the list's, and Left and Right the page's.
+        tour.on_action(Action::Right);
+        assert!(tour.reading);
+        tour.on_action(Action::Down);
+        assert!(!tour.reading);
+
+        let (width, height) = (1280, 800);
+        let mut ui = Ui::headless(width, height).expect("a device to draw with");
+        let mut tour = Tour::new();
+        drawn(&mut tour, &mut ui, width, height);
+        let found = swept(&ui, width, height);
+        assert!(!found.contains("Control(240)") && !found.contains("Control(241)"));
     }
 
     /// The complaint this was written for: a pointer that works in a couple of

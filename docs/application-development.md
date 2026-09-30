@@ -205,6 +205,31 @@ somebody turns them off, and only `theme-particles = false` turns them off
 here. Pass it to `Ui::begin` beside the wallpaper's material; `lxb-app` does
 that for you, and the processor's copy takes it as `Scene::particles`.
 
+`low_end` is the shell's Settings > System > Low-end hardware mode, from
+`low-end-mode`: `Some(true)` or `Some(false)` where somebody chose, and `None`
+for the automatic answer, which is on wherever the program draws on the
+processor rather than a graphics chip. `ShellTheme::low_end_on(ui.software())`
+gives the answer in force, and `ShellTheme::drawn(low_end)` the look to draw
+with in it: the plain materials in place of the water and no sparkles (a
+picture of the user's own stays). A still wallpaper stands at
+`settings::STILL_WALLPAPER_AT`, the moment the shell holds its own on. `lxb-app`
+does all of it for you, and paces its frames as the shell does — at the
+display's own refresh for a second after anything is pressed, and once a second
+while nothing is — with the controller still read sixty times a second. A
+device that misses more than a fifth of its refreshes while something moves is
+drawn at every other one instead, evenly, and is given the full rate back once
+it has shown for long enough that it can. A page with something running that
+only its frame notices — a song reaching its end, a download's bar — asks for
+its next frame sooner with `Page::redraw_within(duration)`. A program that
+draws its own window should do the same: a machine that asked for this mode is
+one that cannot afford a wallpaper redrawn at the display's rate while nothing
+moves. `lxb_render::Cadence` is the pace while something does: call
+`Window::pre_present_notify` before presenting, ask for a redraw as the frame
+goes out, tell the cadence `answered` when that redraw arrives and `drew` after
+each frame, and draw the next one when `next` says `Now` (or at the moment
+`At` names). The C and Python records carry the mode as `low_end`, with -1 for
+automatic.
+
 This is a startup snapshot, not a live theme protocol: LineXinBar currently
 publishes no accent-change protocol to ordinary applications. Reload it when
 your own application is already rebuilding its UI, or at its next launch.
@@ -215,6 +240,33 @@ same coordinate units your renderer uses for layout and drawing, and convert
 between logical and physical coordinates exactly once. Fractional output scale
 must not be applied a second time to values already expressed in render-target
 pixels.
+
+### A window standing on its side
+
+Sizes follow the height, so a window taller than it is wide — a display turned
+on its side, a handheld's panel held upright — has much less width for a page
+than a landscape one of the same height. Do not shrink the page to fit: the
+shell does not, and an application drawn at half the size of the Home menu
+beside it is a different desktop. Change the arrangement instead, the way the
+shell's Home menu does:
+
+- **A column beside a page keeps its width, and the view slides with the
+  focus.** `layout::beside(window, margin, column, gap, least)` answers where
+  the page stands (`page_x`, `page_w`) and how far the view slides left while
+  the page has the focus (`reach`) — nought wherever the page has at least
+  `least` beside the column, so a landscape window is laid out exactly as it
+  would be without it. Keep a `layout::Slide`, call
+  `slide.follow(laid.target(page_has_the_focus), dt)` every frame, and draw the
+  column and the page that many pixels to the left. The page peeks in at the
+  right while the column has the focus, a strip of the column stays at the left
+  while the page has it — `layout::PEEK` of the window, the shell's own number —
+  and the view rides the spring the shell's cards ride. Ask for frames while
+  `slide.moving()`. From C: `lxb_layout_beside`, `lxb_slide_follow`,
+  `lxb_slide_moving`; from Python: `lxb.beside`, `lxb.Slide`.
+- **A part too wide on its own is re-flowed to the window's shape**: stacked
+  rather than set side by side.
+- **Anything with a caption and a value side by side is cut to the room it
+  has**, with an ellipsis, rather than written on under whatever is beside it.
 
 ## The wallpaper's clock
 
@@ -490,6 +542,13 @@ user.
 
 ### A program that draws its own window
 
+Make the wgpu instance from the window, with `lxb_render::instance_for(window)`,
+rather than `lxb_render::instance()`: wgpu's GL backend needs the window's
+display to draw into it, and GL is all a machine without a Vulkan driver has —
+older graphics chips, and a virtual machine drawing on the processor. Made
+without it, such a machine finds no adapter and the program does not start.
+`lxb-app` does this for you.
+
 `lxb-app` puts the whole question behind `page.pick(…)` — one call, one answer.
 A program that draws its own window instead gets the same thing from
 **`lxb_render::Files`**, which owns all of it: whether to ask the desktop or
@@ -634,6 +693,10 @@ infallible and one that found no device simply made no sound.
 - **No clip is laid on top of a copy of itself.** Identical samples add in
   phase and one wheel event can be worth several rows; nearer than
   `sound::REST` the request is dropped rather than mixed.
+- **A quiet program lets go of the output.** `Sounds::rest` closes it once
+  nothing has played for twenty seconds and no music is looping, so the
+  machine's sound hardware can sleep, and the next sound opens it again — the
+  shell's own rule. `lxb-app` asks it once a pass.
 
 ## Lifecycle
 
@@ -646,6 +709,18 @@ infallible and one that found no device simply made no sound.
   after resume; clamp it, as the toolkit's spring does.
 - A media application should publish MPRIS state. LineXinBar uses active,
   audible playback to keep a covered player running.
+- **Say when the machine must stay awake.** LineXinBar dims the screen,
+  switches it off and puts the machine to sleep when nobody has touched
+  anything for a while — and somebody watching a film has not. `Page::keep_awake`
+  (`lxb_page_keep_awake`, `page.keep_awake()`) takes a `Hold`: a film playing
+  holds the screen and sleep, music holds sleep alone, and `Hold::NOTHING` lets
+  go — say it every frame, and the desktop is asked only when it changes. A
+  program that draws its own window keeps an `lxb_portal::Awake` and does the
+  same with it. It asks `org.freedesktop.ScreenSaver` and
+  `org.freedesktop.PowerManagement.Inhibit`, or the portal's Inhibit from inside
+  a Flatpak, and a desktop that answers none of them leaves the program as it
+  was. Pause is a reason to let go: a still picture is what a screen should be
+  let rest from. A sleep somebody asks for is never held off by any of this.
 
 ## The light, and the press
 

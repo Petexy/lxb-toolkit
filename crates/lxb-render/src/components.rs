@@ -1401,14 +1401,19 @@ impl Ui {
             None,
         );
 
-        let said = state.narrowed_to();
+        // Cut to the room the row of buttons leaves it, which on a window
+        // standing on its side is not much: a line laid out in its room but
+        // never cut to it ran straight on under the first of the buttons —
+        // "Saving as" written over Select.
         let line = PICKER_SHOWING_LINE * scale;
+        let room = state.legend_left.max(0.0);
+        let said = self.cut_at_the_end(&state.narrowed_to(), line, room);
         let ink = self.tinted(Role::TextSoft, 0.78 * out);
         self.label_weighted_sized_clipped(
             [
                 left,
                 foot_top + foot * 0.5 - line * 0.5 - line * 0.12,
-                state.legend_left.max(0.0),
+                room,
                 line * 1.4,
             ],
             Text::Caption,
@@ -1419,6 +1424,36 @@ impl Ui {
             line,
             None,
         );
+    }
+
+    /// `text` as much of it as fits `room`, cut at its end with an ellipsis —
+    /// or nothing at all where not even its first word would. "Sa…" under a
+    /// file question is two letters of noise; a line given up is a foot with
+    /// the room the buttons need.
+    ///
+    /// The counterpart of [`Self::cut_from_the_front`], for a line whose
+    /// beginning is the part that says what it is.
+    fn cut_at_the_end(&mut self, text: &str, size: f32, room: f32) -> String {
+        if self.shaped_width(text, size, false) <= room {
+            return text.to_string();
+        }
+        let first_word = text.split_whitespace().next().map_or(0, str::len);
+        let mut to = text.len();
+        while to > 0 {
+            to -= 1;
+            while to > 0 && !text.is_char_boundary(to) {
+                to -= 1;
+            }
+            let kept = text[..to].trim_end();
+            if kept.is_empty() || kept.len() < first_word {
+                break;
+            }
+            let shorter = format!("{kept}…");
+            if self.shaped_width(&shorter, size, false) <= room {
+                return shorter;
+            }
+        }
+        String::new()
     }
 
     fn cut_from_the_front(&mut self, text: &str, size: f32, room: f32) -> String {
@@ -4270,8 +4305,11 @@ impl Ui {
 
         self.clipped(OVER, content_at, None, content_clip);
 
-        self.picker_furniture(state, panel, picker_scale, foot, title, out);
+        // The row of buttons first: it is what measures the room the line
+        // beside it has, and the line is cut to that room. The other way round
+        // the line was always laid out in the room of the frame before.
         self.picker_legend(state, panel, picker_scale, foot, out);
+        self.picker_furniture(state, panel, picker_scale, foot, title, out);
 
         if state.menu.showing() {
             let grown = lxb_toolkit::menu::growing(
@@ -6532,6 +6570,57 @@ mod tests {
             whole_foot > narrowed,
             "the foot kept the room the legend gave back: {whole_foot} against {narrowed}"
         );
+    }
+
+    /// The line beside the row of buttons keeps to the room the row leaves it,
+    /// which on a window standing on its side is not much, rather than running
+    /// on under the first of the buttons — "Saving as" written over Select.
+    #[test]
+    fn the_line_beside_the_buttons_keeps_to_its_room() {
+        let directory = PickerDirectory::new("room");
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        for (width, height) in [(1080u32, 1920u32), (1280, 800)] {
+            let Ok(mut ui) = Ui::headless(width, height) else {
+                eprintln!("no adapter: the picker's foot was not checked");
+                return;
+            };
+            let mut picker = FilePicker::default();
+            assert!(picker.open_for(
+                PickerPurpose::ANewFile,
+                PickerSelection::File,
+                &directory.path,
+                "a letter to the council about the bins.txt",
+            ));
+            for _ in 0..90 {
+                picker.advance(1.0 / 60.0);
+            }
+            ui.begin(
+                width as f32,
+                height as f32,
+                10.0,
+                &accent,
+                lxb_toolkit::settings::WallpaperStyle::Default,
+                false,
+                IconStyle::Default,
+            );
+            ui.file_picker(&mut picker);
+            let room = picker.legend_left;
+            let line = [PANE, CONTROL_LAYER, OVER]
+                .into_iter()
+                .flat_map(|layer| ui.scene.layers[layer].runs.iter())
+                .find(|run| run.text.starts_with("Saving as"))
+                .map(|run| (run.text.clone(), run.size, run.bold));
+            if let Some((text, size, bold)) = &line {
+                let drawn = ui.shaped_width(text, *size, *bold);
+                assert!(
+                    drawn <= room + 0.5,
+                    "{width}x{height}: {text:?} is {drawn} wide in {room}"
+                );
+            }
+            if width > height {
+                assert!(line.is_some(), "{width}x{height}: the line was left out");
+            }
+        }
     }
 
     #[test]

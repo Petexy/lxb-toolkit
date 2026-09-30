@@ -1,5 +1,5 @@
 Name:           lxb-toolkit
-Version:        0.9.2
+Version:        0.9.3
 Release:        1%{?dist}
 Summary:        The LineXinBar design language, for applications built to sit beside it
 
@@ -156,6 +156,20 @@ cargo test --offline --locked -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lx
 %{python3_sitelib}/lxb_toolkit-%{version}.dist-info/
 
 %changelog
+* Tue Sep 29 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.9.3-1
+- Released with LineXinBar 0.9.3 and transcribed from it. Applications take
+  part in the session's power management: Page::keep_awake (and
+  lxb_portal::Awake, lxb_page_keep_awake, page.keep_awake) keeps the screen
+  or the machine awake while something plays, through the session bus or the
+  portal from inside a Flatpak.
+- Low-end hardware mode reaches every application: a still wallpaper, the
+  plain materials, and frames paced by time, with Page::redraw_within for a
+  page that needs one sooner. lxb_shell_theme gains a trailing low_end field
+  and keeps its size.
+- A window opens on a machine without a Vulkan driver, through OpenGL, with
+  lxb_render::instance_for. The sound output is closed after twenty seconds of
+  quiet.
+
 * Sun Sep 27 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.9.2-1
 - Released with LineXinBar 0.9.2 and transcribed from it. A controller
   turned off and on again is read again: lxb-input reads pads through

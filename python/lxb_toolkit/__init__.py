@@ -58,6 +58,8 @@ __all__ = [
     "Align",
     "App",
     "AppNotFound",
+    "Beside",
+    "beside",
     "Button",
     "capsule_radius",
     "Color",
@@ -132,6 +134,7 @@ __all__ = [
     "Palette",
     "palette",
     "PALETTES",
+    "PEEK",
     "Picker",
     "PickerEntry",
     "Press",
@@ -147,6 +150,7 @@ __all__ = [
     "SHELL_SOUNDS",
     "ShellTheme",
     "size",
+    "Slide",
     "smoothstep",
     "Sound",
     "sound",
@@ -268,6 +272,16 @@ class _Rgba(ctypes.Structure):
 class _Glass(ctypes.Structure):
     _fields_ = [("depth", ctypes.c_float), ("frost", ctypes.c_float),
                 ("gloss", ctypes.c_float), ("curve", ctypes.c_float)]
+
+
+class _Beside(ctypes.Structure):
+    _fields_ = [("page_x", ctypes.c_float), ("page_w", ctypes.c_float),
+                ("reach", ctypes.c_float)]
+
+
+class _Slide(ctypes.Structure):
+    _fields_ = [("at", ctypes.c_float), ("speed", ctypes.c_float),
+                ("target", ctypes.c_float), ("placed", ctypes.c_ubyte)]
 
 
 class _OverlayMaterial(ctypes.Structure):
@@ -417,7 +431,8 @@ class _ShellTheme(ctypes.Structure):
     _fields_ = [("accent", ctypes.c_ulong),
                 ("wallpaper", ctypes.c_int),
                 ("icons", ctypes.c_int),
-                ("particles", ctypes.c_int)]
+                ("particles", ctypes.c_int),
+                ("low_end", ctypes.c_int)]
 
 
 _SIZE = ctypes.c_ulong
@@ -456,6 +471,11 @@ for _name, _argtypes, _restype in [
     ("lxb_spring", [ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
                     ctypes.c_double, ctypes.c_double, ctypes.c_double], None),
     ("lxb_card_spring", [], ctypes.c_double),
+    ("lxb_layout_beside", [ctypes.c_float] * 5, _Beside),
+    ("lxb_peek", [], ctypes.c_float),
+    ("lxb_slide_follow", [ctypes.POINTER(_Slide), ctypes.c_float, ctypes.c_float],
+     ctypes.c_float),
+    ("lxb_slide_moving", [ctypes.POINTER(_Slide)], ctypes.c_int),
     ("lxb_duration_count", [], _SIZE),
     ("lxb_duration_name", [_SIZE], _STR),
     ("lxb_duration", [_SIZE], ctypes.c_float),
@@ -855,18 +875,20 @@ PALETTES: tuple[Palette, ...] = tuple(
 
 @dataclass(frozen=True)
 class ShellTheme:
-    """The current shell accent, wallpaper and icon materials, and whether the
-    wallpaper's current carries its sparkles.
+    """The current shell accent, wallpaper and icon materials, whether the
+    wallpaper's current carries its sparkles, and low-end hardware mode.
 
     Applications only read this setting. Missing, unreadable and unknown
     configuration is represented by Purple, the Default materials and the
-    sparkles.
+    sparkles. ``low_end`` is ``None`` where nobody chose, which means on where
+    the application draws on the processor rather than a graphics chip.
     """
 
     accent: Palette
     wallpaper: WallpaperStyle
     icons: IconStyle
     particles: bool = True
+    low_end: bool | None = None
 
     @classmethod
     def load(cls) -> "ShellTheme":
@@ -881,7 +903,8 @@ class ShellTheme:
             icons = IconStyle(got.icons)
         except ValueError:
             icons = IconStyle.DEFAULT
-        return cls(accent, wallpaper, icons, bool(got.particles))
+        low_end = None if got.low_end < 0 else bool(got.low_end)
+        return cls(accent, wallpaper, icons, bool(got.particles), low_end)
 
 
 def palette(name: str) -> Palette | None:
@@ -979,6 +1002,80 @@ def spring(position: float, velocity: float, target: float,
         rate = _lib.lxb_card_spring()
     _lib.lxb_spring(ctypes.byref(at), ctypes.byref(speed), target, rate, dt)
     return at.value, speed.value
+
+
+# --- a column and the page beside it -----------------------------------------
+
+PEEK: float = _lib.lxb_peek()
+"""How much of the window the other half of a sliding view is always seen in:
+the page peeking in at the right while the column has the focus, and the strip
+of column at the left while the page has it. LineXinBar's own number."""
+
+
+@dataclass(frozen=True)
+class Beside:
+    """How a column and the page beside it share a window. See :func:`beside`."""
+
+    page_x: float
+    """Where the page starts, before the view has slid anywhere."""
+    page_w: float
+    """How wide the page is laid out."""
+    reach: float
+    """How far the view slides left while the page has the focus; nought where
+    the two stand side by side."""
+
+    def slides(self) -> bool:
+        """Whether the view slides at all on this window."""
+        return self.reach > 0.0
+
+    def target(self, page_has_the_focus: bool) -> float:
+        """How far the view stands slid for whichever half has the focus."""
+        return self.reach if page_has_the_focus else 0.0
+
+
+def beside(window: float, margin: float, column: float, gap: float,
+           least: float) -> Beside:
+    """Where the page beside a column stands, in a window this wide.
+
+    The column is ``column`` wide, ``margin`` in from the left; the page starts
+    ``gap`` beyond it and keeps ``margin`` from the right, and is no use
+    narrower than ``least``. Where it has that much beside the column it has
+    all of it and nothing slides. Where it has not, the column keeps its width,
+    the page is laid out as wide as the window less its margins and a peek of
+    the column, and ``reach`` is how far the view slides to show it — the way
+    LineXinBar's Home menu slides over to its cards on a display standing on
+    its side.
+    """
+    laid = _lib.lxb_layout_beside(window, margin, column, gap, least)
+    return Beside(laid.page_x, laid.page_w, laid.reach)
+
+
+class Slide:
+    """The view's slide between a column and its page, on the spring
+    LineXinBar's cards ride. Keep one and call :meth:`follow` every frame with
+    where the view should be — ``Beside.target(...)``."""
+
+    def __init__(self) -> None:
+        self._state = _Slide()
+
+    def follow(self, target: float, dt: float = 1 / 60) -> float:
+        """Move ``dt`` seconds of the way to ``target``; where the view stands
+        now. The first call stands there without sliding."""
+        return _lib.lxb_slide_follow(ctypes.byref(self._state), target, dt)
+
+    @property
+    def at(self) -> float:
+        """Where the view stands, in pixels slid to the left."""
+        return self._state.at
+
+    @property
+    def moving(self) -> bool:
+        """Whether the view is still on its way, and so wants another frame."""
+        return bool(_lib.lxb_slide_moving(ctypes.byref(self._state)))
+
+    def place_again(self) -> None:
+        """Start again: the next :meth:`follow` stands where it is asked to."""
+        self._state = _Slide()
 
 
 DURATIONS: dict[str, float] = {

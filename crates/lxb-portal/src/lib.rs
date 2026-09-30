@@ -1,3 +1,4 @@
+mod awake;
 mod dbus;
 
 use std::ffi::OsString;
@@ -8,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use lxb_toolkit::picker::{Kind, Purpose};
 
+pub use crate::awake::{Awake, Hold};
 use crate::dbus::{Bus, Message, Value};
 
 const DESKTOP: &str = "org.freedesktop.portal.Desktop";

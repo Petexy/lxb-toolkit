@@ -448,6 +448,7 @@ project_overview="$project_root/crates/lxb-protocol/src/overview.rs"
 project_sound_source="$project_root/crates/lxb-desktop/src/sound.rs"
 toolkit_palette="$toolkit_root/crates/lxb-toolkit/src/palette.rs"
 toolkit_motion="$toolkit_root/crates/lxb-toolkit/src/motion.rs"
+toolkit_layout="$toolkit_root/crates/lxb-toolkit/src/layout.rs"
 toolkit_sound_source="$toolkit_root/crates/lxb-toolkit/src/sound.rs"
 
 require_dir assets.glyphs.project "$project_glyphs"
@@ -463,7 +464,7 @@ for required in \
     "$project_palettes" "$project_launch" "$project_menu" "$project_guide" \
     "$project_notify" "$project_volume" "$project_keyboard" "$project_main" \
     "$project_overview" "$project_sound_source" \
-    "$toolkit_palette" "$toolkit_motion" "$toolkit_sound_source"; do
+    "$toolkit_palette" "$toolkit_motion" "$toolkit_layout" "$toolkit_sound_source"; do
     require_file source "$required"
 done
 
@@ -874,6 +875,16 @@ for mapping in \
         "$(rust_scalar "control.$label.project" "$project_file" "$project_name")" \
         "$(rust_scalar "control.$label.toolkit" "$toolkit_file" "$toolkit_name")"
 done
+
+# The slide between a column and its page on a window standing on its side is
+# the shell's Home menu's own: how much of the other half stays in view, and
+# the spring the view rides. See `layout.rs`, and `overview.rs` in the shell.
+compare_number layout.peek \
+    "$(rust_scalar layout.peek.project "$project_overview" PEEK)" \
+    "$(rust_scalar layout.peek.toolkit "$toolkit_layout" PEEK)"
+compare_number layout.spring \
+    "$(rust_scalar layout.spring.project "$project_overview" CARD_SPRING)" \
+    "$(rust_scalar layout.spring.toolkit "$toolkit_motion" CARD_SPRING)"
 
 # The panel's own flight, which the shell keeps with the menu rather than with
 # the other durations.
@@ -1377,5 +1388,5 @@ if [[ "$shape_count" -ne "$toolkit_count" ]]; then
     exit 1
 fi
 
-printf 'lxb-toolkit matches project-linexinbar %s: %s glyphs, fonts and recordings, 168 palette colours, 34 durations, the context menu shape and material, the file chooser shape, the wallpaper handoff, the control, the three shaders on the processor, what the controls mean and the token contracts\n' \
+printf 'lxb-toolkit matches project-linexinbar %s: %s glyphs, fonts and recordings, 168 palette colours, 34 durations, the context menu shape and material, the file chooser shape, the wallpaper handoff, the control, the three shaders on the processor, what the controls mean, the slide beside a column and the token contracts\n' \
     "$head" "$toolkit_count"

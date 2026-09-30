@@ -230,6 +230,7 @@ pub struct LxbShellTheme {
     pub wallpaper: c_int,
     pub icons: c_int,
     pub particles: c_int,
+    pub low_end: c_int,
 }
 
 impl From<ShellTheme> for LxbShellTheme {
@@ -239,6 +240,7 @@ impl From<ShellTheme> for LxbShellTheme {
             wallpaper: theme.wallpaper as c_int,
             icons: theme.icons as c_int,
             particles: c_int::from(theme.particles),
+            low_end: theme.low_end.map_or(-1, c_int::from),
         }
     }
 }
@@ -536,6 +538,55 @@ pub unsafe extern "C" fn lxb_spring(
 #[no_mangle]
 pub extern "C" fn lxb_card_spring() -> f64 {
     lxb_toolkit::motion::CARD_SPRING
+}
+
+/// Where the page beside a column stands: see `lxb_toolkit::layout::Beside`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct LxbBeside {
+    pub page_x: c_float,
+    pub page_w: c_float,
+    pub reach: c_float,
+}
+
+#[no_mangle]
+pub extern "C" fn lxb_layout_beside(
+    window: c_float,
+    margin: c_float,
+    column: c_float,
+    gap: c_float,
+    least: c_float,
+) -> LxbBeside {
+    let laid = lxb_toolkit::layout::beside(window, margin, column, gap, least);
+    LxbBeside {
+        page_x: laid.page_x,
+        page_w: laid.page_w,
+        reach: laid.reach,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn lxb_peek() -> c_float {
+    lxb_toolkit::layout::PEEK
+}
+
+/// One frame of the view's slide towards `target`; where it stands now. A
+/// null slide stands nowhere.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_slide_follow(
+    slide: *mut lxb_toolkit::layout::Slide,
+    target: c_float,
+    dt: c_float,
+) -> c_float {
+    match slide.as_mut() {
+        Some(slide) => slide.follow(target, dt),
+        None => 0.0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_slide_moving(slide: *const lxb_toolkit::layout::Slide) -> c_int {
+    slide.as_ref().is_some_and(|slide| slide.moving()) as c_int
 }
 
 #[no_mangle]
@@ -2630,6 +2681,8 @@ mod tests {
             lxb_key_light(std::ptr::null_mut());
             lxb_spring(std::ptr::null_mut(), std::ptr::null_mut(), 1.0, 1.0, 1.0);
             lxb_glide(std::ptr::null_mut(), std::ptr::null_mut(), 1.0, 0.1);
+            assert_eq!(lxb_slide_follow(std::ptr::null_mut(), 1.0, 0.1), 0.0);
+            assert_eq!(lxb_slide_moving(std::ptr::null()), 0);
             lxb_pressed(std::ptr::null(), 0.5, std::ptr::null_mut());
             lxb_control_glow_rect(std::ptr::null(), 100.0, -1.0, std::ptr::null_mut());
             assert_eq!(lxb_control_arrival(std::ptr::null(), std::ptr::null()), 0.0);

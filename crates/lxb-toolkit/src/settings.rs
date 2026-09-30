@@ -63,6 +63,8 @@ impl WallpaperStyle {
 }
 
 pub const PARTICLES_KEY: &str = "theme-particles";
+pub const LOW_END_KEY: &str = "low-end-mode";
+pub const STILL_WALLPAPER_AT: f32 = 24.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShellTheme {
@@ -70,6 +72,7 @@ pub struct ShellTheme {
     pub wallpaper: WallpaperStyle,
     pub icons: IconStyle,
     pub particles: bool,
+    pub low_end: Option<bool>,
 }
 
 impl Default for ShellTheme {
@@ -79,6 +82,7 @@ impl Default for ShellTheme {
             wallpaper: WallpaperStyle::Default,
             icons: IconStyle::Default,
             particles: true,
+            low_end: None,
         }
     }
 }
@@ -116,11 +120,39 @@ impl ShellTheme {
         // On unless the file says false, as the shell is: a key that is not a
         // switch is no answer.
         let particles = top_level_word(raw, PARTICLES_KEY).as_deref() != Some("false");
+        let low_end = match top_level_word(raw, LOW_END_KEY).as_deref() {
+            Some("true") => Some(true),
+            Some("false") => Some(false),
+            _ => None,
+        };
         Self {
             accent,
             wallpaper,
             icons,
             particles,
+            low_end,
+        }
+    }
+
+    pub fn low_end_on(&self, software: bool) -> bool {
+        self.low_end.unwrap_or(software)
+    }
+
+    pub fn drawn(self, low_end: bool) -> Self {
+        if !low_end {
+            return self;
+        }
+        Self {
+            wallpaper: match self.wallpaper {
+                WallpaperStyle::Default => WallpaperStyle::Simple,
+                other => other,
+            },
+            icons: match self.icons {
+                IconStyle::Default => IconStyle::Simple,
+                other => other,
+            },
+            particles: false,
+            ..self
         }
     }
 }
@@ -453,6 +485,27 @@ mod tests {
 
     #[test]
     fn the_sparkles_are_off_only_where_the_shell_says_so() {
+        assert_eq!(ShellTheme::default().low_end, None);
+        assert_eq!(
+            ShellTheme::from_toml("low-end-mode = true\n").low_end,
+            Some(true)
+        );
+        assert_eq!(
+            ShellTheme::from_toml("low-end-mode = false\n").low_end,
+            Some(false)
+        );
+        assert_eq!(
+            ShellTheme::from_toml("low-end-mode = \"yes\"\n").low_end,
+            None
+        );
+        assert!(!ShellTheme::default().low_end_on(false));
+        assert!(ShellTheme::default().low_end_on(true));
+        assert!(!ShellTheme::from_toml("low-end-mode = false\n").low_end_on(true));
+        let cheap = ShellTheme::default().drawn(true);
+        assert_eq!(cheap.wallpaper, WallpaperStyle::Simple);
+        assert_eq!(cheap.icons, IconStyle::Simple);
+        assert!(!cheap.particles);
+        assert_eq!(ShellTheme::default().drawn(false), ShellTheme::default());
         assert!(ShellTheme::default().particles);
         assert!(ShellTheme::from_toml("").particles);
         assert!(ShellTheme::from_toml("theme-particles = true\n").particles);

@@ -170,6 +170,7 @@ typedef struct {
     int wallpaper;
     int icons;
     int particles;
+    int low_end;
 } lxb_shell_theme;
 
 typedef struct lxb_accent lxb_accent;
@@ -329,6 +330,32 @@ float lxb_smoothstep(float t);
 void lxb_spring(double *position, double *velocity, double target, double rate,
                 double dt);
 double lxb_card_spring(void);
+
+/* A column and the page beside it, on a window that may be too narrow for
+ * both: where the page stands, how wide it is laid out, and how far the view
+ * slides left while the page has the focus (nought where the two fit side by
+ * side). See lxb_toolkit::layout. */
+typedef struct {
+    float page_x;
+    float page_w;
+    float reach;
+} lxb_beside;
+
+lxb_beside lxb_layout_beside(float window, float margin, float column,
+                             float gap, float least);
+float lxb_peek(void);
+
+/* The view's slide between the two, on the cards' spring. Keep one, zeroed to
+ * begin with, and hand it back every frame; the first frame does not slide. */
+typedef struct {
+    float at;
+    float speed;
+    float target;
+    unsigned char placed;
+} lxb_slide;
+
+float lxb_slide_follow(lxb_slide *slide, float target, float dt);
+int lxb_slide_moving(const lxb_slide *slide);
 
 unsigned long lxb_duration_count(void);
 const char *lxb_duration_name(unsigned long index);

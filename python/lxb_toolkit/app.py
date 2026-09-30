@@ -118,6 +118,8 @@ _SIGNATURES = [
      [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_float)],
      ctypes.c_int),
     ("lxb_page_quit", [ctypes.c_void_p], None),
+    ("lxb_page_keep_awake", [ctypes.c_void_p, ctypes.c_int, ctypes.c_int], None),
+    ("lxb_page_redraw_within", [ctypes.c_void_p, ctypes.c_float], None),
     ("lxb_page_play", [ctypes.c_void_p, ctypes.c_ulong], None),
     ("lxb_page_volume", [ctypes.c_void_p, ctypes.c_float, ctypes.c_int], None),
     ("lxb_page_cursor", [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)], None),
@@ -364,6 +366,18 @@ class Page:
     def quit(self) -> None:
         """Close the window at the end of this frame."""
         _lib.lxb_page_quit(self._page)
+
+    def keep_awake(self, screen: bool = True, sleep: bool = False) -> None:
+        """Keep the screen lit, the machine awake, or both, for as long as it
+        is said; say ``keep_awake(False)`` to let go. A film playing holds both,
+        music holds only sleep. The desktop is asked once, when it changes."""
+        _lib.lxb_page_keep_awake(self._page, int(screen), int(sleep))
+
+    def redraw_within(self, seconds: float) -> None:
+        """Draw the next frame no later than this many seconds from now. Only
+        low-end hardware mode waits between frames at all; a page with
+        something running that the frame itself notices says so here."""
+        _lib.lxb_page_redraw_within(self._page, float(seconds))
 
     def play(self, sound) -> None:
         """Play one of the language's recordings. The interface's own sounds

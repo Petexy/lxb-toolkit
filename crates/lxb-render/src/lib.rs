@@ -1,3 +1,4 @@
+mod cadence;
 mod components;
 pub mod faces;
 mod files;
@@ -5,10 +6,11 @@ mod pointing;
 mod renderer;
 mod wallpaper_clock;
 
+pub use cadence::{Cadence, Next};
 pub use components::{ContextMenu, Dialog, Entry, FilePicker, Press, Pressing, Selection};
 pub use files::Files;
 pub use pointing::Spot;
-pub use renderer::{instance, Ui, Written};
+pub use renderer::{instance, instance_for, Ui, Written};
 pub use wallpaper_clock::{monotonic_now_ns, WallpaperClock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

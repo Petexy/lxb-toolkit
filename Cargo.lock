@@ -1217,7 +1217,7 @@ checksum = "7f66e8d5d03f609abc3a39e6f08e4164ebf1447a732906d39eb9b99b7919ef39"
 
 [[package]]
 name = "lxb-app"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "lxb-input",
  "lxb-portal",
@@ -1232,7 +1232,7 @@ dependencies = [
 
 [[package]]
 name = "lxb-app-ffi"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "lxb-app",
 ]
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "lxb-input"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "evdev",
  "lxb-gilrs",
@@ -1279,18 +1279,18 @@ dependencies = [
 
 [[package]]
 name = "lxb-new"
-version = "0.9.2"
+version = "0.9.3"
 
 [[package]]
 name = "lxb-portal"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "lxb-toolkit",
 ]
 
 [[package]]
 name = "lxb-render"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "bytemuck",
  "glyphon",
@@ -1305,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "lxb-sound"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "lxb-toolkit",
  "rodio",
@@ -1313,7 +1313,7 @@ dependencies = [
 
 [[package]]
 name = "lxb-toolkit"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "fluent-bundle",
  "naga",
@@ -1322,7 +1322,7 @@ dependencies = [
 
 [[package]]
 name = "lxb-toolkit-ffi"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "lxb-toolkit",
 ]

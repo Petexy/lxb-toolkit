@@ -72,6 +72,16 @@ int lxb_page_dragging(const lxb_page *page, unsigned int id, float *out);
 
 void lxb_page_quit(lxb_page *page);
 
+/* Keep the screen lit, the machine awake, or both, for as long as this is
+   said with a non-zero flag; say it with zeros to let go. A film playing holds
+   both, music holds only sleep. The desktop is asked once, when it changes. */
+void lxb_page_keep_awake(lxb_page *page, int screen, int sleep);
+
+/* Draw the next frame no later than this many seconds from now. Only low-end
+   hardware mode waits between frames at all; a page with something running
+   that the frame itself notices, such as a song ending, says so here. */
+void lxb_page_redraw_within(lxb_page *page, float seconds);
+
 void lxb_page_play(lxb_page *page, unsigned long sound);
 
 void lxb_page_volume(lxb_page *page, float value, int muted);

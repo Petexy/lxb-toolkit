@@ -55,23 +55,18 @@ rustPlatform.buildRustPackage {
 
   strictDeps = true;
   nativeBuildInputs = [ pkg-config ] ++ lib.optional withPython python3;
-  # alsa-lib is here for the vendored lxb-gilrs: its alsa-sys crate needs
-  # alsa.pc on pkg-config's path or the build script fails in the sandbox.
-  # udev likewise: gilrs's libudev-sys needs libudev.pc. libxkbcommon is
-  # linked directly by lxb-app-ffi's keyboard handling.
+  # liblxb_toolkit links nothing, which is the point of it. These are
+  # liblxb_app's, the same three the other recipes name: alsa-lib for the
+  # interface sounds (rodio reaches ALSA through cpal's alsa-sys), udev for the
+  # game controllers (the GilRs fork's libudev-sys) and libxkbcommon for the
+  # keyboard (lxb-render's xkbcommon). The first two are pkg-config build
+  # scripts, so without them the build stops there; the third is linked by
+  # name, so without it the link does.
   buildInputs = [
     alsa-lib
     udev
     libxkbcommon
   ];
-
-  # The crate the installed generator points new projects at, normalised by
-  # Cargo so that it parses outside this workspace. Made in the build phase,
-  # where the vendored registry is still in place.
-  postBuild = ''
-    cargo package --offline --frozen --no-verify -p lxb-toolkit \
-      --target-dir "$CARGO_TARGET_DIR"
-  '';
 
   # cargoInstallHook would install the binaries and nothing else. install.sh is
   # what every other package definition here uses, and using it means the Nix
@@ -80,10 +75,11 @@ rustPlatform.buildRustPackage {
     runHook preInstall
 
     # install.sh reads the release directory of a target dir. The cargo hooks
-    # pass --target, so the real artifacts live under the triple dir; cargo
-    # still creates an empty-ish target/release for package/check side
-    # outputs, so detect by the library's presence rather than by directory
-    # name or glob order.
+    # build with --target, so the libraries are in target/<triple>/release;
+    # target/release exists as well, holding the build scripts cargo ran for
+    # the host, so the target dir is whichever one the library is in rather
+    # than whichever one exists. install.sh packages the crate the generator
+    # points new projects at into that same directory, offline, itself.
     targetDir="target"
     for d in target/*/release target/release; do
       if [ -e "$d/liblxb_toolkit.so" ]; then
@@ -122,15 +118,16 @@ rustPlatform.buildRustPackage {
     runHook postInstall
   '';
 
-  # A generated project has to find the crate sources, and a Nix store path is
-  # not /usr. The generator looks at its own location first, which works here
-  # without help — but a wrapper that says so outright survives a consumer
-  # copying the binary somewhere else.
+  # install.sh wrote both pkg-config files for the paths it was given, a prefix
+  # of / and a libdir of /lib, which are where it staged things under $out and
+  # not where they are. A C program handed -L/lib finds no library on NixOS
+  # and whatever /lib holds anywhere else, so both are pointed at the store.
   postFixup = ''
-    if [ -e "$out/lib/pkgconfig/lxb-toolkit.pc" ]; then
-      substituteInPlace "$out/lib/pkgconfig/lxb-toolkit.pc" \
-        --replace-quiet "prefix=/" "prefix=$out"
-    fi
+    for pc in "$out"/lib/pkgconfig/*.pc; do
+      substituteInPlace "$pc" \
+        --replace-fail "prefix=/" "prefix=$out" \
+        --replace-fail "libdir=/lib" "libdir=$out/lib"
+    done
   '';
 
   meta = {

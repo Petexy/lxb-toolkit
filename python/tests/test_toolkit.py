@@ -199,6 +199,40 @@ def test_an_unknown_palette_is_refused_rather_than_guessed_at():
         raise AssertionError("an unknown palette was accepted")
 
 
+def test_a_column_and_its_page_cross_the_abi_whole():
+    # A window wide enough keeps the page beside the column and never slides.
+    wide = lxb.beside(1920.0, 24.0, 300.0, 18.0, 600.0)
+    assert wide == lxb.Beside(342.0, 1920.0 - 342.0 - 24.0, 0.0)
+    assert not wide.slides()
+    assert wide.target(True) == 0.0
+
+    # A narrow one keeps the column, lays the page out wide, and slides it into
+    # view against the right-hand margin — the three numbers Rust answers,
+    # unchanged by the journey.
+    narrow = lxb.beside(620.0, 16.0, 380.0, 12.0, 400.0)
+    assert narrow.slides()
+    assert abs(narrow.page_x - 408.0) < 1e-3
+    assert abs(narrow.page_w - (620.0 - 32.0 - 620.0 * lxb.PEEK)) < 1e-3
+    assert abs(narrow.page_x - narrow.reach + narrow.page_w - (620.0 - 16.0)) < 1e-3
+    assert abs(lxb.PEEK - 0.12) < 1e-6
+
+    # The slide stands still on its first frame, then rides the cards' spring
+    # and arrives.
+    slide = lxb.Slide()
+    assert not slide.moving
+    assert slide.follow(narrow.reach) == narrow.reach
+    assert not slide.moving
+    at = slide.follow(0.0)
+    expected, _ = lxb.spring(narrow.reach, 0.0, 0.0)
+    assert abs(at - expected) < 1e-3
+    assert slide.moving
+    for _ in range(120):
+        slide.follow(0.0)
+    assert slide.at == 0.0 and not slide.moving
+    slide.place_again()
+    assert slide.follow(50.0) == 50.0
+
+
 def test_motion_is_the_same_curve_it_is_in_rust():
     assert lxb.ease(0.0) == 0.0
     assert lxb.ease(1.0) == 1.0

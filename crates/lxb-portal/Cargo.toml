@@ -1,6 +1,6 @@
 [package]
 name = "lxb-portal"
-description = "Ask the desktop for a file: the xdg-desktop-portal FileChooser, spoken directly"
+description = "Ask the desktop for a file, or to keep the screen and the machine awake: the xdg-desktop-portal FileChooser and the inhibit interfaces, spoken directly"
 version.workspace = true
 edition.workspace = true
 rust-version = "1.87"
@@ -12,4 +12,4 @@ authors.workspace = true
 # The file question itself — what is being asked for, and which kinds of file
 # will be accepted. Nothing else: this crate opens a socket and marshals bytes,
 # so it must not drag a window, a GPU or an async runtime behind it.
-lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.2" }
+lxb-toolkit = { path = "../lxb-toolkit", version = "0.9.3" }

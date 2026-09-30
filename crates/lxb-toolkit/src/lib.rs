@@ -7,6 +7,7 @@ pub mod glyph_material;
 pub mod handoff;
 pub mod i18n;
 pub mod input;
+pub mod layout;
 pub mod material;
 pub mod menu;
 pub mod metrics;
@@ -21,7 +22,7 @@ pub mod wallpaper;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub const TRANSCRIBED_FROM: &str = "607848a";
+pub const TRANSCRIBED_FROM: &str = "3348581";
 
 pub fn motion_durations() -> [(&'static str, f32); 34] {
     use motion::duration::*;

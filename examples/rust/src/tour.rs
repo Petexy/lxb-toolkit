@@ -11,6 +11,7 @@ use lxb_toolkit::{
     accent::Accent,
     assets, control,
     input::{Action, Key},
+    layout::{self, Beside},
     material::{Overlay, Surface},
     menu,
     metrics::{capsule_radius, Metric},
@@ -26,6 +27,31 @@ pub const PAGES: [&str; 8] = [
     "Hello", "Colour", "Material", "Marks", "Type", "Motion", "Sound", "Picker",
 ];
 pub const GREETING: &str = "Hello, world";
+
+/// The narrowest a page beside the list of pages can be and still be the page,
+/// in reference pixels. Every landscape window, and a square one, has more.
+const PAGE_LEAST: f32 = 560.0;
+
+/// `string`, as much of it as fits `room` in `text`, with an ellipsis where it
+/// was cut: a value beside its label is cut to the room it has rather than
+/// written on past the edge of the pane.
+fn fitted(ui: &mut Ui, text: Text, string: &str, room: f32) -> String {
+    if ui.measure(text, string) <= room {
+        return string.to_string();
+    }
+    let mut end = string.len();
+    while end > 0 {
+        end -= 1;
+        while end > 0 && !string.is_char_boundary(end) {
+            end -= 1;
+        }
+        let shorter = format!("{}…", string[..end].trim_end());
+        if ui.measure(text, &shorter) <= room {
+            return shorter;
+        }
+    }
+    String::new()
+}
 
 /// The four questions the Picker page can put, in the order it offers them:
 /// what is being asked for, what the columns list, the row that asks it, and
@@ -84,6 +110,13 @@ pub const SOUND: Sound = Sound::Press;
 const PAGE_SPOT: u32 = 0x100;
 const ITEM_SPOT: u32 = 0x200;
 
+/// The two panes themselves, on a window where the view slides between them:
+/// a press on either brings the view over to it, as pointing at the peeking
+/// half does in LineXinBar's Home menu. Below both ranges, and marked before
+/// the rows on them, so a row pressed is still that row.
+const LIST_SPOT: u32 = 0xF0;
+const READING_SPOT: u32 = 0xF1;
+
 /// Six of the thirty-four durations, each a different kind of arrival.
 const SHOWN: [(&str, f32, &str); 6] = [
     ("panel", motion::duration::PANEL, "a panel arrives"),
@@ -141,6 +174,13 @@ pub struct Tour {
     /// The lit capsule on the page list, which glides down the sidebar rather
     /// than jumping between rows.
     sidebar_light: Selection,
+    /// Whether the page, rather than the list of pages, has the focus: set by
+    /// Left, Right and Enter and by pointing into the page, and cleared by Up
+    /// and Down and by pointing at the list. On a window too narrow for the
+    /// two side by side it is which of them the view has slid to.
+    pub reading: bool,
+    /// The view's slide between the list and the page. See [`Tour::draw`].
+    slide: layout::Slide,
     /// The one on the page itself. Cleared when the page changes: a light that
     /// has never been on this page appears where it is asked for rather than
     /// flying in from the last page's row.
@@ -185,6 +225,8 @@ impl Tour {
             picked: Vec::new(),
             pressing: Pressing::default(),
             sidebar_light: Selection::default(),
+            reading: false,
+            slide: layout::Slide::default(),
             light: Selection::default(),
             lit_page: usize::MAX,
             spring_at: 0.0,
@@ -290,14 +332,25 @@ impl Tour {
         );
 
         let inset = ui.m(Metric::PanelInset);
-        let gap = ui.m(Metric::Gap);
-        let sidebar = ui.m(Metric::MenuWidth).min(width * 0.34);
         let tall = height - 2.0 * inset;
 
-        self.sidebar(ui, [inset, inset, sidebar, tall]);
+        // The list of pages beside the page, as it always was wherever the page
+        // has room: the list held to a third of the window. Where it has not —
+        // a window standing on its side, where everything is the size its
+        // height makes it — the list keeps the width its rows need, the page is
+        // laid out past the right-hand edge, and the whole view slides between
+        // the two with the focus, the way LineXinBar's Home menu slides between
+        // its column and its cards. See `lxb_toolkit::layout`.
+        let (sidebar, laid) = self.beside(ui, width);
+        let pan = self.slide.follow(laid.target(self.reading), ui.dt());
+        let list = [inset - pan, inset, sidebar, tall];
+        let content = [laid.page_x - pan, inset, laid.page_w, tall];
+        if laid.slides() {
+            ui.spot(LIST_SPOT, list);
+            ui.spot(READING_SPOT, content);
+        }
+        self.sidebar(ui, list);
 
-        let x = inset + sidebar + gap;
-        let content = [x, inset, width - x - inset, tall];
         ui.pane(content, Overlay::Dialog);
         let pad = ui.m(Metric::PanelPadding);
         self.page(
@@ -311,6 +364,30 @@ impl Tour {
         ui.dialog(&mut self.dialog);
         self.files.hand(self.pads > 0);
         self.files.draw(ui);
+    }
+
+    /// How wide the list of pages is, and where the page stands beside it. The
+    /// list is held to a third of the window, as it always was, wherever that
+    /// leaves the page [`PAGE_LEAST`]; otherwise it is as wide as its rows
+    /// want and the view slides.
+    fn beside(&self, ui: &Ui, width: f32) -> (f32, Beside) {
+        let inset = ui.m(Metric::PanelInset);
+        let gap = ui.m(Metric::Gap);
+        let full = ui.m(Metric::MenuWidth);
+        let held = full.min(width * 0.34);
+        let least = ui.s(PAGE_LEAST);
+        let beside_it = width - inset - held - gap - inset;
+        if beside_it >= least {
+            return (
+                held,
+                Beside {
+                    page_x: inset + held + gap,
+                    page_w: beside_it,
+                    reach: 0.0,
+                },
+            );
+        }
+        (full, layout::beside(width, inset, full, gap, least))
     }
 
     fn sidebar(&mut self, ui: &mut Ui, rect: [f32; 4]) {
@@ -424,9 +501,16 @@ impl Tour {
         display: bool,
     ) -> f32 {
         let [x, y, width] = at;
-        let role = if display { Text::Display } else { Text::Title };
         let icon = ui.m(Metric::ItemIcon);
         let gap = ui.m(Metric::Gap);
+        // The display size where there is room for it, and the title size on a
+        // page too narrow to hold the name at display size.
+        let marked = if mark.is_some() { icon + gap } else { 0.0 };
+        let role = if display && marked + ui.measure(Text::Display, title) <= width {
+            Text::Display
+        } else {
+            Text::Title
+        };
         let row_pad = ui.m(Metric::RowPadding);
         let head = if mark.is_some() {
             icon.max(ui.line(role))
@@ -566,10 +650,11 @@ impl Tour {
                 bright,
                 Align::Left,
             );
+            let value = fitted(ui, Text::Caption, value, (width - column).max(0.0));
             ui.label_tinted(
                 [x + column + slid, at, width, step],
                 Text::Caption,
-                value,
+                &value,
                 quiet,
                 Align::Left,
             );
@@ -600,8 +685,20 @@ impl Tour {
         let gap = ui.m(Metric::Gap);
         let step = ui.line(Text::Body) * 1.35;
         let chip = ui.m(Metric::Tile);
-        let column = (width - gap) / 2.0;
-        let per_column = Role::ALL.len().div_ceil(2);
+        // Two columns wherever each can hold a swatch, its name and its value
+        // side by side; one on a page too narrow for that.
+        let widest = Role::ALL
+            .iter()
+            .map(|role| ui.measure(Text::Body, role.name()))
+            .fold(0.0f32, f32::max);
+        let hex = ui.measure(Text::Caption, "#ffffff");
+        let columns = if chip + gap + widest + gap + hex <= (width - gap) / 2.0 {
+            2
+        } else {
+            1
+        };
+        let column = (width - gap * (columns - 1) as f32) / columns as f32;
+        let per_column = Role::ALL.len().div_ceil(columns);
 
         for (index, role) in Role::ALL.iter().enumerate() {
             let entered = self.staggered(index as f32 * 0.5);
@@ -706,17 +803,27 @@ impl Tour {
         let mut top = y + self.head(ui, [x, y, width], "Material", None, false);
         let gap = ui.m(Metric::Gap);
         let cuts = Surface::ALL;
-        let card = (width - (cuts.len() as f32 - 1.0) * gap) / cuts.len() as f32;
         let tall = ui.m(Metric::RowHeight) * 2.4;
         let row = ui.line(Text::Body);
         let caption = ui.line(Text::Caption);
         let pad = ui.m(Metric::RowPadding);
+        // Side by side wherever a card can hold a label and its number with air
+        // between them; one above another on a page too narrow for that.
+        let across = (width - (cuts.len() as f32 - 1.0) * gap) / cuts.len() as f32;
+        let wants =
+            ui.measure(Text::Caption, "depth") + ui.measure(Text::Caption, "22px") + pad * 3.0;
+        let side_by_side = across >= wants;
+        let card = if side_by_side { across } else { width };
 
         for (index, surface) in cuts.iter().enumerate() {
             let glass = surface.glass();
             let entered = self.staggered(index as f32);
             let chosen = index == self.cursor[self.page];
-            let left = x + index as f32 * (card + gap);
+            let (left, top) = if side_by_side {
+                (x + index as f32 * (card + gap), top)
+            } else {
+                (x, top + index as f32 * (tall + gap))
+            };
             ui.spot(ITEM_SPOT + index as u32, [left, top, card, tall]);
 
             // Each card is drawn in its own cut, over whatever it is standing
@@ -770,7 +877,11 @@ impl Tour {
             }
         }
 
-        top += tall + gap;
+        top += if side_by_side {
+            tall + gap
+        } else {
+            (tall + gap) * cuts.len() as f32
+        };
         top += ui.paragraph(
             [x, top, width, 0.0],
             "Three cuts, and everything is made of one of them: a compact slab for \
@@ -895,13 +1006,37 @@ impl Tour {
         let mut top = y + self.head(ui, [x, y, width], "Type", None, false);
         let gap = ui.m(Metric::Gap);
 
+        // What each size is, said beside its specimen wherever the two fit on
+        // one line, and under it on a page too narrow for that.
+        let abouts: Vec<String> = Text::ALL
+            .iter()
+            .map(|text| {
+                format!(
+                    "{}  {:.0}px  {}",
+                    text.name(),
+                    text.on(ui.height()),
+                    if text.face() == Face::Bold {
+                        "bold"
+                    } else {
+                        "regular"
+                    }
+                )
+            })
+            .collect();
+        let mut beside = true;
+        for (text, about) in Text::ALL.iter().zip(&abouts) {
+            let both = ui.measure(*text, GREETING) + gap + ui.measure(Text::Caption, about);
+            beside &= both <= width;
+        }
+        let under = if beside { 0.0 } else { ui.line(Text::Caption) };
+
         // Rows of different heights, so where the light is going has to be
         // worked out before any of them is drawn.
         let chosen = self.cursor[self.page].min(Text::ALL.len() - 1);
-        let mut lit = [x, top, width, ui.line(Text::ALL[0])];
+        let mut lit = [x, top, width, ui.line(Text::ALL[0]) + under];
         let mut at = top;
         for (index, text) in Text::ALL.iter().enumerate() {
-            let step = ui.line(*text);
+            let step = ui.line(*text) + under;
             if index == chosen {
                 lit = [x, at, width, step];
             }
@@ -909,10 +1044,10 @@ impl Tour {
         }
         self.glide(ui, lit, width, 0.5);
 
-        for (index, text) in Text::ALL.iter().enumerate() {
+        for (index, (text, about)) in Text::ALL.iter().zip(&abouts).enumerate() {
             let entered = self.staggered(index as f32);
             let step = ui.line(*text);
-            ui.spot(ITEM_SPOT + index as u32, [x, top, width, step]);
+            ui.spot(ITEM_SPOT + index as u32, [x, top, width, step + under]);
             let bright = ui.tinted(Role::Text, entered);
             ui.label_tinted(
                 [x + (1.0 - entered) * gap, top, width, step],
@@ -921,25 +1056,14 @@ impl Tour {
                 bright,
                 Align::Left,
             );
-            let about = format!(
-                "{}  {:.0}px  {}",
-                text.name(),
-                text.on(ui.height()),
-                if text.face() == Face::Bold {
-                    "bold"
-                } else {
-                    "regular"
-                }
-            );
             let quiet = ui.tinted(Role::TextSoft, entered);
-            ui.label_tinted(
-                [x, top, width, step],
-                Text::Caption,
-                &about,
-                quiet,
-                Align::Right,
-            );
-            top += step;
+            let (at, align) = if beside {
+                ([x, top, width, step], Align::Right)
+            } else {
+                ([x, top + step, width, under], Align::Left)
+            };
+            ui.label_tinted(at, Text::Caption, about, quiet, align);
+            top += step + under;
         }
 
         top += gap;
@@ -975,13 +1099,32 @@ impl Tour {
         }
         note_room += gap;
         let track_x = x + column;
-        let track_w = (width - column - note_room).max(gap);
+        // The note beside the track wherever that leaves the track at least as
+        // long as a name, and on a line of its own under it on a page too
+        // narrow for that.
+        let beside = width - column - note_room >= column;
+        let track_w = if beside {
+            width - column - note_room
+        } else {
+            (width - column).max(gap)
+        };
+        let note_line = if beside { 0.0 } else { ui.line(Text::Caption) };
+        let row_h = step + note_line;
+        // Where a row's note goes: at the far end of its row, or across a line
+        // of its own under the name.
+        let note_at = |row: f32| {
+            if beside {
+                ([x, row, width, step], Align::Right)
+            } else {
+                ([x, row + step, width, note_line], Align::Left)
+            }
+        };
 
         for (index, (name, seconds, _)) in SHOWN.iter().enumerate() {
             let entered = self.staggered(index as f32);
-            let row = top + index as f32 * step;
+            let row = top + index as f32 * row_h;
             let chosen = index == self.cursor[self.page];
-            ui.spot(ITEM_SPOT + index as u32, [x, row, width, step]);
+            ui.spot(ITEM_SPOT + index as u32, [x, row, width, row_h]);
             let tint = ui.tinted(if chosen { Role::Text } else { Role::TextSoft }, entered);
             ui.label_tinted([x, row, column, step], Text::Body, name, tint, Align::Left);
 
@@ -1010,16 +1153,11 @@ impl Tour {
             ui.chip([eased, row + step / 2.0 - dot / 2.0, dot, dot], lit);
 
             let quiet = ui.tinted(Role::TextSoft, entered);
-            ui.label_tinted(
-                [x, row, width, step],
-                Text::Caption,
-                &about[index],
-                quiet,
-                Align::Right,
-            );
+            let (at, align) = note_at(row);
+            ui.label_tinted(at, Text::Caption, &about[index], quiet, align);
         }
 
-        top += SHOWN.len() as f32 * step;
+        top += SHOWN.len() as f32 * row_h;
 
         ui.label(
             [x, top, column, step],
@@ -1044,14 +1182,9 @@ impl Tour {
             ],
             soft,
         );
-        ui.label(
-            [x, top, width, step],
-            Text::Caption,
-            SPRING_NOTE,
-            Role::TextSoft,
-            Align::Right,
-        );
-        top += step + gap;
+        let (at, align) = note_at(top);
+        ui.label(at, Text::Caption, SPRING_NOTE, Role::TextSoft, align);
+        top += row_h + gap;
 
         ui.paragraph(
             [x, top, width, 0.0],
@@ -1106,8 +1239,14 @@ impl Tour {
             } else {
                 format!("{:.1} KiB", bytes.len() as f32 / 1024.0)
             };
+            // What the shell does with it, where there is room beside the
+            // name for that; the paragraph under the list says it anyway.
             if !sound.used_by_shell() {
-                about.push_str("  ·  the shell never plays it");
+                let said = format!("{about}  ·  the shell never plays it");
+                let room = width - pad * 3.0 - ui.measure(Text::Body, sound.name());
+                if ui.measure(Text::Caption, &said) <= room {
+                    about = said;
+                }
             }
             let quiet = ui.tinted(Role::TextSoft, entered);
             ui.label_tinted(
@@ -1252,6 +1391,7 @@ impl Tour {
             Action::Left => self.walk(-1),
             Action::Right => self.walk(1),
             Action::Accept | Action::Submit => {
+                self.reading = true;
                 self.press_down();
                 self.act()
             }
@@ -1424,9 +1564,17 @@ impl Tour {
         let Spot::Control(id) = spot else {
             return false;
         };
+        if id == LIST_SPOT || id == READING_SPOT {
+            let reading = id == READING_SPOT;
+            let moved = self.reading != reading;
+            self.reading = reading;
+            return moved;
+        }
         if (PAGE_SPOT..ITEM_SPOT).contains(&id) {
+            self.reading = false;
             return self.choose((id - PAGE_SPOT) as usize);
         }
+        self.reading = true;
         let item = (id - ITEM_SPOT) as usize;
         if item >= self.count() || self.cursor[self.page] == item {
             return false;
@@ -1440,6 +1588,7 @@ impl Tour {
     /// its own end has not, and an edge somebody has pushed into is answered
     /// by nothing happening.
     pub fn move_page(&mut self, delta: isize) -> Option<Sound> {
+        self.reading = false;
         let pages = PAGES.len() as isize;
         let page = ((self.page as isize + delta).rem_euclid(pages)) as usize;
         self.choose(page).then_some(Sound::Move)
@@ -1447,6 +1596,7 @@ impl Tour {
 
     /// Left and Right are always within the page.
     pub fn walk(&mut self, delta: isize) -> Option<Sound> {
+        self.reading = true;
         let total = self.count() as isize;
         if total <= 1 {
             return None;

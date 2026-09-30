@@ -297,6 +297,7 @@ fn fs(in: Out) -> @location(0) vec4<f32> {
 pub struct Ui {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
+    software: bool,
     width: u32,
     height: u32,
 
@@ -357,6 +358,10 @@ pub struct Ui {
 }
 
 impl Ui {
+    pub fn software(&self) -> bool {
+        self.software
+    }
+
     pub async fn new(
         instance: &wgpu::Instance,
         surface: Option<&wgpu::Surface<'static>>,
@@ -587,6 +592,7 @@ impl Ui {
         let viewport = Viewport::new(&device, &cache);
 
         Ok(Self {
+            software: adapter.get_info().device_type == wgpu::DeviceType::Cpu,
             chain: [
                 Target::new(&device, width, height, "ground"),
                 Target::new(&device, width, height, "panes"),
@@ -1423,6 +1429,15 @@ fn linear_color(tint: [f32; 4]) -> Color {
 
 pub fn instance() -> wgpu::Instance {
     wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle())
+}
+
+pub fn instance_for<W>(window: W) -> wgpu::Instance
+where
+    W: wgpu::rwh::HasDisplayHandle + std::fmt::Debug + Send + Sync + 'static,
+{
+    let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(window));
+    descriptor.backends = wgpu::Backends::VULKAN | wgpu::Backends::GL;
+    wgpu::Instance::new(descriptor)
 }
 
 impl Ui {

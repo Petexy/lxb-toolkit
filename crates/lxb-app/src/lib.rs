@@ -2,13 +2,16 @@ use std::{path::PathBuf, sync::Arc};
 
 pub use lxb_input;
 pub use lxb_portal as portal;
+pub use lxb_portal::{Awake, Hold};
 pub use lxb_render;
 pub use lxb_sound;
 pub use lxb_toolkit;
 
 use lxb_input::Controls;
 pub use lxb_render::{monotonic_now_ns, Fit, WallpaperClock};
-use lxb_render::{Align, ContextMenu, Dialog, Entry, Files, Press, Pressing, Selection, Spot, Ui};
+use lxb_render::{
+    Align, Cadence, ContextMenu, Dialog, Entry, Files, Next, Press, Pressing, Selection, Spot, Ui,
+};
 use lxb_sound::{Level, Sounds};
 use lxb_toolkit::{
     accent::Accent,
@@ -299,6 +302,9 @@ fn settle(state: &mut Interaction, drawn: usize) {
 
 #[derive(Default)]
 struct Interaction {
+    awake: lxb_portal::Awake,
+    again_within: Option<std::time::Duration>,
+
     focused: usize,
 
     count: usize,
@@ -571,6 +577,14 @@ impl Page<'_> {
 
     pub fn quit(&mut self) {
         self.state.leaving = true;
+    }
+
+    pub fn keep_awake(&mut self, hold: lxb_portal::Hold) {
+        self.state.awake.hold(hold);
+    }
+
+    pub fn redraw_within(&mut self, wait: std::time::Duration) {
+        self.state.again_within = Some(self.state.again_within.map_or(wait, |had| had.min(wait)));
     }
 
     pub fn play(&mut self, sound: Sound) {
@@ -911,6 +925,13 @@ struct Runtime<F> {
     last: std::time::Instant,
     wallpaper: WallpaperClock,
 
+    low_end: bool,
+    next_frame: std::time::Instant,
+    next_poll: std::time::Instant,
+    touched: std::time::Instant,
+    cadence: Cadence,
+    answer_asked: bool,
+
     trouble: Option<String>,
 }
 
@@ -924,6 +945,7 @@ impl<F: FnMut(&mut Page)> Runtime<F> {
         let now = std::time::Instant::now();
         let driven = app.driven;
         let own_questions = app.own_questions;
+        let title = app.title.clone();
         Self {
             app,
             page,
@@ -950,6 +972,7 @@ impl<F: FnMut(&mut Page)> Runtime<F> {
                 if own_questions {
                     state.files.own_questions();
                 }
+                state.awake.named(title.clone(), title);
                 state
             },
             controls,
@@ -962,6 +985,12 @@ impl<F: FnMut(&mut Page)> Runtime<F> {
             opened: now,
             last: now,
             wallpaper,
+            low_end: false,
+            next_frame: now,
+            next_poll: now,
+            touched: now,
+            cadence: Cadence::default(),
+            answer_asked: false,
             trouble: None,
         }
     }
@@ -1108,6 +1137,16 @@ impl<F: FnMut(&mut Page)> Runtime<F> {
             // decided was its own. Nothing was pressed, and nothing is now.
             TouchPhase::Cancelled => self.finger = None,
         }
+    }
+
+    fn poll_pads(&mut self) -> bool {
+        let actions = self.controls.poll(self.now());
+        let any = !actions.is_empty();
+        for action in actions {
+            self.state.pad_in_hand = true;
+            self.act(action);
+        }
+        any
     }
 
     fn act(&mut self, action: Action) {
@@ -1332,6 +1371,7 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
             Ok(window) => Arc::new(window),
             Err(err) => return self.give_up(event_loop, format!("no window: {err}")),
         };
+        self.instance = lxb_render::instance_for(window.clone());
         let surface = match self.instance.create_surface(window.clone()) {
             Ok(surface) => surface,
             Err(err) => return self.give_up(event_loop, format!("no surface: {err}")),
@@ -1348,6 +1388,8 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
             Err(message) => return self.give_up(event_loop, message),
         };
         configure(&surface, &ui, size.width, size.height);
+        self.low_end = self.theme.low_end_on(ui.software());
+        self.theme = self.theme.drawn(self.low_end);
         self.window = Some(window);
         self.surface = Some(surface);
         self.ui = Some(ui);
@@ -1360,6 +1402,22 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
         let Some(window) = self.window.clone() else {
             return;
         };
+        if self.low_end
+            && matches!(
+                event,
+                WindowEvent::KeyboardInput { .. }
+                    | WindowEvent::MouseInput { .. }
+                    | WindowEvent::MouseWheel { .. }
+                    | WindowEvent::CursorMoved { .. }
+                    | WindowEvent::Touch(_)
+                    | WindowEvent::Ime(_)
+                    | WindowEvent::Resized(_)
+            )
+        {
+            let now = std::time::Instant::now();
+            self.touched = now;
+            self.next_frame = now;
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
 
@@ -1512,12 +1570,21 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
                 }
             }
             WindowEvent::RedrawRequested => {
-                for action in self.controls.poll(self.now()) {
-                    // A pad said something, so a pad is what is in hand.
-                    self.state.pad_in_hand = true;
-                    self.act(action);
+                if !self.low_end {
+                    self.poll_pads();
                 }
                 let now = std::time::Instant::now();
+                if self.low_end {
+                    if std::mem::take(&mut self.answer_asked) {
+                        self.cadence.answered(now);
+                    }
+                    if self.moving(now) || self.cadence.moved() {
+                        if let Next::At(beat) = self.cadence.next(now) {
+                            self.next_frame = beat;
+                            return;
+                        }
+                    }
+                }
 
                 let dt = (now - self.last).as_secs_f32().clamp(0.0, 0.1);
                 self.last = now;
@@ -1528,7 +1595,11 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
                 self.state.files.advance(dt);
 
                 let size = window.inner_size();
-                let elapsed = self.wallpaper.elapsed_secs();
+                let elapsed = if self.low_end {
+                    lxb_toolkit::settings::STILL_WALLPAPER_AT
+                } else {
+                    self.wallpaper.elapsed_secs()
+                };
                 self.draw(size.width as f32, size.height as f32, elapsed);
                 if self.state.leaving {
                     event_loop.exit();
@@ -1547,6 +1618,9 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
                         if let Err(message) = ui.end(&view) {
                             eprintln!("{message}");
                         }
+                        if self.low_end {
+                            window.pre_present_notify();
+                        }
                         ui.queue.present(frame);
                     }
                     Acquired::Outdated | Acquired::Lost => {
@@ -1554,15 +1628,70 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
                     }
                     _ => {}
                 }
+                if self.low_end {
+                    let moving = self.moving(now);
+                    self.cadence.drew(now, moving);
+                    self.cadence.set_refresh(
+                        window
+                            .current_monitor()
+                            .and_then(|monitor| monitor.refresh_rate_millihertz())
+                            .unwrap_or(0),
+                    );
+                    if moving {
+                        window.request_redraw();
+                        self.answer_asked = true;
+                    }
+                }
             }
             _ => {}
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(window) = self.window.as_ref() {
-            window.request_redraw();
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.sounds.rest(std::time::Instant::now());
+        if !self.low_end {
+            if let Some(window) = self.window.as_ref() {
+                window.request_redraw();
+            }
+            return;
         }
+        let now = std::time::Instant::now();
+        if now >= self.next_poll {
+            if self.poll_pads() {
+                self.touched = now;
+                self.next_frame = now;
+            }
+            self.next_poll = now + LOW_END_POLL;
+        }
+        if self.moving(now) || self.cadence.moved() {
+            match self.cadence.next(now) {
+                Next::Now if !self.answer_asked => {
+                    if let Some(window) = self.window.as_ref() {
+                        window.request_redraw();
+                    }
+                    self.next_frame = now + LOW_END_STILL;
+                }
+                Next::At(beat) => self.next_frame = beat,
+                _ => self.next_frame = now + LOW_END_STILL,
+            }
+        } else if now >= self.next_frame {
+            if let Some(window) = self.window.as_ref() {
+                window.request_redraw();
+            }
+            let asked = self.state.again_within.take().unwrap_or(LOW_END_STILL);
+            self.next_frame = now + LOW_END_STILL.min(asked.max(self.cadence.period()));
+        }
+        event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_frame.min(self.next_poll)));
+    }
+}
+
+const LOW_END_POLL: std::time::Duration = std::time::Duration::from_millis(16);
+const LOW_END_STILL: std::time::Duration = std::time::Duration::from_secs(1);
+const LOW_END_SETTLING: std::time::Duration = std::time::Duration::from_secs(1);
+
+impl<F> Runtime<F> {
+    fn moving(&self, now: std::time::Instant) -> bool {
+        now.saturating_duration_since(self.touched) < LOW_END_SETTLING || self.accent.moving()
     }
 }
 
