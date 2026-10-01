@@ -22,7 +22,7 @@ pub mod wallpaper;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub const TRANSCRIBED_FROM: &str = "3348581";
+pub const TRANSCRIBED_FROM: &str = "742fadd";
 
 pub fn motion_durations() -> [(&'static str, f32); 34] {
     use motion::duration::*;

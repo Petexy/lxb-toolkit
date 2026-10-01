@@ -50,6 +50,8 @@ pub struct Sounds {
 
     lost: Arc<AtomicBool>,
 
+    opened: Instant,
+
     clips: [Option<SamplesBuffer>; EFFECTS],
 
     played: [Option<Instant>; EFFECTS],
@@ -76,6 +78,7 @@ impl Sounds {
         let mut sounds = Self {
             device: None,
             lost: Arc::new(AtomicBool::new(false)),
+            opened: Instant::now(),
             clips: Sound::ALL.map(|sound| (!sound.loops()).then(|| decode(sound)).flatten()),
             played: [None; EFFECTS],
             music: None,
@@ -93,6 +96,7 @@ impl Sounds {
         Self {
             device: None,
             lost: Arc::new(AtomicBool::new(false)),
+            opened: Instant::now(),
             clips: Sound::ALL.map(|_| None),
             played: [None; EFFECTS],
             music: None,
@@ -150,6 +154,9 @@ impl Sounds {
     }
 
     pub fn rest(&mut self, now: Instant) {
+        if self.device.is_some() && self.lost.load(Ordering::Acquire) {
+            self.reopen_if_lost(now);
+        }
         if self.device.is_none() || self.music.is_some() {
             return;
         }
@@ -254,7 +261,7 @@ impl Sounds {
         if self.lost.swap(false, Ordering::AcqRel) {
             self.stop_music();
             self.device = None;
-            self.retry = now;
+            self.retry = reopen_at(self.opened, now);
         }
     }
 
@@ -268,6 +275,7 @@ impl Sounds {
                 device.log_on_drop(false);
                 self.lost = lost;
                 self.device = Some(device);
+                self.opened = Instant::now();
                 self.trouble = None;
             }
             Err(err) => {
@@ -324,12 +332,26 @@ fn open_output(lost: Arc<AtomicBool>) -> Result<MixerDeviceSink, DeviceSinkError
 
 fn error_callback(lost: Arc<AtomicBool>) -> impl FnMut(StreamError) + Clone + Send + 'static {
     move |err| {
-        if matches!(
-            err,
-            StreamError::DeviceNotAvailable | StreamError::StreamInvalidated
-        ) {
+        if needs_reopen(&err) {
             lost.store(true, Ordering::Release);
         }
+    }
+}
+
+fn needs_reopen(err: &StreamError) -> bool {
+    match err {
+        StreamError::DeviceNotAvailable | StreamError::StreamInvalidated => true,
+        StreamError::BackendSpecific { err } => err.description.contains("POLLERR"),
+        _ => false,
+    }
+}
+
+fn reopen_at(opened: Instant, lost: Instant) -> Instant {
+    let retry = Duration::from_secs_f32(sound::RETRY_AFTER);
+    if lost.saturating_duration_since(opened) < retry {
+        lost + retry
+    } else {
+        lost
     }
 }
 
@@ -372,6 +394,38 @@ mod tests {
         assert!(!rested(Some(now), now));
         assert!(!rested(Some(now), now + rest - Duration::from_millis(1)));
         assert!(rested(Some(now), now + rest));
+    }
+
+    #[test]
+    fn a_stream_the_machine_slept_under_is_reopened() {
+        let backend = |description: &str| StreamError::BackendSpecific {
+            err: cpal::BackendSpecificError {
+                description: description.to_string(),
+            },
+        };
+        assert!(needs_reopen(&StreamError::DeviceNotAvailable));
+        assert!(needs_reopen(&StreamError::StreamInvalidated));
+        assert!(needs_reopen(&backend("`alsa::poll()` returned POLLERR")));
+        assert!(!needs_reopen(&backend("some passing complaint")));
+
+        let lost = Arc::new(AtomicBool::new(false));
+        let mut callback = error_callback(Arc::clone(&lost));
+        callback(backend("some passing complaint"));
+        assert!(!lost.load(Ordering::Acquire));
+        for _ in 0..1000 {
+            callback(backend("`alsa::poll()` returned POLLERR"));
+        }
+        assert!(lost.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn an_output_lost_again_straight_after_opening_waits_before_the_next() {
+        let retry = Duration::from_secs_f32(sound::RETRY_AFTER);
+        let opened = Instant::now();
+        let long_after = opened + Duration::from_secs(600);
+        assert_eq!(reopen_at(opened, long_after), long_after);
+        let straight_after = opened + Duration::from_millis(40);
+        assert_eq!(reopen_at(opened, straight_after), straight_after + retry);
     }
 
     #[test]

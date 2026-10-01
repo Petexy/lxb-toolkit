@@ -667,6 +667,15 @@ A controller is not a Wayland input device and never passes through a
 compositor, so every application on the machine reads the same pad at the same
 time. That is a property of Linux gamepads rather than a decision here.
 
+The one pad `lxb-input` leaves alone is the one Steam Input makes up
+(`28de:11ff`), whenever another pad is there to read. While a game runs, Steam
+repeats the controller it has taken over onto a virtual Xbox pad of its own for
+as long as it believes the game is in front, and it can go on believing that
+with your application in front of it — so the same press would arrive twice,
+once from the controller and once from Steam's copy. Where Steam's pad is the
+only one on the machine it is read, because it is then the whole of the
+controller rather than a copy of it.
+
 What is under the pointer is answered by `lxb-render` rather than by
 `lxb-input`, because a pointer has to know what is on the screen: every
 component writes down where its rows went as it draws them, and `Ui::at(x, y)`

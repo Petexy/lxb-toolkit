@@ -58,7 +58,12 @@ impl Controls {
     pub fn pads(&self) -> usize {
         self.pads
             .as_ref()
-            .map(|pads| pads.gamepads().count())
+            .map(|pads| {
+                let others = repeated_elsewhere(pads);
+                pads.gamepads()
+                    .filter(|(_, pad)| !(others && made_by_steam_input(pad)))
+                    .count()
+            })
             .unwrap_or(0)
     }
 
@@ -96,7 +101,11 @@ impl Controls {
         let mut stick = (0.0_f32, 0.0_f32);
 
         if let Some(pads) = self.pads.as_mut() {
+            let others = repeated_elsewhere(pads);
             while let Some(event) = pads.next_event() {
+                if others && made_by_steam_input(&pads.gamepad(event.id)) {
+                    continue;
+                }
                 let (button, code, down) = match event.event {
                     EventType::ButtonPressed(button, code) => (button, code.into_u32(), true),
                     EventType::ButtonReleased(button, code) => (button, code.into_u32(), false),
@@ -125,6 +134,9 @@ impl Controls {
             }
 
             for (_, pad) in pads.gamepads() {
+                if others && made_by_steam_input(&pad) {
+                    continue;
+                }
                 pressed[Direction::Left.index()] |= pad.is_pressed(PadButton::DPadLeft);
                 pressed[Direction::Right.index()] |= pad.is_pressed(PadButton::DPadRight);
                 pressed[Direction::Up.index()] |= pad.is_pressed(PadButton::DPadUp);
@@ -150,6 +162,17 @@ impl Controls {
         self.held = None;
         self.guide_held = false;
     }
+}
+
+const STEAM_INPUT_VENDOR: u16 = 0x28de;
+const STEAM_INPUT_PRODUCT: u16 = 0x11ff;
+
+fn made_by_steam_input(pad: &gilrs::Gamepad<'_>) -> bool {
+    pad.vendor_id() == Some(STEAM_INPUT_VENDOR) && pad.product_id() == Some(STEAM_INPUT_PRODUCT)
+}
+
+fn repeated_elsewhere(pads: &Gilrs) -> bool {
+    pads.gamepads().any(|(_, pad)| !made_by_steam_input(&pad))
 }
 
 fn further(current: f32, candidate: f32) -> f32 {
@@ -458,5 +481,110 @@ mod hot_plug {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert!(pressed, "a button on the pad that came back is read");
+    }
+}
+
+#[cfg(test)]
+mod steam_input {
+    use std::time::{Duration, Instant};
+
+    use ::evdev::uinput::VirtualDevice;
+    use ::evdev::{
+        AbsInfo, AbsoluteAxisCode, AttributeSet, BusType, InputId, KeyCode, KeyEvent,
+        UinputAbsSetup,
+    };
+    use lxb_toolkit::input::Action;
+
+    use super::Controls;
+
+    const REPEATED: &str = "lxb-input Test Steam Input";
+    const ORDINARY: &str = "lxb-input Test Ordinary Pad";
+
+    fn uinput_is_available() -> bool {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/uinput")
+            .is_ok()
+    }
+
+    fn pad(name: &str, vendor: u16, product: u16) -> VirtualDevice {
+        let mut keys = AttributeSet::<KeyCode>::new();
+        keys.insert(KeyCode::BTN_SOUTH);
+        keys.insert(KeyCode::BTN_EAST);
+        let axis = AbsInfo::new(0, -32768, 32767, 16, 128, 0);
+        VirtualDevice::builder()
+            .expect("uinput")
+            .name(name)
+            .input_id(InputId::new(BusType::BUS_USB, vendor, product, 1))
+            .with_keys(&keys)
+            .expect("keys")
+            .with_absolute_axis(&UinputAbsSetup::new(AbsoluteAxisCode::ABS_X, axis))
+            .expect("x")
+            .with_absolute_axis(&UinputAbsSetup::new(AbsoluteAxisCode::ABS_Y, axis))
+            .expect("y")
+            .build()
+            .expect("a test pad can be made")
+    }
+
+    fn sees(controls: &Controls, name: &str) -> bool {
+        controls.pads.as_ref().is_some_and(|pads| {
+            pads.gamepads()
+                .any(|(_, gamepad)| gamepad.os_name() == name)
+        })
+    }
+
+    fn press(controls: &mut Controls, pad: &mut VirtualDevice, started: Instant) -> Vec<Action> {
+        pad.emit(&[*KeyEvent::new(KeyCode::BTN_EAST, 1)])
+            .expect("the test pad can press B");
+        pad.emit(&[*KeyEvent::new(KeyCode::BTN_EAST, 0)])
+            .expect("and let go of it");
+        let mut actions = Vec::new();
+        let until = Instant::now() + Duration::from_millis(300);
+        while Instant::now() < until {
+            actions.extend(controls.poll(started.elapsed()));
+            std::thread::sleep(Duration::from_millis(8));
+        }
+        actions
+    }
+
+    #[test]
+    fn a_press_steam_input_repeats_is_read_once() {
+        if !uinput_is_available() {
+            eprintln!("skipped: /dev/uinput cannot be opened here");
+            return;
+        }
+        let mut repeated = pad(REPEATED, 0x28de, 0x11ff);
+        let mut ordinary = pad(ORDINARY, 0xf00d, 0x0b03);
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut controls = loop {
+            let controls = Controls::new();
+            if sees(&controls, REPEATED) && sees(&controls, ORDINARY) {
+                break controls;
+            }
+            if Instant::now() >= deadline {
+                eprintln!("skipped: the gamepad API never saw the test pads");
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        let started = Instant::now();
+        let settled = Instant::now() + Duration::from_millis(300);
+        while Instant::now() < settled {
+            controls.poll(started.elapsed());
+            std::thread::sleep(Duration::from_millis(8));
+        }
+
+        let from_steam_input = press(&mut controls, &mut repeated, started);
+        assert!(
+            !from_steam_input.contains(&Action::Back),
+            "Steam Input's copy of a press is not read: {from_steam_input:?}"
+        );
+        let from_the_pad = press(&mut controls, &mut ordinary, started);
+        assert!(
+            from_the_pad.contains(&Action::Back),
+            "the same press on any other pad is: {from_the_pad:?}"
+        );
     }
 }
