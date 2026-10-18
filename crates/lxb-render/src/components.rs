@@ -114,6 +114,13 @@ impl Selection {
         next
     }
 
+    /// Put it where it is going, at rest, with no glide.
+    pub fn place(&mut self, target: [f32; 4]) -> [f32; 4] {
+        self.speed = [0.0; 4];
+        self.at = Some(target);
+        target
+    }
+
     pub fn rect(self) -> Option<[f32; 4]> {
         self.at
     }
@@ -128,6 +135,23 @@ impl Selection {
 }
 
 impl Ui {
+    /// Where a light on its way to `target` is drawn on this frame: carried
+    /// by its spring for the frame's [`Ui::dt`], or, on a session counted
+    /// low-end, standing on `target` already.
+    ///
+    /// **Low-end hardware holds the frame's clock still** (the wallpaper is
+    /// drawn at one instant for good), so every frame there counts for
+    /// nothing and a light gliding by it never moved off the row it was
+    /// first drawn on: the question's light stayed on its first answer while
+    /// Accept answered the one chosen.
+    pub fn glide(&self, light: &mut Selection, target: [f32; 4]) -> [f32; 4] {
+        if self.low_end() {
+            light.place(target)
+        } else {
+            light.glide(target, self.dt())
+        }
+    }
+
     /// Blur and fade the ends of a scrolling viewport away into the page.
     ///
     /// A post-composite effect: it samples the complete page after both its
@@ -158,6 +182,23 @@ impl Ui {
             SOFTEN,
             Quad::soft_vertical_edges(viewport, band, top, bottom),
         );
+    }
+
+    /// The same, at the left and right ends of `viewport`: what is carried
+    /// sideways across a pane — a page coming in or going — dissolves into
+    /// the pane at its sides rather than being cut off at a line.
+    ///
+    /// `band` is the feather in points; `left` and `right` are how much
+    /// really continues past each end, as `top` and `bottom` are above. Lay
+    /// the band where nothing standing still is drawn: everything in it is
+    /// softened, whatever is moving.
+    pub fn soft_side_edges(&mut self, viewport: [f32; 4], band: f32, left: f32, right: f32) {
+        if viewport[2] <= 0.0 || viewport[3] <= 0.0 || band <= 0.0 || (left <= 0.0 && right <= 0.0)
+        {
+            return;
+        }
+        let band = band.min(viewport[2] * 0.5);
+        self.quad(SOFTEN, Quad::soft_side_edges(viewport, band, left, right));
     }
 
     pub fn pane(&mut self, rect: [f32; 4], overlay: Overlay) {
@@ -513,6 +554,131 @@ impl Ui {
         );
     }
 
+    /// A rounded box of the glyph material — a bead of water laid on the
+    /// glass, lit by the glyphs' own lamp and casting their shadow — for the
+    /// parts of a control that are not a drawing: a switch's track and its
+    /// knob, the ring round a tick. Shaded as a glyph whose bead fills as much
+    /// of it as [`BEAD_SHARE`] says, so a bead the size of the chosen mark's
+    /// is the chosen mark's material exactly. Under the plain icons
+    /// ([`IconStyle::Simple`]) it is a plain shape of its colour, which is
+    /// what that setting asks of every mark.
+    pub fn bead(&mut self, rect: [f32; 4], radius: f32, tint: [f32; 4], style: IconStyle) {
+        self.bead_or_ring(rect, radius, None, tint, style);
+    }
+
+    /// A [`Ui::bead`] hollowed to a ring `thickness` wide round the inside of
+    /// its box, shaded as the bead it was cut from.
+    pub fn bead_ring(
+        &mut self,
+        rect: [f32; 4],
+        radius: f32,
+        thickness: f32,
+        tint: [f32; 4],
+        style: IconStyle,
+    ) {
+        self.bead_or_ring(rect, radius, Some(thickness), tint, style);
+    }
+
+    fn bead_or_ring(
+        &mut self,
+        rect: [f32; 4],
+        radius: f32,
+        ring: Option<f32>,
+        tint: [f32; 4],
+        style: IconStyle,
+    ) {
+        let layer = self.layer();
+        if style == IconStyle::Simple {
+            let flat = match ring {
+                Some(thickness) => Quad::outline(rect, radius, tint, thickness),
+                None => Quad::solid(rect, radius, tint),
+            };
+            self.quad(layer, flat);
+            return;
+        }
+        let size = rect[2].min(rect[3]) / BEAD_SHARE;
+        let bead = Quad::bead(
+            rect,
+            radius,
+            tint,
+            size,
+            Surface::Control.glass().gloss,
+            false,
+        );
+        self.quad(
+            layer,
+            match ring {
+                Some(thickness) => bead.ringed(thickness),
+                None => bead,
+            },
+        );
+    }
+
+    /// The chosen mark — the tick cut through a bead that says this is the
+    /// value in force — in the square `rect`, at `alpha`, ringed in the
+    /// panel's dark glass.
+    ///
+    /// The ring is what lets it be read on a lit control: the bead is water,
+    /// and on the light's bright accent it took that colour and all but
+    /// vanished, the tick showing the same accent through it. The ring is of
+    /// the same material, so the mark stands on the control as a glyph does
+    /// rather than on a flat disc, and it rings the bead without lying under
+    /// it, so the bead still shows the control through it as every glyph
+    /// does.
+    pub fn chosen(&mut self, rect: [f32; 4], style: IconStyle, alpha: f32) {
+        let [x, y, w, h] = rect;
+        let side = w.min(h);
+        let outer = side * CHOSEN_RING;
+        let ring = [x + (w - outer) * 0.5, y + (h - outer) * 0.5, outer, outer];
+        let thickness = (outer - side * BEAD_SHARE) * 0.5 + side * CHOSEN_RING_UNDER;
+        let dark = self.tinted(Role::Glass, CHOSEN_RING_DARK * alpha);
+        self.bead_ring(ring, outer * 0.5, thickness, dark, style);
+        self.icon_tinted(rect, "chosen", style, Role::Text, alpha);
+    }
+
+    /// A switch, on or off, standing in `rect`: a capsule of the panel's dark
+    /// glass, the accent's track inside it when it is on, and a knob at the
+    /// end it is switched to — each a bead of the glyph material, so a switch
+    /// is as much of the set as the marks beside it. `ink` is how strongly it
+    /// is drawn: 1 on a control that can be used, less on one that cannot.
+    ///
+    /// The dark capsule is what lets it be read on a lit control: without it
+    /// a switch that was on was the light's accent on the light's accent,
+    /// with a knob floating in it. [`Ui::switch_width`] is how long a switch
+    /// of a given height is.
+    pub fn switch(&mut self, rect: [f32; 4], on: bool, style: IconStyle, ink: f32) {
+        let [x, y, w, h] = rect;
+        let ring = h * SWITCH_RING;
+        let track = [x + ring, y + ring, w - ring * 2.0, h - ring * 2.0];
+        let socket = self.tinted(Role::Glass, SWITCH_SOCKET * ink.max(SWITCH_LEAST_SOCKET));
+        self.bead(rect, h * 0.5, socket, style);
+        if on {
+            let fill = self.tinted(Role::Accent, ink);
+            self.bead(track, track[3] * 0.5, fill, style);
+        }
+        let knob = track[3] * SWITCH_KNOB;
+        let inset = (track[3] - knob) * 0.5;
+        let knob_x = if on {
+            track[0] + track[2] - inset - knob
+        } else {
+            track[0] + inset
+        };
+        let white = self.tinted(Role::Text, ink);
+        self.bead(
+            [knob_x, track[1] + inset, knob, knob],
+            knob * 0.5,
+            white,
+            style,
+        );
+    }
+
+    /// How long a switch `height` tall is: its track twice as long as it is
+    /// tall, less a little, and the dark capsule round it.
+    pub fn switch_width(height: f32) -> f32 {
+        let ring = height * SWITCH_RING;
+        (height - ring * 2.0) * SWITCH_LONG + ring * 2.0
+    }
+
     pub fn label(&mut self, rect: [f32; 4], text: Text, string: &str, role: Role, align: Align) {
         self.label_tinted(rect, text, string, self.tinted(role, 1.0), align);
     }
@@ -785,10 +951,26 @@ impl ContextMenu {
         title: Option<String>,
         entries: Vec<Entry>,
     ) -> bool {
+        self.open_selecting(anchor, title, entries, 0)
+    }
+
+    pub fn open_selecting(
+        &mut self,
+        anchor: [f32; 4],
+        title: Option<String>,
+        entries: Vec<Entry>,
+        from: usize,
+    ) -> bool {
         if !entries.iter().any(|entry| entry.enabled) {
             return false;
         }
-        self.selected = entries.iter().position(|entry| entry.enabled).unwrap_or(0);
+        self.selected = entries
+            .iter()
+            .enumerate()
+            .skip(from)
+            .chain(entries.iter().enumerate())
+            .find(|(_, entry)| entry.enabled)
+            .map_or(0, |(index, _)| index);
         self.window = self.window.max(1).min(entries.len().max(1));
         self.entries = entries;
         self.title_lines = self.title_lines.max(1);
@@ -798,6 +980,7 @@ impl ContextMenu {
         self.first = 0;
         self.open = true;
         self.unfolded = 0.0;
+        self.hold_selection();
 
         self.light.clear();
         self.pressing = Pressing::default();
@@ -965,6 +1148,80 @@ impl ContextMenu {
 }
 
 impl Ui {
+    /// How wide a panel the widest of a menu's rows needs, in reference
+    /// points, for what is written on it to stand on one line: its name lit
+    /// (bold, as a lit row is written), its detail and its stamp, with the
+    /// mark before it and the button beside it, and the title.
+    ///
+    /// A menu grows to it, never shrinks below its own width, and is held
+    /// inside the window less its inset by `menu::place`, which also keeps
+    /// where it stands beside its anchor. A row that unfolds onto more lines
+    /// when lit, or one there to be read, is written on as many lines as it
+    /// needs and does not widen the panel.
+    fn widest_row(&mut self, state: &ContextMenu) -> f32 {
+        let scale = self.scale.max(f32::EPSILON);
+        let around = 2.0 * (menu::MARGIN + menu::LABEL_PADDING);
+        let mut widest: f32 = 0.0;
+        if let Some(title) = state.title.as_deref() {
+            if state.title_lines <= 1 {
+                let size = self.size(Text::Title);
+                widest = widest.max(self.shaped_width(title, size, true) / scale + around);
+            }
+        }
+        for entry in &state.entries {
+            let row = entry.shape();
+            let mut beside = around;
+            if entry.glyph.is_some() {
+                beside += (menu::row_height(&row) - 2.0 * menu::ROW_PADDING) * menu::GLYPH
+                    + menu::LABEL_PADDING * 0.5;
+            }
+            if entry.aside.is_some() {
+                beside += menu::aside_width(&row) + menu::ASIDE_GAP;
+            }
+            let caption = self.size(Text::Caption);
+            let mut words: f32 = 0.0;
+            if entry.lines <= 1 && !entry.reading {
+                let size = self.size(Text::Body);
+                words = words.max(self.shaped_width(&entry.label, size, entry.enabled));
+            }
+            if let Some(detail) = entry.detail.as_deref() {
+                if entry.detail_lines <= 1 && !entry.reading {
+                    words = words.max(self.shaped_width(detail, caption, false));
+                }
+            }
+            if let Some(stamp) = entry.stamp.as_deref() {
+                words = words.max(self.shaped_width(stamp, caption, false));
+            }
+            widest = widest.max(words / scale + beside);
+        }
+        widest
+    }
+
+    /// `text` as it is written on a menu's one line `room` wide: whole where
+    /// it fits, and otherwise as much of it as fits followed by an ellipsis,
+    /// so a row the widest panel the window allows still cannot hold ends
+    /// inside the panel rather than running out of it. Written on more lines
+    /// than one, it is wrapped there instead and comes back whole.
+    fn on_one_line(&mut self, text: &str, kind: Text, bold: bool, room: f32, lines: u8) -> String {
+        let size = self.size(kind);
+        let room = room + ONE_LINE_SLACK;
+        if lines > 1 || self.shaped_width(text, size, bold) <= room {
+            return text.to_string();
+        }
+        let ends: Vec<usize> = text.char_indices().map(|(at, _)| at).collect();
+        let (mut fits, mut over) = (0, ends.len());
+        while over - fits > 1 {
+            let middle = (fits + over) / 2;
+            let shorter = format!("{}…", text[..ends[middle]].trim_end());
+            if self.shaped_width(&shorter, size, bold) <= room {
+                fits = middle;
+            } else {
+                over = middle;
+            }
+        }
+        format!("{}…", text[..ends[fits]].trim_end())
+    }
+
     pub fn context_menu(&mut self, state: &mut ContextMenu) {
         if !state.showing() {
             return;
@@ -980,6 +1237,7 @@ impl Ui {
         } else {
             state.window
         };
+        let extra = state.extra.max(self.widest_row(state) - menu::WIDTH);
         let layout = menu::Layout::new(
             &rows,
             title_lines,
@@ -989,7 +1247,7 @@ impl Ui {
             window,
             state.selected,
             state.unfolded(),
-            state.extra,
+            extra,
         );
         let panel = layout.rect;
         if panel[2] <= 0.0 || panel[3] <= 0.0 {
@@ -1049,20 +1307,19 @@ impl Ui {
         let text_x = panel[0] + margin + pad;
         let text_w = (panel[2] - (margin + pad) * 2.0).max(0.0);
 
+        // The pane is clear enough to show the page under it, and an
+        // application's page can be anything, so everything written on it
+        // is white made quiet by alpha, as a dialog's body is:
+        // `Role::TextSoft` is for the language's own ground, and over a
+        // bright page a title in it came back lavender on grey.
         if let Some(name) = state.title.clone() {
             let size = self.s(shape.title_size);
-            let tint = self.tinted(Role::TextSoft, 0.85);
+            let tint = self.tinted(Role::Text, 0.85);
 
             let top = panel[1] + self.s(menu::MARGIN + shape.title * 0.42) - size * 0.5;
-            self.label_stacked(
-                [text_x, top],
-                text_w,
-                Text::Title,
-                &name,
-                tint,
-                true,
-                state.title_lines.max(1),
-            );
+            let lines = state.title_lines.max(1);
+            let name = self.on_one_line(&name, Text::Title, true, text_w, lines);
+            self.label_stacked([text_x, top], text_w, Text::Title, &name, tint, true, lines);
             let rule = self.tinted(Role::AccentSoft, 0.16);
             let under = panel[1]
                 + self.s(menu::MARGIN
@@ -1091,7 +1348,7 @@ impl Ui {
         let pulse = motion::pulse(self.seconds());
         let lit = layout
             .highlight(state.on_aside)
-            .map(|target| state.light.glide(target, self.dt()));
+            .map(|target| self.glide(&mut state.light, target));
         if let Some([hx, hy, hw, hh]) = lit {
             let role = match state.entries.get(state.selected) {
                 Some(entry) if entry.grave => Role::Danger,
@@ -1232,6 +1489,17 @@ impl Ui {
                 label_x += glyph + pad * 0.5;
                 label_w -= glyph + pad * 0.5;
             }
+            // What the words are cut to, read off the chip at rest and short
+            // of its button, which is what `widest_row` grew the panel for. A
+            // press sinks the chip for a moment and must not cut short the
+            // row it is pressing.
+            let room = match entry.glyph {
+                Some(_) => {
+                    let mark = (chip[3] - label_grown - detail_grown) * shape.glyph;
+                    chip[2] - 2.0 * pad - mark - pad * 0.5
+                }
+                None => chip[2] - 2.0 * pad,
+            };
 
             let stamp_box = if entry.stamp.is_some() {
                 self.s(menu::STAMP_ROOM)
@@ -1245,7 +1513,7 @@ impl Ui {
             };
             let stack = sunk[1] + (sunk[3] - (stamp_box + label_box + detail_box)) * 0.5;
             if let Some(stamp) = entry.stamp.clone() {
-                let tint = self.tinted(Role::TextSoft, if focused { 0.85 } else { 0.6 });
+                let tint = self.tinted(Role::Text, if focused { 0.85 } else { 0.6 });
                 self.label_stacked(
                     [label_x, stack],
                     label_w.max(0.0),
@@ -1269,24 +1537,28 @@ impl Ui {
             } else if entry.reading {
                 self.tinted(Role::Text, 0.92)
             } else {
-                self.tinted(Role::TextSoft, 0.38)
+                self.tinted(Role::Text, 0.38)
             };
-            let label = entry.label.clone();
+            let lines = menu::lines_in(label_grown, self.s(menu::LABEL_LINE));
+            let bold = focused && entry.enabled;
+            let label = self.on_one_line(&entry.label, Text::Body, bold, room, lines);
             self.label_stacked(
                 [label_x, stack + stamp_box],
                 label_w.max(0.0),
                 Text::Body,
                 &label,
                 tint,
-                focused && entry.enabled,
-                menu::lines_in(label_grown, self.s(menu::LABEL_LINE)),
+                bold,
+                lines,
             );
             if let Some(detail) = entry.detail.clone() {
                 let tint = match (entry.enabled, focused) {
                     (true, true) => self.tinted(Role::Text, 0.94),
-                    (true, false) => self.tinted(Role::TextSoft, 0.72),
-                    (false, _) => self.tinted(Role::TextSoft, 0.3),
+                    (true, false) => self.tinted(Role::Text, 0.72),
+                    (false, _) => self.tinted(Role::Text, 0.3),
                 };
+                let lines = menu::lines_in(detail_grown, self.s(menu::DETAIL_LINE));
+                let detail = self.on_one_line(&detail, Text::Caption, false, room, lines);
                 self.label_stacked(
                     [label_x, stack + stamp_box + label_box],
                     label_w.max(0.0),
@@ -1294,7 +1566,7 @@ impl Ui {
                     &detail,
                     tint,
                     false,
-                    menu::lines_in(detail_grown, self.s(menu::DETAIL_LINE)),
+                    lines,
                 );
             }
         }
@@ -1327,7 +1599,7 @@ impl Ui {
 
         let factor = grown[2] / panel[2];
         let offset = [grown[0] - panel[0] * factor, grown[1] - panel[1] * factor];
-        self.flew(OVER, pane_at, factor, offset);
+        self.flew(OVER, pane_at, None, factor, offset);
         self.faded(OVER, pane_at, Some(inside_at), arrived);
         self.faded(OVER, inside_at, None, shape.content_shown(out, opening));
 
@@ -1860,7 +2132,9 @@ impl Ui {
         let gap = self.m(Metric::Gap);
         let capsule = self.m(Metric::RowHeight) * 0.6;
 
-        let body = self.wrap(Text::Caption, &state.body, width - 2.0 * pad);
+        let body = body_lines(&state.body, width - 2.0 * pad, |line| {
+            self.measure(Text::Caption, line)
+        });
         let height = 2.0 * pad
             + self.line(Text::Title)
             + gap
@@ -1943,7 +2217,7 @@ impl Ui {
         if let Some(chosen) = answers.get(state.selected).copied() {
             let radius = capsule_radius(chosen[3]);
             let seconds = self.scene.time;
-            let lit = state.light.glide(chosen, self.dt);
+            let lit = self.glide(&mut state.light, chosen);
             let glow = self.tinted(Role::Glow, control::glow_alpha(seconds) * out);
             self.quad(OVER, Quad::light(control::glow_rect(lit, panel[2]), glow));
             let tint = self.tinted(control::LIT_ROLE, control::answer_alpha(seconds) * out);
@@ -1976,6 +2250,200 @@ impl Ui {
         self.in_overlay = false;
     }
 }
+
+/// A dialog's body as the lines it is written on, no wider than `room` by
+/// `measure`.
+///
+/// **The lines it was given are kept.** A line break in the body is a line
+/// break on the pane, a blank line is a blank line, and a line that fits is
+/// written exactly as it came: a program that has broken its own sentences
+/// (where it knows that a disk's model is one name, or how its script is
+/// broken) has them back as it broke them. Only a line too wide for the pane
+/// is broken again, and only where a line may break — see [`body_pieces`].
+fn body_lines(body: &str, room: f32, mut measure: impl FnMut(&str) -> f32) -> Vec<String> {
+    let body = body.trim_end();
+    if body.is_empty() {
+        return Vec::new();
+    }
+    let mut lines = Vec::new();
+    for given in body.split('\n') {
+        let given = given.trim_end();
+        if given.is_empty() || measure(given) <= room {
+            lines.push(given.to_string());
+            continue;
+        }
+        let mut pieces = Vec::new();
+        for (from, to) in body_pieces(given, true) {
+            let whole = &given[from..to];
+            if measure(whole) > room && whole.contains(breaks_a_line) {
+                pieces.extend(
+                    body_pieces(whole, false)
+                        .into_iter()
+                        .map(|(start, end)| (from + start, from + end)),
+                );
+            } else {
+                pieces.push((from, to));
+            }
+        }
+        let mut line: Option<(usize, usize)> = None;
+        for (from, to) in pieces {
+            line = match line {
+                Some((start, _)) if measure(&given[start..to]) <= room => Some((start, to)),
+                Some((start, end)) => {
+                    lines.push(given[start..end].to_string());
+                    Some((from, to))
+                }
+                None => Some((from, to)),
+            };
+        }
+        if let Some((start, end)) = line {
+            lines.push(given[start..end].to_string());
+        }
+    }
+    lines
+}
+
+/// `line` cut where it may break, each piece as the stretch of `line` it is.
+///
+/// A line breaks at a space, and never at a no-break space, which is how a
+/// program joins the words of one name it does not want parted. With `names`,
+/// nor inside quotation marks: a name in quotes (“Home”, «Dom», „Daten“) is
+/// one piece however many words it has. And across a space, a mark standing
+/// alone stays at the end of the line before it — a "·" or a "/" between two
+/// things never begins a line — unless it opens, as "«" or "(" does, when it
+/// goes down with what it opens; a number goes down with the word after it,
+/// so "17 GB" is never parted.
+fn body_pieces(line: &str, names: bool) -> Vec<(usize, usize)> {
+    let mut words: Vec<(usize, usize)> = Vec::new();
+    let mut start = None;
+    for (at, letter) in line.char_indices() {
+        match (breaks_a_line(letter), start) {
+            (true, Some(from)) => {
+                words.push((from, at));
+                start = None;
+            }
+            (false, None) => start = Some(at),
+            _ => {}
+        }
+    }
+    if let Some(from) = start {
+        words.push((from, line.len()));
+    }
+
+    let mut quoted: Vec<(usize, usize)> = Vec::with_capacity(words.len());
+    let mut at = 0;
+    while at < words.len() {
+        let (from, to) = words[at];
+        let word = &line[from..to];
+        let closing = names
+            .then(|| word.chars().next().and_then(closes_quote))
+            .flatten()
+            .filter(|closers| !word.chars().skip(1).any(|letter| closers.contains(letter)));
+        let last = closing
+            .and_then(|closers| {
+                (at + 1..words.len()).find(|&next| {
+                    let (start, end) = words[next];
+                    line[start..end]
+                        .chars()
+                        .any(|letter| closers.contains(letter))
+                })
+            })
+            .unwrap_or(at);
+        quoted.push((from, words[last].1));
+        at = last + 1;
+    }
+
+    let mut forward: Vec<(usize, usize)> = Vec::with_capacity(quoted.len());
+    let mut held: Option<usize> = None;
+    for (from, to) in quoted {
+        let from = held.take().unwrap_or(from);
+        let piece = &line[from..to];
+        let alone = !piece.chars().any(char::is_alphanumeric);
+        if (alone && piece.chars().all(opens)) || is_number(piece) {
+            held = Some(from);
+            continue;
+        }
+        forward.push((from, to));
+    }
+    if let Some(from) = held {
+        forward.push((from, line.len()));
+    }
+
+    let mut joined: Vec<(usize, usize)> = Vec::with_capacity(forward.len());
+    for (from, to) in forward {
+        let alone = !line[from..to].chars().any(char::is_alphanumeric);
+        match joined.last_mut() {
+            Some(before) if alone => before.1 = to,
+            _ => joined.push((from, to)),
+        }
+    }
+    joined
+}
+
+/// Whether a line may break at `letter`: a space, and not a no-break one.
+fn breaks_a_line(letter: char) -> bool {
+    letter.is_whitespace() && !matches!(letter, '\u{a0}' | '\u{2007}' | '\u{202f}' | '\u{feff}')
+}
+
+/// The marks that close a quotation opened by `letter`, if it opens one.
+fn closes_quote(letter: char) -> Option<&'static str> {
+    match letter {
+        '“' => Some("”"),
+        '„' => Some("“”"),
+        '«' => Some("»"),
+        '‘' => Some("’"),
+        '‚' => Some("‘’"),
+        '"' => Some("\""),
+        '‹' => Some("›"),
+        '「' => Some("」"),
+        '『' => Some("』"),
+        _ => None,
+    }
+}
+
+/// Whether a mark standing alone opens what comes after it.
+fn opens(letter: char) -> bool {
+    closes_quote(letter).is_some() || matches!(letter, '(' | '[' | '{' | '¿' | '¡')
+}
+
+/// Whether `piece` is a number: figures, with a decimal or a thousands mark
+/// among them.
+fn is_number(piece: &str) -> bool {
+    piece.chars().any(|letter| letter.is_ascii_digit())
+        && piece
+            .chars()
+            .all(|letter| letter.is_ascii_digit() || letter == '.' || letter == ',')
+}
+
+/// How far past its room, in pixels, a line on a menu may reach before it is
+/// cut short.
+///
+/// A panel is grown to its widest row in reference points and drawn in
+/// pixels, and the round trip can come back a hair short of the words it was
+/// grown for, which would end the very row the panel grew to hold in an
+/// ellipsis. Half a pixel is invisible.
+const ONE_LINE_SLACK: f32 = 0.5;
+
+/// How much of its glyph's square the chosen mark's bead fills (`chosen.svg`,
+/// a disc of radius 12.2 in a box of 32): what [`Ui::bead`] shades a box as.
+pub const BEAD_SHARE: f32 = 24.4 / 32.0;
+
+/// How much of the chosen mark's square the dark ring round its bead reaches
+/// across, how far in under the bead's edge it starts (so no seam of the
+/// control shows between the two), and how dark it is.
+const CHOSEN_RING: f32 = 0.98;
+const CHOSEN_RING_UNDER: f32 = 0.03;
+const CHOSEN_RING_DARK: f32 = 0.95;
+
+/// A switch: how much of its height the dark capsule round the track takes
+/// at each side, how long the track is for its height, how much of the
+/// track's height the knob fills, and how dark the capsule is (never lighter
+/// than the least, however faintly the switch is drawn).
+const SWITCH_RING: f32 = 0.11;
+const SWITCH_LONG: f32 = 1.9;
+const SWITCH_KNOB: f32 = 0.86;
+const SWITCH_SOCKET: f32 = 0.9;
+const SWITCH_LEAST_SOCKET: f32 = 0.6;
 
 /// How wide a bar down the edge of a list is, in reference points, and how
 /// solid its two halves are.
@@ -3355,15 +3823,23 @@ impl FilePicker {
 
     fn step_into(&mut self, list: PickerMenu) -> bool {
         self.menu_at = list;
-        self.refresh_menu()
+        let rows = self.menu_rows();
+        let in_force = rows
+            .iter()
+            .position(|row| row.glyph == Some("chosen"))
+            .unwrap_or(0);
+        self.show_menu(rows, in_force)
     }
 
     fn refresh_menu(&mut self) -> bool {
         let rows = self.menu_rows();
         let standing = self.menu.selected().min(rows.len().saturating_sub(1));
+        self.show_menu(rows, standing)
+    }
+
+    fn show_menu(&mut self, rows: Vec<Entry>, on: usize) -> bool {
         self.menu.set_window(rows.len().max(1));
-        self.menu.open_at(self.menu_anchor, None, rows);
-        self.menu.step(standing as isize);
+        self.menu.open_selecting(self.menu_anchor, None, rows, on);
         true
     }
 
@@ -5156,6 +5632,145 @@ mod tests {
         assert_eq!(dialog.selected(), 1);
     }
 
+    /// Ten points a letter, spaces included.
+    fn even(text: &str) -> f32 {
+        text.chars().count() as f32 * 10.0
+    }
+
+    #[test]
+    fn a_dialog_keeps_the_lines_its_body_was_given() {
+        assert_eq!(
+            body_lines("One sentence.\nAnother one.", 1000.0, even),
+            ["One sentence.", "Another one."],
+            "a line break in the body is a line break on the pane"
+        );
+        assert_eq!(
+            body_lines("Above\n\nBelow\n", 1000.0, even),
+            ["Above", "", "Below"]
+        );
+        assert!(body_lines("", 1000.0, even).is_empty());
+        assert!(body_lines("  \n ", 1000.0, even).is_empty());
+
+        let given = "“Home” · 17 GB on Virtual disk";
+        assert_eq!(
+            body_lines(given, even(given), even),
+            [given],
+            "a line that fits exactly is written as it came"
+        );
+        assert_eq!(
+            body_lines("Everything on the disk\nwill be erased.", 300.0, even),
+            ["Everything on the disk", "will be erased."],
+            "each given line that fits stays whole, however short the next"
+        );
+    }
+
+    #[test]
+    fn a_line_too_wide_never_breaks_inside_a_name() {
+        let line = "Everything on “Samsung SSD 970 EVO” will be erased.";
+        let lines = body_lines(line, 300.0, even);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("“Samsung SSD 970 EVO”")),
+            "the name was parted: {lines:?}"
+        );
+        assert!(lines.iter().all(|line| even(line) <= 300.0), "{lines:?}");
+
+        let joined = "Install on Samsung\u{a0}SSD\u{a0}970 now, please.";
+        let lines = body_lines(joined, 200.0, even);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("Samsung\u{a0}SSD\u{a0}970")),
+            "a no-break space parted a name: {lines:?}"
+        );
+
+        let french = "Le disque « Données personnelles » sera effacé.";
+        let lines = body_lines(french, 300.0, even);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("« Données personnelles »")),
+            "{lines:?}"
+        );
+
+        let endless = "“A name far too long for any line of this pane”";
+        let lines = body_lines(endless, 200.0, even);
+        assert!(lines.len() > 1, "a name wider than a whole line is broken");
+        assert!(
+            lines.iter().all(|line| even(line) <= 200.0),
+            "and none of it runs out of the pane: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_lone_separator_never_begins_a_line() {
+        let line = "“Home” · 17 GB on Virtual disk";
+        for room in (60..=300).step_by(10) {
+            let lines = body_lines(line, room as f32, even);
+            for line in &lines {
+                assert!(
+                    !line.starts_with('·'),
+                    "at {room} a line begins with its separator: {lines:?}"
+                );
+                assert!(
+                    !line.starts_with("GB"),
+                    "at {room} 17 GB was parted: {lines:?}"
+                );
+            }
+            assert_eq!(lines.join(" "), "“Home” · 17 GB on Virtual disk");
+        }
+
+        let paths = "Copy from Pictures / Holidays to Backup / Old";
+        for room in (80..=300).step_by(10) {
+            let lines = body_lines(paths, room as f32, even);
+            assert!(
+                lines.iter().all(|line| !line.starts_with('/')),
+                "at {room}: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_dialog_draws_the_lines_it_was_given() {
+        let (width, height) = (1280u32, 800u32);
+        let Ok(mut ui) = Ui::headless(width, height) else {
+            eprintln!("no adapter: the dialog's lines were not checked");
+            return;
+        };
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        ui.begin(
+            width as f32,
+            height as f32,
+            10.0,
+            &accent,
+            lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
+            IconStyle::Default,
+        );
+        let mut dialog = Dialog::default();
+        dialog.ask(
+            "Erase everything?",
+            "Everything on Samsung SSD 970 EVO Plus\nwill be erased.",
+            vec!["Go back".to_string(), "Erase".to_string()],
+            0,
+        );
+        for _ in 0..60 {
+            dialog.advance(1.0 / 60.0);
+        }
+        ui.dialog(&mut dialog);
+        let written: Vec<&str> = ui.scene.layers[OVER]
+            .runs
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect();
+        assert!(
+            written.contains(&"Everything on Samsung SSD 970 EVO Plus")
+                && written.contains(&"will be erased."),
+            "the body was broken again where it had been broken already: {written:?}"
+        );
+    }
+
     #[test]
     fn no_component_pins_what_it_draws_to_the_page() {
         let source = include_str!("components.rs");
@@ -5170,6 +5785,29 @@ mod tests {
         assert!(
             offenders.is_empty(),
             "these name the page's layer instead of asking for one:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    #[test]
+    fn a_menu_writes_in_white_and_never_in_the_soft_lavender() {
+        let source = include_str!("components.rs");
+        let menu = source
+            .split("    pub fn context_menu(")
+            .nth(1)
+            .and_then(|rest| rest.split("\n    }\n").next())
+            .unwrap_or_default();
+        assert!(!menu.is_empty(), "the context menu was not found");
+        let offenders: Vec<&str> = menu
+            .lines()
+            .filter(|line| {
+                let line = line.trim();
+                !line.starts_with("//") && line.contains("TextSoft")
+            })
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "these write a menu in the soft lavender:\n{}",
             offenders.join("\n")
         );
     }
@@ -5347,6 +5985,510 @@ mod tests {
             runs[0].tint[3] > 0.9,
             "a word outside the two marks was faded with them"
         );
+    }
+
+    /// A page drawn whole: a card, its word, the soft edge over its list
+    /// and the spot a pointer presses, after a heading drawn before it.
+    fn a_page_between_marks(ui: &mut Ui) -> (crate::Drawn, crate::Drawn) {
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        ui.begin(
+            900.0,
+            600.0,
+            10.0,
+            &accent,
+            lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
+            IconStyle::Default,
+        );
+        ui.label(
+            [40.0, 10.0, 300.0, 30.0],
+            Text::Title,
+            "Heading",
+            Role::Text,
+            Align::Left,
+        );
+        ui.spot(1, [40.0, 10.0, 300.0, 30.0]);
+        let from = ui.drawn();
+        ui.card(
+            [40.0, 60.0, 300.0, 70.0],
+            Surface::Control,
+            Role::Glass,
+            0.4,
+        );
+        ui.label(
+            [40.0, 60.0, 300.0, 30.0],
+            Text::Body,
+            "Row",
+            Role::Text,
+            Align::Left,
+        );
+        ui.soft_edges([40.0, 60.0, 300.0, 200.0], 20.0, 1.0, 1.0);
+        ui.spot(2, [40.0, 60.0, 300.0, 70.0]);
+        let to = ui.drawn();
+        (from, to)
+    }
+
+    const A_DISC: &[u8] = b"<svg data-lxb-material=\"lxb:shape\" \
+        xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\">\
+        <circle cx=\"16\" cy=\"16\" r=\"10\" fill=\"#ffffff\"/></svg>";
+
+    fn begun(ui: &mut Ui, icons: IconStyle) {
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        ui.begin(
+            900.0,
+            600.0,
+            10.0,
+            &accent,
+            lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
+            icons,
+        );
+    }
+
+    #[test]
+    fn a_drawing_is_a_mark_only_when_it_says_it_is_a_shape_and_has_one() {
+        assert!(crate::Mark::measure(A_DISC).is_ok());
+        let unsaid = String::from_utf8_lossy(A_DISC).replace("lxb:shape", "picture");
+        assert!(crate::Mark::measure(unsaid.as_bytes()).is_err());
+        assert!(crate::Mark::measure(b"<svg lxb:shape").is_err());
+        let empty = b"<svg data-lxb-material=\"lxb:shape\" \
+            xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\"/>";
+        assert!(
+            crate::Mark::measure(empty).is_err(),
+            "a drawing with nothing in it"
+        );
+    }
+
+    #[test]
+    fn a_mark_of_the_applications_own_is_drawn_by_its_name_in_the_marks_material() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: an application's own mark was not checked");
+            return;
+        };
+        let disc = crate::Mark::measure(A_DISC).expect("a disc is a shape");
+        assert!(!ui.has_mark("app-disc"));
+        assert!(
+            ui.add_mark("launch", &disc).is_err(),
+            "a toolkit mark taken"
+        );
+        assert!(ui.add_mark("", &disc).is_err(), "a mark with no name");
+        ui.add_mark("app-disc", &disc)
+            .expect("room for a first mark");
+        assert!(ui.has_mark("app-disc") && ui.has_mark("launch"));
+        let first = lxb_toolkit::assets::GLYPHS.len();
+        assert_eq!(ui.mark_index("app-disc"), Some(first));
+        ui.add_mark("app-disc", &disc).expect("drawn again");
+        assert_eq!(ui.mark_index("app-disc"), Some(first), "a second cell");
+
+        begun(&mut ui, IconStyle::Default);
+        ui.icon([10.0, 10.0, 40.0, 40.0], "app-disc", IconStyle::Default);
+        ui.icon([60.0, 10.0, 40.0, 40.0], "launch", IconStyle::Default);
+        let marks: Vec<_> = ui.scene.layers[CONTROL_LAYER]
+            .quads
+            .iter()
+            .filter(|quad| quad.shape[1] == crate::renderer::KIND_GLYPH)
+            .copied()
+            .collect();
+        assert_eq!(marks.len(), 2, "an application's mark was not drawn");
+        assert_eq!(marks[0].cell, ui.cell(first));
+        assert_ne!(
+            marks[0].cell, marks[1].cell,
+            "it took a toolkit mark's cell"
+        );
+        assert_eq!(
+            marks[0].material, marks[1].material,
+            "not the toolkit's material"
+        );
+
+        for index in 1..crate::OWN_MARKS {
+            ui.add_mark(&format!("app-{index}"), &disc)
+                .expect("room for every mark promised");
+        }
+        assert!(ui.add_mark("one-too-many", &disc).is_err());
+        let last = ui.cell(first + crate::OWN_MARKS - 1);
+        assert!(
+            last[2] <= 1.0 && last[3] <= 1.0,
+            "the last cell is off the atlas"
+        );
+    }
+
+    #[test]
+    fn a_bead_is_the_marks_material_on_a_box_and_plain_under_the_plain_icons() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: a bead was not checked");
+            return;
+        };
+        begun(&mut ui, IconStyle::Default);
+        let box_ = [100.0, 100.0, 60.0, 30.0];
+        ui.bead(box_, 15.0, [1.0; 4], IconStyle::Default);
+        ui.bead_ring(box_, 15.0, 4.0, [1.0; 4], IconStyle::Default);
+        ui.bead(box_, 15.0, [1.0; 4], IconStyle::Simple);
+        ui.bead_ring(box_, 15.0, 4.0, [1.0; 4], IconStyle::Simple);
+        let quads = &ui.scene.layers[CONTROL_LAYER].quads;
+        let size = 30.0 / BEAD_SHARE;
+        let reach = size * crate::renderer::BEAD_MARGIN + 1.0;
+        assert_eq!(quads[0].shape[1], crate::renderer::KIND_BEAD);
+        assert_eq!(
+            quads[0].rect,
+            [
+                100.0 - reach,
+                100.0 - reach,
+                60.0 + reach * 2.0,
+                30.0 + reach * 2.0
+            ],
+            "no room for its shadow"
+        );
+        assert_eq!(quads[0].material[0], size, "shaded as the wrong glyph");
+        assert_eq!(quads[0].material[1], 0.0, "a bead came out hollow");
+        assert_eq!(quads[1].shape[1], crate::renderer::KIND_BEAD);
+        assert!((quads[1].material[1] * size - 4.0).abs() < 1e-4, "the ring");
+        assert_eq!(quads[2].shape[1], crate::renderer::KIND_SOLID);
+        assert_eq!(quads[2].rect, box_);
+        assert_eq!(quads[3].shape[1], crate::renderer::KIND_SOLID);
+        assert_eq!(quads[3].material[0], 4.0, "the plain ring is not a ring");
+    }
+
+    #[test]
+    fn the_chosen_mark_is_ringed_round_its_bead_not_under_it() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: the chosen mark was not checked");
+            return;
+        };
+        begun(&mut ui, IconStyle::Default);
+        let square = [200.0, 100.0, 40.0, 40.0];
+        ui.chosen(square, IconStyle::Default, 1.0);
+        let quads = &ui.scene.layers[CONTROL_LAYER].quads;
+        assert_eq!(quads.len(), 2);
+        let (ring, mark) = (quads[0], quads[1]);
+        assert_eq!(ring.shape[1], crate::renderer::KIND_BEAD);
+        assert_eq!(mark.shape[1], crate::renderer::KIND_GLYPH);
+        assert_eq!(mark.rect, square);
+        let size = ring.material[0];
+        let reach = size * crate::renderer::BEAD_MARGIN + 1.0;
+        let outer = ring.rect[2] - reach * 2.0;
+        let inner = outer - ring.material[1] * size * 2.0;
+        let bead = square[2] * BEAD_SHARE;
+        assert!(
+            outer > bead && outer <= square[2],
+            "the ring is not round it"
+        );
+        assert!(
+            inner < bead && inner > bead * 0.85,
+            "the ring lies under the bead, or leaves a seam: {inner} for {bead}"
+        );
+        assert!(ring.tint[3] > 0.8, "a ring too faint to read on the light");
+    }
+
+    #[test]
+    fn a_switch_is_a_dark_capsule_with_its_knob_at_the_end_it_is_switched_to() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: a switch was not checked");
+            return;
+        };
+        begun(&mut ui, IconStyle::Default);
+        let height = 26.0;
+        let place = [300.0, 100.0, Ui::switch_width(height), height];
+        assert!(place[2] > height * 1.5 && place[2] < height * 2.5);
+        ui.switch(place, true, IconStyle::Default, 1.0);
+        let on: Vec<_> = ui.scene.layers[CONTROL_LAYER].quads.clone();
+        begun(&mut ui, IconStyle::Default);
+        ui.switch(place, false, IconStyle::Default, 0.55);
+        let off: Vec<_> = ui.scene.layers[CONTROL_LAYER].quads.clone();
+        assert_eq!(on.len(), 3, "a socket, the accent's track and a knob");
+        assert_eq!(off.len(), 2, "a socket and a knob");
+        assert!(on
+            .iter()
+            .chain(&off)
+            .all(|quad| quad.shape[1] == crate::renderer::KIND_BEAD));
+        let middle = |quad: &Quad| quad.rect[0] + quad.rect[2] * 0.5;
+        let centre = place[0] + place[2] * 0.5;
+        assert!(middle(&on[2]) > centre, "on, the knob is not at the right");
+        assert!(middle(&off[1]) < centre, "off, the knob is not at the left");
+        assert_eq!(on[1].tint, ui.tinted(Role::Accent, 1.0));
+        assert!(
+            (off[0].tint[3] / on[0].tint[3] - SWITCH_LEAST_SOCKET).abs() < 1e-5,
+            "a faint switch lost its dark capsule"
+        );
+        assert!(
+            off[1].tint[3] < on[2].tint[3],
+            "a faint switch drawn at full"
+        );
+    }
+
+    #[test]
+    fn a_bead_goes_with_the_words_when_a_page_brings_them_after_its_glass() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: a bead carried with the words was not checked");
+            return;
+        };
+        begun(&mut ui, IconStyle::Default);
+        let from = ui.drawn();
+        ui.card(
+            [10.0, 10.0, 200.0, 60.0],
+            Surface::Control,
+            Role::Glass,
+            1.0,
+        );
+        ui.chosen([150.0, 20.0, 40.0, 40.0], IconStyle::Default, 1.0);
+        let to = ui.drawn();
+        ui.carry_between(
+            from,
+            to,
+            crate::Carry {
+                words: 0.25,
+                ..crate::Carry::standing([0.0, 0.0, 900.0, 600.0])
+            },
+        );
+        let quads = &ui.scene.layers[CONTROL_LAYER].quads;
+        let faded = |kind: f32| {
+            quads
+                .iter()
+                .filter(|quad| quad.shape[1] == kind)
+                .map(|quad| quad.shape[3])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(faded(crate::renderer::KIND_GLASS), [1.0]);
+        assert_eq!(faded(crate::renderer::KIND_BEAD), [0.25]);
+        assert_eq!(faded(crate::renderer::KIND_GLYPH), [0.25]);
+    }
+
+    #[test]
+    fn a_soft_side_edge_runs_across_its_viewport_between_the_page_and_overlays() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: a soft side edge was not checked");
+            return;
+        };
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        ui.begin(
+            900.0,
+            600.0,
+            10.0,
+            &accent,
+            lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
+            IconStyle::Default,
+        );
+        let pane = [100.0, 50.0, 400.0, 300.0];
+        ui.soft_side_edges(pane, 500.0, 1.0, 0.5);
+        ui.soft_side_edges(pane, 40.0, 0.0, 0.0);
+        ui.soft_side_edges([100.0, 50.0, 0.0, 300.0], 40.0, 1.0, 1.0);
+        let edges = &ui.scene.layers[SOFTEN].quads;
+        assert_eq!(edges.len(), 1, "an edge with nothing past it was laid");
+        let edge = edges[0];
+        assert_eq!(edge.shape[1], crate::renderer::KIND_SOFT_EDGE);
+        assert_eq!(edge.rect, pane);
+        assert_eq!(edge.material[0], 200.0, "the band ran past half the width");
+        assert_eq!(edge.material[2], 1.0, "it runs down the height");
+        assert_eq!((edge.cell[0], edge.cell[1]), (1.0, 0.5));
+        ui.soft_edges(pane, 40.0, 1.0, 1.0);
+        let along = ui.scene.layers[SOFTEN].quads[1];
+        assert_eq!(along.material[2], 0.0, "a top and bottom edge ran sideways");
+    }
+
+    #[test]
+    fn a_page_carried_takes_its_glass_words_soft_edges_and_spots_along() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: carrying a page was not checked");
+            return;
+        };
+        let (from, to) = a_page_between_marks(&mut ui);
+        let within = [20.0, 0.0, 860.0, 600.0];
+        ui.carry_between(
+            from,
+            to,
+            crate::Carry {
+                by: [100.0, 0.0],
+                fade: 0.5,
+                ..crate::Carry::standing(within)
+            },
+        );
+
+        let control = &ui.scene.layers[CONTROL_LAYER];
+        let card = control
+            .quads
+            .iter()
+            .find(|quad| quad.shape[1] == crate::renderer::KIND_GLASS)
+            .expect("the card");
+        assert_eq!(card.rect[0], 140.0, "the card stayed where it was drawn");
+        assert!((card.shape[3] - 0.5).abs() < 1e-6, "the card did not fade");
+        assert_eq!(card.cut, [20.0, 0.0, 880.0, 600.0], "not cut to the pane");
+        assert_eq!(control.runs[0].left, 40.0, "the heading went with it");
+        assert!(control.runs[0].tint[3] > 0.9, "the heading faded with it");
+        assert_eq!(control.runs[1].left, 140.0, "the word stayed behind");
+        assert!((control.runs[1].tint[3] - 0.5).abs() < 1e-6);
+
+        let edge = ui.scene.layers[crate::renderer::SOFTEN]
+            .quads
+            .last()
+            .expect("the soft edge");
+        assert_eq!(
+            edge.rect[0], 140.0,
+            "the soft edge stayed to frost whatever comes in under it"
+        );
+        assert!((edge.shape[3] - 0.5).abs() < 1e-6);
+
+        assert_eq!(
+            ui.at(150.0, 80.0),
+            Spot::Control(2),
+            "not pressable where drawn"
+        );
+        assert_eq!(ui.at(60.0, 80.0), Spot::Nothing, "pressable where it was");
+        assert_eq!(
+            ui.at(60.0, 20.0),
+            Spot::Control(1),
+            "the heading's spot moved"
+        );
+    }
+
+    #[test]
+    fn a_page_carried_can_bring_its_glass_before_its_words_and_marks() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: a page's words were not checked");
+            return;
+        };
+        let (from, _) = a_page_between_marks(&mut ui);
+        ui.icon([300.0, 70.0, 32.0, 32.0], "launch", IconStyle::Default);
+        let to = ui.drawn();
+        ui.carry_between(
+            from,
+            to,
+            crate::Carry {
+                fade: 0.8,
+                words: 0.25,
+                ..crate::Carry::standing([0.0, 0.0, 900.0, 600.0])
+            },
+        );
+        let control = &ui.scene.layers[CONTROL_LAYER];
+        let kind = |kind: f32| {
+            control
+                .quads
+                .iter()
+                .find(|quad| quad.shape[1] == kind)
+                .map(|quad| quad.shape[3])
+        };
+        let card = kind(crate::renderer::KIND_GLASS).expect("the card");
+        assert!((card - 0.8).abs() < 1e-6, "the card's glass went {card}");
+        let mark = kind(crate::renderer::KIND_GLYPH).expect("the mark");
+        assert!((mark - 0.2).abs() < 1e-6, "the mark stayed at {mark}");
+        assert!(control.runs[0].tint[3] > 0.9, "the heading before it faded");
+        let word = control.runs[1].tint[3];
+        assert!((word - 0.2).abs() < 1e-6, "the row's word stayed at {word}");
+    }
+
+    #[test]
+    fn a_page_carried_takes_its_pictures_and_what_it_counted_as_words_with_its_words() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: a page's pictures were not checked");
+            return;
+        };
+        let (from, _) = a_page_between_marks(&mut ui);
+        let layer = ui.layer();
+        let solid = |ui: &mut Ui, x: f32| {
+            ui.chip([x, 300.0, 24.0, 24.0], [0.0, 0.0, 0.0, 0.5]);
+            ui.scene.layers[layer].quads.len() - 1
+        };
+        let glass = solid(&mut ui, 40.0);
+        let start = ui.drawn();
+        let counted = solid(&mut ui, 80.0);
+        let end = ui.drawn();
+        ui.words_between(start, end);
+        // Marks the wrong way round count nothing.
+        let wrong = solid(&mut ui, 120.0);
+        ui.words_between(ui.drawn(), start);
+        ui.quad(
+            layer,
+            crate::renderer::Quad::image([160.0, 300.0, 64.0, 36.0], 4.0, [0.0; 4], 1.0),
+        );
+        let picture = ui.scene.layers[layer].quads.len() - 1;
+        let to = ui.drawn();
+        ui.carry_between(
+            from,
+            to,
+            crate::Carry {
+                fade: 0.8,
+                words: 0.25,
+                ..crate::Carry::standing([0.0, 0.0, 900.0, 600.0])
+            },
+        );
+        let alpha = |at: usize| ui.scene.layers[layer].quads[at].shape[3];
+        for (at, left, what) in [
+            (glass, 0.8, "a solid nobody counted"),
+            (wrong, 0.8, "a solid counted backwards"),
+            (counted, 0.2, "the solid counted as words"),
+            (picture, 0.2, "the picture"),
+        ] {
+            assert!(
+                (alpha(at) - left).abs() < 1e-6,
+                "{what} was left at {}, not {left}",
+                alpha(at)
+            );
+        }
+    }
+
+    #[test]
+    fn a_page_carried_away_is_not_pressed_and_shrinks_about_its_middle() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: a page leaving was not checked");
+            return;
+        };
+        let (from, to) = a_page_between_marks(&mut ui);
+        ui.carry_between(
+            from,
+            to,
+            crate::Carry {
+                scale: 0.5,
+                about: [190.0, 95.0],
+                pressable: false,
+                ..crate::Carry::standing([0.0, 0.0, 900.0, 600.0])
+            },
+        );
+        let card = ui.scene.layers[CONTROL_LAYER]
+            .quads
+            .iter()
+            .find(|quad| quad.shape[1] == crate::renderer::KIND_GLASS)
+            .expect("the card");
+        let middle = [
+            card.rect[0] + card.rect[2] * 0.5,
+            card.rect[1] + card.rect[3] * 0.5,
+        ];
+        assert_eq!(middle, [190.0, 95.0], "it did not shrink about its middle");
+        assert_eq!(card.rect[2], 150.0);
+        assert_eq!(
+            ui.at(190.0, 95.0),
+            Spot::Nothing,
+            "a page leaving was pressed"
+        );
+        assert_eq!(ui.at(60.0, 20.0), Spot::Control(1), "a spot before it went");
+    }
+
+    #[test]
+    fn a_carry_between_marks_that_are_not_a_range_carries_nothing() {
+        let Ok(mut ui) = Ui::headless(900, 600) else {
+            eprintln!("no adapter: a backwards carry was not checked");
+            return;
+        };
+        let (from, to) = a_page_between_marks(&mut ui);
+        ui.carry_between(
+            to,
+            from,
+            crate::Carry {
+                by: [100.0, 0.0],
+                fade: 0.0,
+                pressable: false,
+                ..crate::Carry::standing([0.0; 4])
+            },
+        );
+        let card = ui.scene.layers[CONTROL_LAYER]
+            .quads
+            .iter()
+            .find(|quad| quad.shape[1] == crate::renderer::KIND_GLASS)
+            .expect("the card");
+        assert_eq!(
+            (card.rect[0], card.shape[3], card.cut),
+            (40.0, 1.0, crate::renderer::NO_CUT),
+            "a backwards carry carried"
+        );
+        assert_eq!(ui.at(60.0, 80.0), Spot::Control(2));
     }
 
     #[test]
@@ -5671,6 +6813,230 @@ mod tests {
     }
 
     #[test]
+    fn a_list_of_values_opens_on_the_one_in_force() {
+        let rows = || {
+            vec![
+                Entry::new("Off"),
+                Entry::new("Small").disabled(),
+                Entry::new("Large"),
+            ]
+        };
+        let anchor = [0.0, 0.0, 100.0, 40.0];
+        let mut menu = ContextMenu::default();
+        assert!(menu.open_selecting(anchor, None, rows(), 2));
+        assert_eq!(menu.selected(), 2, "the light arrives on the answer");
+
+        assert!(menu.open_selecting(anchor, None, rows(), 1));
+        assert_eq!(menu.selected(), 2, "a dead row passes it on to the next");
+
+        assert!(menu.open_selecting(anchor, None, rows(), usize::MAX));
+        assert_eq!(menu.selected(), 0, "past the end is the top of the list");
+        assert!(menu.open_at(anchor, None, rows()));
+        assert_eq!(menu.selected(), 0);
+
+        let long: Vec<Entry> = (0..12).map(|n| Entry::new(format!("{n}"))).collect();
+        menu.set_window(4);
+        assert!(menu.open_selecting(anchor, None, long, 9));
+        assert_eq!(menu.selected(), 9);
+        assert!(
+            menu.scrolled_above() && menu.first <= 9 && 9 < menu.first + 4,
+            "the row in force is scrolled into the window: first {}",
+            menu.first
+        );
+    }
+
+    /// The panel a settled menu stands in, read off the rows it marked.
+    fn settled_panel(ui: &mut Ui, display: [f32; 2], menu: &mut ContextMenu) -> [f32; 4] {
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        for _ in 0..90 {
+            menu.advance(1.0 / 60.0);
+        }
+        ui.begin(
+            display[0],
+            display[1],
+            10.0,
+            &accent,
+            lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
+            IconStyle::Default,
+        );
+        ui.context_menu(menu);
+        let margin = ui.s(menu::MARGIN);
+        let row = ui
+            .spots
+            .iter()
+            .find(|(spot, _)| matches!(spot, Spot::MenuRow { aside: false, .. }))
+            .map(|(_, rect)| *rect)
+            .expect("a settled menu marks its rows");
+        [row[0] - margin, row[1], row[2] + 2.0 * margin, row[3]]
+    }
+
+    #[test]
+    fn a_menu_grows_to_its_widest_row_and_no_further_than_the_window() {
+        let display = [1280.0, 800.0];
+        let Ok(mut ui) = Ui::headless(display[0] as u32, display[1] as u32) else {
+            eprintln!("no adapter: a menu growing to its rows was not checked");
+            return;
+        };
+        let anchor = [80.0, 300.0, 200.0, 54.0];
+        let scale = lxb_toolkit::metrics::scale_for(display[1]);
+        let raise = |rows: Vec<Entry>, title: Option<&str>| {
+            let mut menu = ContextMenu::default();
+            assert!(menu.open_at(anchor, title.map(str::to_string), rows));
+            menu
+        };
+
+        let mut short = raise(vec![Entry::new("Off"), Entry::new("On")], Some("Swap"));
+        let panel = settled_panel(&mut ui, display, &mut short);
+        assert!(
+            (panel[2] - menu::WIDTH * scale).abs() < 0.01,
+            "a menu of short rows keeps its own width: {}",
+            panel[2]
+        );
+
+        let long = "Przechowywanie · Standardowe, z punktami przywracania";
+        let mut grown = raise(
+            vec![Entry::new("Off"), Entry::new(long).glyph("chosen")],
+            Some("Opcje"),
+        );
+        let panel = settled_panel(&mut ui, display, &mut grown);
+        let pad = ui.s(menu::LABEL_PADDING);
+        let margin = ui.s(menu::MARGIN);
+        let glyph = ui.s((menu::ROW - 2.0 * menu::ROW_PADDING) * menu::GLYPH);
+        let room = panel[2] - 2.0 * (margin + pad) - glyph - pad * 0.5;
+        let size = ui.size(Text::Body);
+        let words = ui.shaped_width(long, size, true);
+        assert!(
+            panel[2] > menu::WIDTH * scale && words <= room + 0.01,
+            "the lit row's name and setting stand on one line: {words} in {room}"
+        );
+        assert!(
+            words > room - 1.0,
+            "and the panel is no wider than that: {words} in {room}"
+        );
+        assert!(
+            panel[0] > anchor[0] + anchor[2],
+            "it still stands beside its anchor"
+        );
+
+        let endless = "word ".repeat(80);
+        let mut held = raise(vec![Entry::new(endless.trim())], None);
+        let panel = settled_panel(&mut ui, display, &mut held);
+        let inset = Metric::PanelInset.on(display[1]);
+        assert!(
+            panel[0] >= inset - 0.01 && panel[0] + panel[2] <= display[0] - inset + 0.01,
+            "a row wider than the window is held inside it: {panel:?}"
+        );
+        let written = ui.scene.layers[OVER]
+            .runs
+            .iter()
+            .find(|run| run.text.starts_with("word"))
+            .map(|run| run.text.clone())
+            .expect("the row is written");
+        let room = panel[2] - 2.0 * (margin + pad);
+        let size = ui.size(Text::Body);
+        assert!(
+            written.ends_with('…')
+                && ui.shaped_width(&written, size, true) <= room + ONE_LINE_SLACK,
+            "and what it says ends inside the panel: {written:?}"
+        );
+        let kept = written.trim_end_matches('…').len();
+        let next = kept + endless[kept..].find(|letter| letter != ' ').unwrap_or(0) + 1;
+        let longer = format!("{}…", &endless[..next]);
+        assert!(
+            ui.shaped_width(&longer, size, true) > room + ONE_LINE_SLACK,
+            "and it keeps as much as fits: {written:?}"
+        );
+
+        let mut unfolding = raise(vec![Entry::new(endless.trim()).lines(3, 1)], None);
+        let panel = settled_panel(&mut ui, display, &mut unfolding);
+        assert!(
+            (panel[2] - menu::WIDTH * scale).abs() < 0.01,
+            "a row that unfolds onto its own lines does not widen the panel"
+        );
+    }
+
+    #[test]
+    fn the_row_a_menu_grew_for_is_written_whole_lit_and_pressed() {
+        let display = [1280.0, 800.0];
+        let Ok(mut ui) = Ui::headless(display[0] as u32, display[1] as u32) else {
+            eprintln!("no adapter: the row a menu grew for was not read");
+            return;
+        };
+        let anchor = [80.0, 300.0, 200.0, 54.0];
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        let written = |ui: &mut Ui| -> Vec<String> {
+            ui.scene.layers[OVER]
+                .runs
+                .iter()
+                .map(|run| run.text.clone())
+                .collect()
+        };
+
+        for long in [
+            "Przechowywanie · Standardowe, z punktami przywracania",
+            "Speicherplatz · Standard, mit Wiederherstellungspunkten",
+            "Хранилище · Стандартное, с точками восстановления",
+        ] {
+            for entry in [Entry::new(long), Entry::new(long).glyph("chosen")] {
+                let marked = entry.glyph.is_some();
+                let mut menu = ContextMenu::default();
+                menu.set_window(2);
+                assert!(menu.open_at(
+                    anchor,
+                    Some("Opcje".to_string()),
+                    vec![entry, Entry::new("Off")],
+                ));
+                settled_panel(&mut ui, display, &mut menu);
+                let lit = written(&mut ui);
+                assert!(
+                    lit.iter().any(|text| text == long),
+                    "lit, marked {marked}, the row the panel grew for was cut: {lit:?}"
+                );
+
+                menu.press();
+                menu.advance(0.03);
+                ui.begin(
+                    display[0],
+                    display[1],
+                    10.0,
+                    &accent,
+                    lxb_toolkit::settings::WallpaperStyle::Default,
+                    false,
+                    IconStyle::Default,
+                );
+                ui.context_menu(&mut menu);
+                let pressed = written(&mut ui);
+                assert!(
+                    pressed.iter().any(|text| text == long),
+                    "pressed, marked {marked}, it was cut for as long as it sank: {pressed:?}"
+                );
+            }
+        }
+
+        let endless = "word ".repeat(80);
+        let mut beside = ContextMenu::default();
+        assert!(beside.open_at(
+            anchor,
+            None,
+            vec![Entry::new(endless.trim()).aside("arrow-right")],
+        ));
+        let panel = settled_panel(&mut ui, display, &mut beside);
+        let row = Entry::new("").aside("arrow-right").shape();
+        let button = ui.s(menu::aside_width(&row) + menu::ASIDE_GAP);
+        let room = panel[2] - 2.0 * (ui.s(menu::MARGIN) + ui.s(menu::LABEL_PADDING)) - button;
+        let cut = written(&mut ui)
+            .into_iter()
+            .find(|text| text.starts_with("word"))
+            .expect("the row is written");
+        let size = ui.size(Text::Body);
+        assert!(
+            cut.ends_with('…') && ui.shaped_width(&cut, size, true) <= room + ONE_LINE_SLACK,
+            "a row cut by the window ends short of the button beside it: {cut:?}"
+        );
+    }
+
+    #[test]
     fn a_menu_of_dead_rows_never_opens() {
         let mut menu = ContextMenu::default();
         assert!(!menu.open_at(
@@ -5922,6 +7288,40 @@ mod tests {
         assert!(picker.close_menu());
         assert!(!picker.menu_is_open());
         assert!(!picker.close_menu());
+    }
+
+    #[test]
+    fn a_list_of_orders_opens_on_the_order_in_force() {
+        let directory = PickerDirectory::new("menu-in-force");
+        std::fs::write(directory.path.join("cover.png"), b"x").expect("an image");
+
+        let mut picker = FilePicker::default();
+        assert!(picker.open_for(
+            PickerPurpose::OneFile,
+            PickerSelection::Image,
+            &directory.path,
+            "",
+        ));
+        let into_sort = |picker: &mut FilePicker| {
+            assert!(picker.open_menu());
+            assert!(picker.menu_step(1), "Types, then Sort");
+            assert!(picker.menu_press(), "Sort steps into the orders");
+        };
+
+        into_sort(&mut picker);
+        assert_eq!(picker.menu_rows()[0].glyph, Some("chosen"));
+        assert_eq!(
+            picker.menu.selected(),
+            0,
+            "the light arrives on the order in force, not on the row Sort stood at"
+        );
+
+        assert!(picker.menu_step(1));
+        assert!(picker.menu_press());
+        assert!(picker.close_menu());
+        into_sort(&mut picker);
+        assert_eq!(picker.menu_rows()[1].glyph, Some("chosen"));
+        assert_eq!(picker.menu.selected(), 1);
     }
 
     #[test]
@@ -6967,5 +8367,119 @@ mod tests {
             fitted(thumbnail_of(1.0), [0.0, 0.0, 40.0, -1.0], Fit::Cover).is_none(),
             "a picture was fitted into a rectangle of negative height"
         );
+    }
+
+    /// The light of a question and of a menu, drawn on a session counted
+    /// low-end: frame after frame at one instant, as the window draws there.
+    fn lit_at_one_instant(ui: &mut Ui, low_end: bool, draw: &mut dyn FnMut(&mut Ui)) {
+        let accent = lxb_toolkit::accent::Accent::default_accent();
+        ui.set_low_end(low_end);
+        ui.begin(
+            1280.0,
+            800.0,
+            lxb_toolkit::settings::STILL_WALLPAPER_AT,
+            &accent,
+            lxb_toolkit::settings::WallpaperStyle::Default,
+            false,
+            IconStyle::Default,
+        );
+        draw(ui);
+    }
+
+    #[test]
+    fn on_low_end_hardware_a_questions_light_stands_on_the_answer_chosen() {
+        let Ok(mut ui) = Ui::headless(1280, 800) else {
+            eprintln!("no adapter: a question's light on low-end hardware was not checked");
+            return;
+        };
+        for low_end in [true, false] {
+            let mut dialog = Dialog::default();
+            dialog.ask(
+                "Erase the disk?",
+                "Everything on it will be erased.",
+                vec!["Go back".to_string(), "Erase".to_string()],
+                0,
+            );
+            for _ in 0..60 {
+                dialog.advance(1.0 / 60.0);
+            }
+            lit_at_one_instant(&mut ui, low_end, &mut |ui| ui.dialog(&mut dialog));
+            let answer = |ui: &Ui, index: usize| {
+                ui.spots
+                    .iter()
+                    .find(|(spot, _)| *spot == Spot::DialogButton(index))
+                    .map(|(_, rect)| *rect)
+                    .expect("a settled question marks its answers")
+            };
+            assert_eq!(dialog.light.rect(), Some(answer(&ui, 0)));
+
+            dialog.step(1);
+            lit_at_one_instant(&mut ui, low_end, &mut |ui| ui.dialog(&mut dialog));
+            let on_erase = dialog.light.rect() == Some(answer(&ui, 1));
+            assert_eq!(
+                on_erase,
+                low_end,
+                "low-end {low_end}: Accept answers Erase, and the light {}",
+                if on_erase {
+                    "jumped there on a window that glides"
+                } else {
+                    "was left on Go back"
+                }
+            );
+            assert!(
+                !dialog.light.gliding() || !low_end,
+                "a light put in place is at rest"
+            );
+        }
+    }
+
+    #[test]
+    fn on_low_end_hardware_a_menus_light_stands_on_the_row_chosen() {
+        let Ok(mut ui) = Ui::headless(1280, 800) else {
+            eprintln!("no adapter: a menu's light on low-end hardware was not checked");
+            return;
+        };
+        for low_end in [true, false] {
+            let mut menu = ContextMenu::default();
+            menu.set_window(4);
+            assert!(menu.open_at(
+                [80.0, 300.0, 200.0, 54.0],
+                None,
+                vec![Entry::new("Standard"), Entry::new("Restore points")],
+            ));
+            for _ in 0..90 {
+                menu.advance(1.0 / 60.0);
+            }
+            lit_at_one_instant(&mut ui, low_end, &mut |ui| ui.context_menu(&mut menu));
+            let first = menu.light.rect().expect("a settled menu is lit");
+
+            menu.step(1);
+            assert_eq!(menu.selected(), 1);
+            lit_at_one_instant(&mut ui, low_end, &mut |ui| ui.context_menu(&mut menu));
+            let row = ui
+                .spots
+                .iter()
+                .find(|(spot, _)| {
+                    matches!(
+                        spot,
+                        Spot::MenuRow {
+                            row: 1,
+                            aside: false
+                        }
+                    )
+                })
+                .map(|(_, rect)| *rect)
+                .expect("a settled menu marks its rows");
+            let light = menu.light.rect().expect("a settled menu is lit");
+            let middle = light[1] + light[3] / 2.0;
+            let on_row = middle > row[1] && middle < row[1] + row[3];
+            assert_eq!(
+                on_row, low_end,
+                "low-end {low_end}: the light stood at {light:?}, the row chosen at {row:?}"
+            );
+            if !low_end {
+                assert_eq!(light, first, "a frame of no time moved a gliding light");
+            }
+        }
     }
 }

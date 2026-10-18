@@ -13,8 +13,10 @@ pub fn smoothstep(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+pub const LONGEST_STEP: f64 = 0.1;
+
 pub fn spring(position: f64, velocity: f64, target: f64, rate: f64, dt: f64) -> (f64, f64) {
-    let dt = dt.clamp(0.0, 0.1);
+    let dt = dt.clamp(0.0, LONGEST_STEP);
     let offset = position - target;
 
     let c = velocity + rate * offset;
@@ -180,6 +182,11 @@ mod tests {
         let (at, speed) = spring(0.0, 0.0, 1.0, CARD_SPRING, 30.0);
         assert!((0.0..=1.0).contains(&at), "{at}");
         assert!(speed.is_finite());
+        assert_eq!(
+            (at, speed),
+            spring(0.0, 0.0, 1.0, CARD_SPRING, LONGEST_STEP),
+            "a stall is taken for the longest step and no more"
+        );
     }
 
     #[test]

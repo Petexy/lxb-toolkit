@@ -60,6 +60,7 @@ __all__ = [
     "AppNotFound",
     "Beside",
     "beside",
+    "board_rect",
     "Button",
     "capsule_radius",
     "Color",
@@ -72,6 +73,7 @@ __all__ = [
     "EntryKind",
     "Face",
     "fill_arrival",
+    "Fit",
     "font",
     "Glass",
     "glass",
@@ -245,7 +247,8 @@ def library_path() -> Path:
 
 
 def __getattr__(name: str):
-    """``App``, ``Page``, ``Align`` and ``Press`` live in :mod:`lxb_toolkit.app`.
+    """``App``, ``Page``, ``Align``, ``Fit`` and ``Press`` live in
+    :mod:`lxb_toolkit.app`.
 
     Reached lazily, and that is the whole point of the arrangement: this
     package answers what the language *is* and talks to a library with no
@@ -255,7 +258,7 @@ def __getattr__(name: str):
     the second library is opened by the first program that asks for it and
     never by the import.
     """
-    if name in ("App", "Page", "Align", "Press", "AppNotFound"):
+    if name in ("App", "Page", "Align", "Fit", "Press", "AppNotFound"):
         from . import app
 
         return getattr(app, name)
@@ -473,6 +476,8 @@ for _name, _argtypes, _restype in [
     ("lxb_card_spring", [], ctypes.c_double),
     ("lxb_layout_beside", [ctypes.c_float] * 5, _Beside),
     ("lxb_peek", [], ctypes.c_float),
+    ("lxb_board_rect",
+     [ctypes.c_float, ctypes.c_float, ctypes.POINTER(ctypes.c_float)], None),
     ("lxb_slide_follow", [ctypes.POINTER(_Slide), ctypes.c_float, ctypes.c_float],
      ctypes.c_float),
     ("lxb_slide_moving", [ctypes.POINTER(_Slide)], ctypes.c_int),
@@ -1048,6 +1053,22 @@ def beside(window: float, margin: float, column: float, gap: float,
     """
     laid = _lib.lxb_layout_beside(window, margin, column, gap, least)
     return Beside(laid.page_x, laid.page_w, laid.reach)
+
+
+def board_rect(width: float,
+               height: float) -> tuple[float, float, float, float]:
+    """Where LineXinBar's on-screen keyboard settles over a display this size.
+
+    ``(x, y, w, h)`` in the display's pixels: centred along its foot, floating
+    its margin clear of it — wherever the field it types into is, for the shell
+    never moves it out of a field's way. For a window that fills the display,
+    as every application under LineXinBar does, a field being typed into with
+    the shell's board belongs above ``y``.
+    """
+    four = ctypes.c_float * 4
+    out = four()
+    _lib.lxb_board_rect(width, height, out)
+    return (out[0], out[1], out[2], out[3])
 
 
 class Slide:

@@ -434,6 +434,32 @@ mod tests {
         }
     }
 
+    /// A machine nobody has set up — no `shell.toml` at all, as on a live
+    /// medium or a freshly installed system — reads the clock of the
+    /// language its session speaks, as the shell has since its own first run
+    /// stopped speaking English (UK) in an `en_US` session. The session is
+    /// said here, never read from the machine running the test.
+    #[test]
+    fn a_machine_nobody_has_set_up_reads_the_clock_its_session_speaks() {
+        let session = |lang: &'static str| {
+            crate::i18n::resolve(move |name| (name == "LANG").then(|| lang.to_string()))
+        };
+        assert!(twelve_hour_clock_from("", session("en_US.UTF-8")));
+        assert!(twelve_hour_clock_from("", session("hi_IN.UTF-8")));
+        for lang in ["en_GB.UTF-8", "C.UTF-8", "pl_PL.UTF-8", "de_DE.UTF-8"] {
+            assert!(!twelve_hour_clock_from("", session(lang)), "{lang}");
+        }
+        // And what somebody chose outranks the session, both ways.
+        assert!(!twelve_hour_clock_from(
+            "clock = \"24-hour\"\n",
+            session("en_US.UTF-8")
+        ));
+        assert!(twelve_hour_clock_from(
+            "clock = \"12-hour\"\n",
+            session("en_GB.UTF-8")
+        ));
+    }
+
     #[test]
     fn the_keyboard_the_shell_was_set_to_is_read_off_the_same_file() {
         assert_eq!(

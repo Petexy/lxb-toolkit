@@ -570,6 +570,18 @@ pub extern "C" fn lxb_peek() -> c_float {
     lxb_toolkit::layout::PEEK
 }
 
+/// Where LineXinBar's on-screen keyboard settles over a display this size:
+/// `out` gets `[x, y, w, h]`. See `lxb_toolkit::board::rect`. A null `out`
+/// is left alone.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_board_rect(width: c_float, height: c_float, out: *mut c_float) {
+    if out.is_null() {
+        return;
+    }
+    let rect = lxb_toolkit::board::rect(width, height);
+    std::slice::from_raw_parts_mut(out, 4).copy_from_slice(&rect);
+}
+
 /// One frame of the view's slide towards `target`; where it stands now. A
 /// null slide stands nowhere.
 #[no_mangle]
@@ -2684,6 +2696,7 @@ mod tests {
             assert_eq!(lxb_slide_follow(std::ptr::null_mut(), 1.0, 0.1), 0.0);
             assert_eq!(lxb_slide_moving(std::ptr::null()), 0);
             lxb_pressed(std::ptr::null(), 0.5, std::ptr::null_mut());
+            lxb_board_rect(1280.0, 800.0, std::ptr::null_mut());
             lxb_control_glow_rect(std::ptr::null(), 100.0, -1.0, std::ptr::null_mut());
             assert_eq!(lxb_control_arrival(std::ptr::null(), std::ptr::null()), 0.0);
         }

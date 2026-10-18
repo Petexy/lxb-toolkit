@@ -236,6 +236,16 @@ class Tour:
                 self.apply(page)
                 break
 
+        # What the pointer moves onto stands still — the pages down the side
+        # and the items on this one — so it takes the light, silently, as
+        # hovering does in the shell. Only a press acts on it.
+        hovered = page.hovered()
+        if hovered is not None:
+            if hovered < len(SECTIONS):
+                self.section = hovered
+            elif ITEM_SPOT <= hovered < ITEM_SPOT + self.count():
+                self.cursor[self.section] = hovered - ITEM_SPOT
+
         chosen = page.chose()
         if chosen == 1:
             page.ask("A question", "This is the shell's own panel: the same "

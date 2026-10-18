@@ -7,6 +7,11 @@ const KIND_GLYPH: i32 = 5;
 const KIND_IMAGE: i32 = 6;
 const KIND_SOFT_EDGE: i32 = 7;
 const KIND_FROST: i32 = 8;
+const KIND_BEAD: i32 = 9;
+
+// How far a bead's quad reaches past its box, for the shadow it casts: a share
+// of the size it is shaded as, and a pixel. See `Quad::bead`.
+const BEAD_MARGIN: f32 = 0.0625;
 
 const CORNER: f32 = 2.0;
 
@@ -119,6 +124,17 @@ fn field(uv: vec2<f32>) -> f32 {
     return lxb_glyph_decode(textureSampleLevel(atlas, atlas_sampler, uv, 0.0).r);
 }
 
+// What the atlas would hold for a rounded box: its distance in pixels as a share
+// of the glyph's size, no further either way than a cell keeps. A ring is the
+// box's edge alone, `ring` of the glyph's size thick, inside it.
+fn bead_field(point: vec2<f32>, half: vec2<f32>, radius: f32, size: f32, ring: f32) -> f32 {
+    var distance = lxb_rounded_box(point, half, radius, 2.0) / size;
+    if (ring > 0.0) {
+        distance = abs(distance + ring * 0.5) - ring * 0.5;
+    }
+    return clamp(distance, -LXB_GLYPH_SDF_RANGE, LXB_GLYPH_SDF_RANGE);
+}
+
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
 
@@ -205,8 +221,13 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     }
 
     if (kind == KIND_SOFT_EDGE) {
-        let height = max(2.0 * in.half_size.y, 1.0);
-        let band = clamp(in.material.x, 1.0, height * 0.5);
+        // Along its height, between its top and its bottom ends, or — laid
+        // sideways (`material.z`) — along its width, between its left and
+        // right ends.
+        let sideways = in.material.z > 0.5;
+        let length = max(2.0 * select(in.half_size.y, in.half_size.x, sideways), 1.0);
+        let along = select(in.unit.y, in.unit.x, sideways);
+        let band = clamp(in.material.x, 1.0, length * 0.5);
         // Each end fades over a band of its own, narrowed by how much really
         // continues past it. Narrowed rather than dimmed: an end that faded to
         // something short of the ground would stop at a line, and a line is
@@ -215,11 +236,11 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let under = max(band * in.cell.y, 1.0);
         let top = select(
             0.0,
-            1.0 - smoothstep(0.0, over, in.unit.y * height),
+            1.0 - smoothstep(0.0, over, along * length),
             in.cell.x > 0.0);
         let bottom = select(
             0.0,
-            1.0 - smoothstep(0.0, under, (1.0 - in.unit.y) * height),
+            1.0 - smoothstep(0.0, under, (1.0 - along) * length),
             in.cell.y > 0.0);
         let edge = clamp(max(top, bottom), 0.0, 1.0);
         // Blurrier and more transparent together, and at the very edge it is
@@ -229,6 +250,38 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let blurred = behind(in.pixel, in.material.y * edge);
         let ground = ground_at(in.pixel, 0.0);
         return vec4<f32>(mix(blurred, ground, edge), edge * in.shape.w);
+    }
+
+    if (kind == KIND_BEAD) {
+        // A glyph's material on a rounded box measured by arithmetic rather
+        // than read out of the atlas: a switch's track and its knob, the disc
+        // under a tick. `material.x` is the size of glyph it is shaded as,
+        // which sets its depth and its shadow; `shape.x` is the box's corner.
+        let inset = in.material.x * BEAD_MARGIN + 1.0;
+        let half = max(in.half_size - vec2<f32>(inset), vec2<f32>(0.5));
+        let size = max(in.material.x, 1.0);
+        var bead: LxbGlyphMaterial;
+        bead.size = vec2<f32>(size, 2.0 * half.y);
+        bead.local_y = in.local.y + half.y;
+        bead.color = in.tint.rgb;
+        bead.accent_soft = frame.accent[1].rgb;
+        bead.depth = lxb_glyph_depth(size);
+        bead.gloss = in.material.z;
+        bead.opacity = in.tint.a * in.shape.w;
+        bead.simple = in.shape.z;
+
+        let arm = LXB_GLYPH_GRADIENT_ARM * size / LXB_GLYPH_CELL;
+        let lamp = normalize(LXB_GLYPH_LAMP.xy)
+            * max(bead.depth, LXB_GLYPH_MIN_DEPTH)
+            * LXB_GLYPH_SHADOW_OFFSET;
+        var at: LxbGlyphSamples;
+        at.center = bead_field(in.local, half, in.shape.x, size, in.material.y);
+        at.east = bead_field(in.local + vec2<f32>(arm, 0.0), half, in.shape.x, size, in.material.y);
+        at.west = bead_field(in.local - vec2<f32>(arm, 0.0), half, in.shape.x, size, in.material.y);
+        at.south = bead_field(in.local + vec2<f32>(0.0, arm), half, in.shape.x, size, in.material.y);
+        at.north = bead_field(in.local - vec2<f32>(0.0, arm), half, in.shape.x, size, in.material.y);
+        at.shadow = bead_field(in.local + lamp, half, in.shape.x, size, in.material.y);
+        return lxb_glyph_material(at, bead);
     }
 
     let uv = mix(in.cell.xy, in.cell.zw, in.unit);

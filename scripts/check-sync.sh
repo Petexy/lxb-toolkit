@@ -257,6 +257,20 @@ function_hash() {
     printf '%s\n' "$body" | sha256sum | awk '{print $1}'
 }
 
+# One top-level Rust function, comments and whitespace taken out, for a
+# function the toolkit carries whole rather than by its numbers.
+rust_body_hash() {
+    local label=$1
+    local file=$2
+    local name=$3
+    local body
+    body=$(sed -n "/^\(pub \)\?fn $name(/,/^}/p" "$file")
+    [[ -n "$body" ]] || fail_setup "$label" "function $name not found in $file"
+    printf '%s\n' "$body" \
+        | sed -e 's#//.*##' -e 's/[[:space:]]//g' \
+        | grep -v '^$' | sha256sum | awk '{print $1}'
+}
+
 # The body of one WGSL function, with comments, indentation and the library's
 # own name prefixes taken out — so the shell's `bevel_shift` and the shipped
 # `lxb_bevel_shift` hash the same when they are the same arithmetic.
@@ -333,6 +347,98 @@ file_contains() {
         | grep -F -c -- "$wanted" || true)
     [[ "$found" -ge 1 ]] \
         || fail_mismatch "$label" "$wanted" "no such line in $file"
+}
+
+# The same, inside one function — a top-level one, or a method one level in —
+# for a line that is only the rule where it is written: the colour a menu's
+# title is written in, say, which the rest of a file uses for other things.
+function_contains() {
+    local label=$1
+    local file=$2
+    local function=$3
+    local wanted=$4
+    local body
+    body=$(sed -n "/^\(pub \)\?fn $function(/,/^}/p" "$file")
+    [[ -n "$body" ]] \
+        || body=$(sed -n "/^    \(pub \)\?fn $function(/,/^    }/p" "$file")
+    [[ -n "$body" ]] || fail_setup "$label" "function $function not found in $file"
+    # Normalised into a variable first: `grep -q` stops reading at the first
+    # match, and under pipefail the writer it leaves behind fails the pipe.
+    body=$(printf '%s\n' "$body" \
+        | sed -e 's#//.*##' -e 's/[[:space:]]\+/ /g' -e 's/^ //' -e 's/ $//')
+    grep -qF -- "$wanted" <<< "$body" \
+        || fail_mismatch "$label" "$wanted" "not in $function in $file"
+}
+
+# The same, inside one arm of a match in one function: from the line that opens
+# the arm up to the line that opens the next. For a line written in more than
+# one arm, as the shell's `self.held_bar = None;` is in a leave's and a
+# release's, where only one of them is the rule being pinned. The arm is read to
+# the end rather than left early, for the reason given above.
+arm_contains() {
+    local label=$1
+    local file=$2
+    local function=$3
+    local arm=$4
+    local next=$5
+    local wanted=$6
+    local body
+    body=$(sed -n "/^\(pub \)\?fn $function(/,/^}/p" "$file")
+    [[ -n "$body" ]] \
+        || body=$(sed -n "/^    \(pub \)\?fn $function(/,/^    }/p" "$file")
+    [[ -n "$body" ]] || fail_setup "$label" "function $function not found in $file"
+    body=$(printf '%s\n' "$body" \
+        | sed -e 's#//.*##' -e 's/[[:space:]]\+/ /g' -e 's/^ //' -e 's/ $//' \
+        | awk -v arm="$arm" -v next_arm="$next" '
+            open && index($0, next_arm) == 1 { open = 0; done = 1 }
+            !done && index($0, arm) == 1 { open = 1 }
+            open { print }')
+    [[ -n "$body" ]] || fail_setup "$label" "no arm $arm in $function in $file"
+    grep -qF -- "$wanted" <<< "$body" \
+        || fail_mismatch "$label" "$wanted" "not in $arm in $function in $file"
+}
+
+# The variants of one top-level enum, in order, each by its name and payload.
+enum_variants() {
+    local label=$1
+    local file=$2
+    local name=$3
+    local body
+    body=$(sed -n "/^\(pub \)\?enum $name {/,/^}/p" "$file")
+    [[ -n "$body" ]] || fail_setup "$label" "enum $name not found in $file"
+    printf '%s\n' "$body" \
+        | sed -e '1d' -e '$d' -e 's#//.*##' -e '/^[[:space:]]*#\[/d' \
+              -e 's/[[:space:]]//g' -e 's/,$//' -e '/^$/d' \
+        | tr '\n' ' ' | sed 's/ $//'
+}
+
+# Every line of a file above its tests that sets one field, in order and
+# normalised, joined by " | ".
+assignments() {
+    local label=$1
+    local file=$2
+    local field=$3
+    require_file "$label" "$file"
+    sed -n '1,/^mod tests {/p' "$file" \
+        | sed -e 's#//.*##' -e 's/[[:space:]]\+/ /g' -e 's/^ //' -e 's/ $//' \
+        | { grep -F -- ".$field = " || true; } \
+        | sed ':a;N;$!ba;s/\n/ | /g'
+}
+
+# A line the file must not contain: for something the toolkit adds that the
+# shell has no counterpart to, so the day the shell grows one the two are
+# compared rather than left to be two answers. The file has to be there: grep
+# answers a missing one as "not found", and a shader renamed away would then
+# pass this for ever without anything in it being looked at.
+file_lacks() {
+    local label=$1
+    local file=$2
+    local unwanted=$3
+    require_file "$label" "$file"
+    if grep -qF -- "$unwanted" "$file"; then
+        fail_mismatch "$label" "$unwanted is now in $file" \
+            'an addition with nothing of the shell to compare it to'
+    fi
 }
 
 function_calls_once() {
@@ -436,6 +542,7 @@ toolkit_glass_shader="$toolkit_root/crates/lxb-toolkit/assets/shaders/lxb_glass.
 toolkit_glyph_shader="$toolkit_root/crates/lxb-toolkit/assets/shaders/lxb_glyph.wgsl"
 toolkit_paint="$toolkit_root/crates/lxb-toolkit/src/paint.rs"
 toolkit_render_ui="$toolkit_root/crates/lxb-render/src/ui.wgsl"
+toolkit_renderer="$toolkit_root/crates/lxb-render/src/renderer.rs"
 project_palettes="$project_root/crates/lxb-desktop/src/theme.rs"
 project_launch="$project_root/crates/lxb-desktop/src/launch.rs"
 project_menu="$project_root/crates/lxb-desktop/src/menu.rs"
@@ -449,6 +556,7 @@ project_sound_source="$project_root/crates/lxb-desktop/src/sound.rs"
 toolkit_palette="$toolkit_root/crates/lxb-toolkit/src/palette.rs"
 toolkit_motion="$toolkit_root/crates/lxb-toolkit/src/motion.rs"
 toolkit_layout="$toolkit_root/crates/lxb-toolkit/src/layout.rs"
+toolkit_board="$toolkit_root/crates/lxb-toolkit/src/board.rs"
 toolkit_sound_source="$toolkit_root/crates/lxb-toolkit/src/sound.rs"
 
 require_dir assets.glyphs.project "$project_glyphs"
@@ -464,7 +572,8 @@ for required in \
     "$project_palettes" "$project_launch" "$project_menu" "$project_guide" \
     "$project_notify" "$project_volume" "$project_keyboard" "$project_main" \
     "$project_overview" "$project_sound_source" \
-    "$toolkit_palette" "$toolkit_motion" "$toolkit_layout" "$toolkit_sound_source"; do
+    "$toolkit_palette" "$toolkit_motion" "$toolkit_layout" "$toolkit_sound_source" \
+    "$toolkit_board"; do
     require_file source "$required"
 done
 
@@ -868,7 +977,7 @@ for mapping in \
     "press-dip $project_ui PRESS_DIP $toolkit_motion PRESS_DIP" \
     "press-bounce $project_ui PRESS_BOUNCE $toolkit_motion PRESS_BOUNCE" \
     "press-down $project_ui PRESS_DOWN $toolkit_motion PRESS_DOWN" \
-    "highlight-spring $project_guide HIGHLIGHT_EASE_RATE $toolkit_motion HIGHLIGHT_SPRING" \
+    "highlight-spring $project_menu HIGHLIGHT_EASE_RATE $toolkit_motion HIGHLIGHT_SPRING" \
     "pulse-period $project_ui PULSE_PERIOD $toolkit_motion PULSE"; do
     read -r label project_file project_name toolkit_file toolkit_name <<< "$mapping"
     compare_number "control.$label" \
@@ -885,6 +994,85 @@ compare_number layout.peek \
 compare_number layout.spring \
     "$(rust_scalar layout.spring.project "$project_overview" CARD_SPRING)" \
     "$(rust_scalar layout.spring.toolkit "$toolkit_motion" CARD_SPRING)"
+
+# Where the shell's on-screen keyboard settles, which an application under it
+# keeps the field being typed into clear of (`board.rs`): the shell's
+# `keyboard_panel_rect`, by its numbers, its rows and every line of the rule.
+for mapping in \
+    "key-unit $project_ui KEY_UNIT KEY_UNIT" \
+    "key-height $project_ui KEY_HEIGHT KEY_HEIGHT" \
+    "key-gap $project_ui KEY_GAP KEY_GAP" \
+    "padding $project_ui BOARD_PADDING BOARD_PADDING" \
+    "margin $project_ui BOARD_MARGIN BOARD_MARGIN" \
+    "columns $project_keyboard COLUMNS COLUMNS" \
+    "rows $project_keyboard ROW_COUNT ROW_COUNT"; do
+    read -r label project_file project_name toolkit_name <<< "$mapping"
+    compare_number "board.$label" \
+        "$(rust_scalar "board.$label.project" "$project_file" "$project_name")" \
+        "$(rust_scalar "board.$label.toolkit" "$toolkit_board" "$toolkit_name")"
+done
+compare_number board.function-row \
+    "$(rust_numbers board.function-row.project "$project_keyboard" row_scale | awk '{print $1}')" \
+    "$(rust_scalar board.function-row.toolkit "$toolkit_board" FUNCTION_ROW_SCALE)"
+function_contains board.function-row.first "$project_keyboard" row_scale \
+    'if row == FUNCTION_ROW {'
+compare_number board.function-row.index \
+    "$(rust_scalar board.function-row.index.project "$project_keyboard" FUNCTION_ROW)" 0
+function_contains board.function-row.first.toolkit "$toolkit_board" row_scale 'if row == 0 {'
+arm_contains board.function-row.short.toolkit "$toolkit_board" row_scale \
+    'if row == 0 {' '} else {' 'FUNCTION_ROW_SCALE'
+function_contains board.rows.band "$project_ui" row_band \
+    '.map(|above| keyboard::row_scale(above) * KEY_HEIGHT + KEY_GAP)'
+function_contains board.rows.band.toolkit "$toolkit_board" row_band \
+    '.map(|above| row_scale(above) * KEY_HEIGHT + KEY_GAP)'
+function_contains board.rows.keys "$project_ui" keys_height \
+    'let (top, height) = row_band(keyboard::ROW_COUNT - 1);'
+function_contains board.rows.keys.toolkit "$toolkit_board" keys_height \
+    'let (top, height) = row_band(ROW_COUNT - 1);'
+function_contains board.scale "$project_ui" board_scale 'let scale = guide_scale(height);'
+function_contains board.scale.toolkit "$toolkit_board" board_scale 'let scale = scale_for(height);'
+function_contains board.scale.natural "$project_ui" board_scale \
+    'let natural = (KEY_UNIT * keyboard::COLUMNS + (BOARD_PADDING + BOARD_MARGIN) * 2.0) * scale;'
+function_contains board.scale.natural.toolkit "$toolkit_board" board_scale \
+    'let natural = (KEY_UNIT * COLUMNS + (BOARD_PADDING + BOARD_MARGIN) * 2.0) * scale;'
+for side in project toolkit; do
+    if [[ $side == project ]]; then file=$project_ui; else file=$toolkit_board; fi
+    function_contains "board.scale.narrow.$side" "$file" board_scale \
+        'if width > 0.0 && natural > width {'
+    function_contains "board.scale.shrunk.$side" "$file" board_scale \
+        'scale * (width / natural)'
+done
+function_contains board.rect.width "$project_ui" keyboard_panel_rect \
+    'let w = (KEY_UNIT * keyboard::COLUMNS + BOARD_PADDING * 2.0) * scale;'
+function_contains board.rect.width.toolkit "$toolkit_board" rect \
+    'let w = (KEY_UNIT * COLUMNS + BOARD_PADDING * 2.0) * scale;'
+for side in project toolkit; do
+    if [[ $side == project ]]; then
+        file=$project_ui
+        name=keyboard_panel_rect
+    else
+        file=$toolkit_board
+        name=rect
+    fi
+    function_contains "board.rect.height.$side" "$file" "$name" \
+        'let h = (keys_height() + BOARD_PADDING * 2.0) * scale;'
+    function_contains "board.rect.where.$side" "$file" "$name" \
+        '[(width - w) * 0.5, height - BOARD_MARGIN * scale - h, w, h]'
+    function_contains "board.rect.scale.$side" "$file" "$name" \
+        'let scale = board_scale(width, height);'
+done
+
+# The spring itself, which every light, slide and card in both rides: the
+# longest step it is taken for, and the whole of its arithmetic. It is solved
+# in closed form so that two processes stepping it on their own frames arrive
+# together, and that only holds while it is the same function on both sides —
+# a constant compared beside a formula that has drifted would say nothing.
+compare_number motion.longest-step \
+    "$(rust_scalar motion.longest-step.project "$project_overview" LONGEST_STEP)" \
+    "$(rust_scalar motion.longest-step.toolkit "$toolkit_motion" LONGEST_STEP)"
+compare_text motion.spring.arithmetic \
+    "$(rust_body_hash motion.spring.project "$project_overview" spring)" \
+    "$(rust_body_hash motion.spring.toolkit "$toolkit_motion" spring)"
 
 # The panel's own flight, which the shell keeps with the menu rather than with
 # the other durations.
@@ -1296,6 +1484,28 @@ file_contains input.repeat.scheduled-from-now "$project_controller" \
 file_contains input.repeat.scheduled-from-now.toolkit "$toolkit_input" \
     "held.next = Some(now + REPEAT_INTERVAL);"
 
+# One press two controllers both report is answered once, whoever the second
+# one is: Steam Input's pad for a game, a copy made under ids neither side was
+# shipped knowing, or one pad read through two drivers. The question is not
+# which device a press came from but whether the same action already came from
+# a *different* one inside the window; a repeat on the same controller is a
+# second press, and a held direction is read from every pad merged, not from
+# this. The shell's controllers are pads, its raw Steam Controller and its
+# guard; an application's are the pads it reads, which every press passes.
+compare_number input.coincidence \
+    "$(duration_seconds input.coincidence.project "$project_controller" COINCIDENCE)" \
+    "$(duration_seconds input.coincidence.toolkit "$toolkit_input" COINCIDENCE)"
+file_contains input.coincidence.window "$project_controller" \
+    'answered.retain(|(_, _, at)| now.saturating_sub(*at) < COINCIDENCE);'
+file_contains input.coincidence.window.toolkit "$toolkit_input" \
+    '.retain(|(_, _, at)| now.saturating_sub(*at) < COINCIDENCE);'
+file_contains input.coincidence.another-controller "$project_controller" \
+    '.find(|(had, by, _)| *had == action && *by != from)'
+file_contains input.coincidence.another-controller.toolkit "$toolkit_input" \
+    '.any(|(had, by, _)| *had == action && *by != from)'
+file_contains input.coincidence.every-pad.toolkit "$toolkit_pad" \
+    'if self.answered.answer(action, event.id, now) {'
+
 # The mapping itself, pinned on both sides. A table cannot be hashed against
 # one written for another program — the shell has actions an application must
 # never be given — so what is pinned is every row the two do share.
@@ -1341,6 +1551,14 @@ file_contains input.map.menu-key "$project_main" \
     "Keysym::Menu | Keysym::F10 | Keysym::y | Keysym::Y => Some(Action::Menu),"
 file_contains input.map.menu-key.toolkit "$toolkit_input" \
     "Key::Menu | Key::F10 => Some(Action::Menu),"
+# And the shell's y beside them, which a window reads where no field takes it
+# as text (lxb-app's letter_press); the toolkit's own y in of_letter is
+# pinned to the shell's line above with the rest of the shorthands.
+function_contains input.map.menu-letter.toolkit \
+    "$toolkit_root/crates/lxb-app/src/lib.rs" letter_press \
+    'Key::Letter(letter) => Action::of_letter(letter).filter(|action| *action == Action::Menu),'
+file_contains input.map.menu-letter.of-letter.toolkit "$toolkit_input" \
+    "'y' => Some(Action::Menu),"
 
 # The one place the toolkit deliberately differs, pinned so that it cannot be
 # quietly "corrected" into the shell's answer: the shell has to keep a way out
@@ -1350,6 +1568,330 @@ file_contains input.divergence.tab "$project_main" \
     "Keysym::Tab => Some(Action::NextScreen),"
 file_contains input.divergence.tab.toolkit "$toolkit_input" \
     "Key::Tab => Some(Action::Next),"
+
+# --- what the session says --------------------------------------------------
+#
+# The clock is one key in shell.toml, read by both by one rule: "12-hour" or
+# "24-hour" is the answer, and anything else — no file at all, no key,
+# "language", a word with no clock — leaves it to the language, where American
+# English and Hindi read the twelve-hour clock. The toolkit reads the key each
+# time it writes a time, so it follows a clock another program writes into the
+# file, which a running shell has done since 6f2fdc5.
+
+project_i18n="$project_root/crates/lxb-desktop/src/i18n.rs"
+project_settings="$project_root/crates/lxb-desktop/src/settings.rs"
+toolkit_i18n="$toolkit_root/crates/lxb-toolkit/src/i18n.rs"
+require_file session.project "$project_i18n"
+require_file session.project "$project_settings"
+require_file session.toolkit "$toolkit_i18n"
+
+file_contains session.clock.twelve "$project_i18n" \
+    '"12-hour" => Some(Self::TwelveHour),'
+file_contains session.clock.twenty-four "$project_i18n" \
+    '"24-hour" => Some(Self::TwentyFourHour),'
+file_contains session.clock.twelve.toolkit "$toolkit_settings" \
+    'Some("12-hour") => true,'
+file_contains session.clock.twenty-four.toolkit "$toolkit_settings" \
+    'Some("24-hour") => false,'
+file_contains session.clock.from-language "$project_i18n" \
+    'Clock::FromLanguage => matches!(spoken(), Language::American | Language::Hindi),'
+file_contains session.clock.from-language.toolkit "$toolkit_settings" \
+    '_ => matches!(language, "en-US" | "hi"),'
+
+# A shell nobody has set up — no shell.toml at all, as on a live medium or a
+# machine just installed — follows the session's language and that language's
+# clock (f480316). The toolkit has always stood there: its language is the
+# session's and nothing else, and no file leaves the clock to it.
+function_contains session.no-file.language "$project_settings" load_from \
+    'crate::i18n::set(crate::i18n::Language::System);'
+function_contains session.no-file.clock "$project_settings" load_from \
+    'crate::i18n::set_clock(crate::i18n::Clock::FromLanguage);'
+function_contains session.no-file.toolkit "$toolkit_settings" twelve_hour_clock \
+    '.unwrap_or_default(),'
+
+# Where they differ, pinned so neither is quietly "corrected". A running shell
+# follows a language another program writes into shell.toml (6f2fdc5; the
+# Linexin live medium's installer is that program) and gives every program it
+# opens from then on that language's locale. A toolkit application keeps the
+# language it started in, as every program on a Linux desktop does: it is one
+# of the programs the shell opens, and is handed the new locale when it is
+# opened. Its own words come out of one catalog, chosen once per process.
+function_contains i18n.divergence.running-language "$project_settings" \
+    follow_the_file 'crate::i18n::set(language);'
+file_contains i18n.divergence.running-language.toolkit "$toolkit_i18n" \
+    'LazyLock::new(|| resolve(|name| std::env::var(name).ok()));'
+
+# --- where an application is answered differently, on purpose ---------------
+#
+# Each of these is a place the toolkit deliberately stands apart from the
+# shell, pinned on both sides like input.divergence.tab so that neither can be
+# quietly "corrected" into the other's answer, and so that the shell moving
+# either way is named here rather than passing unseen. All but the dialog's ink
+# came in for the Linexin Installer, an application written in every one of the
+# shell's ten languages over pages it draws itself. The menu's fold is the
+# older one of these and is held by its own numbers above.
+toolkit_app="$toolkit_root/crates/lxb-app/src/lib.rs"
+require_file divergence.toolkit "$toolkit_app"
+
+# A menu grows to its widest row, within the window. The shell's panel is its
+# own width plus whatever its caller asked for, and a row longer than that is
+# cut, or opens onto more lines when lit; its rows are the shell's own words,
+# measured for that width. An application's are not: "Przechowywanie ·
+# Standardowe" did not fit in Polish, so the toolkit measures every one-line row
+# (bold, as a lit row is written) and the title, and grows the panel to the
+# widest, never below its own width and never past the window less its inset.
+# What still does not fit is cut with "…" to the chip at rest. (37a0c68,
+# bd478fe, 624bb1b)
+function_contains menu.divergence.width "$project_ui" context_menu_rect \
+    '(context_panel_width(menu.extra_width()) * scale).min((width - inset * 2.0).max(0.0));'
+function_contains menu.divergence.width.toolkit "$toolkit_components" context_menu \
+    'let extra = state.extra.max(self.widest_row(state) - menu::WIDTH);'
+
+# The quiet lines of a menu and a question are white made quiet by strength.
+# The shell writes a menu's title (with its stamp, detail and disabled rows)
+# and a question's notes in text_soft, a pale cast of the accent, over its own
+# dark surfaces, where it passes for a soft white. Over an application's page,
+# showing through the pane, it is lavender on grey: the installer's "Opcje"
+# measured (162,144,209). The design language's rule is text_soft only over
+# the language's own ground. (2c382aa; the question's body before it)
+function_contains menu.divergence.ink "$project_ui" build_context_menu \
+    'color: theme.text_soft.a(0.85),'
+function_contains menu.divergence.ink.toolkit "$toolkit_components" context_menu \
+    'let tint = self.tinted(Role::Text, 0.85);'
+function_contains dialog.divergence.ink "$project_ui" build_dialog \
+    'color: theme.text_soft.a(0.82),'
+function_contains dialog.divergence.ink.toolkit "$toolkit_components" dialog \
+    'let quiet = self.tinted(Role::Text, control::INK_QUIET * out);'
+
+# A question keeps the lines it is given, as the shell's does — each of its
+# notes is a line — but a line too wide for the pane is broken again where a
+# line may break, rather than cut at its tail. The shell writes its own
+# sentences to fit; an application hands over a disk's model, a quoted name or
+# a Chinese sentence it has broken itself, and an ellipsis there hides the one
+# word somebody is being asked about. (bd0a742)
+function_contains dialog.divergence.too-wide "$project_ui" build_dialog \
+    'Line::Note(text) => {'
+function_contains dialog.divergence.too-wide.cut "$project_ui" build_dialog \
+    'cut: Cut::Tail,'
+function_contains dialog.divergence.too-wide.toolkit "$toolkit_components" dialog \
+    'let body = body_lines(&state.body, width - 2.0 * pad, |line| {'
+
+# On low-end hardware a light stands on what is chosen at once. The shell's
+# glides there too, its display drawn at its refresh for as long as the
+# highlight says it is moving (dbb9a75, GLIDE_AT_REST). A toolkit window on
+# low-end hardware draws every frame at the one held instant, so a light
+# gliding by the frame's clock never left where it was first drawn — the
+# installer's erase question showed "Go back" lit while Enter erased — and its
+# frames are paced by a second after any press rather than by a list of what is
+# moving. A light that stands at once needs no frames to arrive. (bbd79b1)
+function_contains lowend.divergence.light "$project_menu" is_animating \
+    '|| (self.is_on_screen() && self.highlight.is_moving())'
+file_contains lowend.divergence.light.at-rest "$project_menu" \
+    'pub const GLIDE_AT_REST: f32 = 0.5;'
+file_contains lowend.divergence.light.toolkit "$toolkit_components" \
+    'light.place(target)'
+
+# And two that came in the same week and are the shell's own answer, pinned as
+# the agreements they are. A menu of alternatives opens with the light on the
+# one in force — the first row that can be chosen at or after it, wrapping
+# round — as the shell's confirmations open on No. (0b5abe5, 9704822)
+function_contains menu.open-selecting "$project_menu" open_selecting \
+    '.chain(entries.iter().enumerate())'
+function_contains menu.open-selecting.toolkit "$toolkit_components" open_selecting \
+    '.chain(entries.iter().enumerate())'
+
+# Hovering is selecting, for whatever stands still: the pointer moving onto a
+# control lights it, silently. (62d8f54)
+function_contains pointer.hover-selects "$project_main" hover \
+    'self.point_at(spot);'
+function_contains pointer.hover-selects.toolkit "$toolkit_app" pointer_to \
+    'self.focused = index;'
+
+# And what a held press stops, which is the same on both sides: only a bar is
+# held. The shell sets held_bar only where press_at answers with a Held — a
+# bar, a quick-settings level, a mixer row, the friends list's or a
+# conversation's scroll bar. The toolkit holds only a control the page followed
+# with Page::dragging on the frame the press landed on, which is what a bar is
+# to an application. While one is held every motion is the drag and nothing
+# hovers, the light is not lit from under the handle; a press held on any other
+# control goes on hovering, and lighting, with the button down. The click is
+# the press, answered on what it went down on; letting go answers nothing, and
+# only the left button's lets go. Pinned as a divergence while the toolkit held
+# a press on any control (d11dea8, 961ffc3) until the user's word that toolkit
+# applications match the shell here.
+function_contains pointer.held "$project_main" pointer_frame \
+    'self.held_bar = self.press_at(spot).map(|held| (index, held));'
+function_contains pointer.held.toolkit "$toolkit_app" take_hold \
+    'Spot::Control(id) if self.bars.contains(&id) => Some(id),'
+function_contains pointer.held.press.toolkit "$toolkit_app" window_event \
+    'self.state.take_hold(spot);'
+function_contains pointer.held.bars.toolkit "$toolkit_app" dragging \
+    'self.state.asked_bars.push(id);'
+function_contains pointer.held.bars.frame.toolkit "$toolkit_app" settle \
+    'state.bars = std::mem::take(&mut state.asked_bars);'
+function_contains pointer.held.drag "$project_main" pointer_frame \
+    'if self.held_bar.is_some() {'
+function_contains pointer.held.carries "$project_main" pointer_frame \
+    'self.drag_bar(index, x, y);'
+function_contains pointer.held.drag.toolkit "$toolkit_app" pointer_to \
+    'if !moved || self.held.is_some() {'
+function_contains pointer.held.carries.toolkit "$toolkit_app" window_event \
+    'if self.state.held.is_some() {'
+function_contains pointer.held.let-go "$project_main" pointer_frame \
+    'if button == BTN_LEFT {'
+function_contains pointer.held.let-go.toolkit "$toolkit_app" let_go \
+    'if button == MouseButton::Left {'
+arm_contains pointer.held.let-go.release "$project_main" pointer_frame \
+    'PointerEventKind::Release {' 'PointerEventKind::' 'self.held_bar = None;'
+function_contains pointer.held.let-go.release.toolkit "$toolkit_app" let_go \
+    'self.held = None;'
+
+# And what each side can take hold of at all, so that the agreement is not only
+# the lines above. The shell holds what its Held names, every one a bar: a
+# column's, a quick-settings level, a mixer row, the friends list's scroll bar
+# and a conversation's. The toolkit sets its hold in take_hold and nowhere
+# else; everything else that touches it lets go. The day the shell holds
+# anything more, a button or a row, or the toolkit takes hold anywhere but in
+# take_hold, this is where the two are read again.
+compare_text pointer.held.what \
+    "$(enum_variants pointer.held.what "$project_main" Held)" \
+    'Bar(usize) Entry(Item) Mixer(usize) Friends FriendsChat'
+compare_text pointer.held.what.toolkit \
+    "$(assignments pointer.held.what.toolkit "$toolkit_app" held)" \
+    'self.held = match spot { | self.held = None; | self.held = None; | self.state.held = None;'
+
+# A leave lets go as well, on Wayland, which is the whole of the shell's world:
+# a button held there keeps the pointer on the surface wherever it travels, so a
+# leave is the hold taken away and the release goes to whatever has the pointer
+# now. A toolkit window can be an X client too, and X tells a window it was left
+# in the middle of a drag (a LeaveNotify, mode Normal, with the motion and the
+# release still arriving from outside it), so there a leave does not let go.
+arm_contains pointer.held.leave "$project_main" pointer_frame \
+    'PointerEventKind::Leave {' 'PointerEventKind::' 'self.held_bar = None;'
+function_contains pointer.held.leave.toolkit "$toolkit_app" pointer_left \
+    'if on_wayland {'
+function_contains pointer.held.leave.lets-go.toolkit "$toolkit_app" pointer_left \
+    'self.held = None;'
+function_contains pointer.held.leave.wayland.toolkit "$toolkit_app" window_event \
+    'self.state.pointer_left(event_loop.is_wayland());'
+
+# An addition rather than a divergence: a soft edge, the blur and fade at the
+# ends of a scrolling list, now also at its sides for a page carried across a
+# pane (3b2312d). The shell draws none, so there is nothing to compare; the
+# day its shaders grow one, they have to be compared rather than left to be two.
+# The rest of the week's additions are calls with no behaviour of the shell's
+# behind them: a page told where the pointer is and whether the session is
+# low-end, a page carried whole, a picture part of the way through, a press a
+# page hands the window.
+file_contains addition.soft-side-edges.toolkit "$toolkit_render_ui" \
+    'let sideways = in.material.z > 0.5;'
+file_lacks addition.soft-side-edges "$project_shader" 'SOFT_EDGE'
+file_lacks addition.soft-side-edges.offscreen \
+    "$project_root/crates/lxb-desktop/src/offscreen.wgsl" 'SOFT_EDGE'
+
+# Additions for an application's controls (2026-10-13, for the Linexin
+# Installer's third round). The shell has no switch at all — a row it turns on
+# and off wears the chosen mark or the empty one — and its glyph material reads
+# every mark out of the atlas. The toolkit draws a switch, and the ring round
+# the chosen mark, as beads of the same material: a rounded box measured by
+# arithmetic and shaded by the glyphs' own lxb_glyph_material, lamp, depth and
+# shadow, nothing of their own. The day the shell's shader measures a box
+# itself, the two are compared rather than left to be two.
+file_contains addition.bead.toolkit "$toolkit_render_ui" \
+    'return lxb_glyph_material(at, bead);'
+file_lacks addition.bead "$project_shader" 'bead_field'
+# And the shell has no switch to compare the toolkit's with: any it drew would
+# have a knob, which nothing it lays out has.
+file_lacks addition.switch "$project_ui" 'knob'
+file_lacks addition.switch.shader "$project_shader" 'knob'
+# The chosen mark is the shell's drawing and the shell's material; what the
+# toolkit adds is the dark ring round its bead, for a mark standing on a lit
+# control, where the bead is water and took the light's accent. The shell
+# lays the same mark on an icon tile with nothing round it (its `build`), so
+# a ring there would be a change to compare.
+function_contains chosen.divergence.ring "$project_ui" build \
+    'slots.glyph(icons::CHOSEN),'
+# Nothing round it: the block that lays the badge lays one quad, the badge.
+# A ring of the shell's own there would be a second.
+chosen_block=$(awk '
+    !open && index($0, "if entry.chosen() || marks.is_some_and(|marks| marks.holds(entry)) {") {
+        open = 1
+    }
+    open {
+        print
+        depth += gsub(/\{/, "{") - gsub(/\}/, "}")
+        if (depth <= 0) exit
+    }' "$project_ui")
+[[ -n "$chosen_block" ]] \
+    || fail_setup chosen.divergence.ring.alone "the block laying the chosen badge is not in $project_ui"
+[[ "$chosen_block" == *'slots.glyph(icons::CHOSEN),'* ]] \
+    || fail_mismatch chosen.divergence.ring.alone "$chosen_block" 'the badge laid in its block'
+chosen_quads=$(grep -o 'quads.push(' <<< "$chosen_block" | wc -l)
+[[ "$chosen_quads" -eq 1 ]] \
+    || fail_mismatch chosen.divergence.ring.alone "$chosen_quads quads" 'one quad, the badge'
+function_contains chosen.divergence.ring.toolkit "$toolkit_components" chosen \
+    'self.bead_ring(ring, outer * 0.5, thickness, dark, style);'
+function_contains chosen.divergence.ring.mark.toolkit "$toolkit_components" chosen \
+    'self.icon_tinted(rect, "chosen", style, Role::Text, alpha);'
+# And a mark of the application's own: drawn by name like one of the set,
+# measured the way the set is (the same rasterising and distance field as the
+# atlas is built with), never under one of the set's names. The shell's own
+# marks are all its own.
+function_contains addition.own-marks.toolkit "$toolkit_renderer" add_mark \
+    'return Err(format!("{name} is one of the toolkit'"'"'s own marks"));'
+function_contains addition.own-marks.measured.toolkit "$toolkit_renderer" build_atlas \
+    'let field = measure_drawing(svg).map_err(|err| format!("{name}: {err}"))?;'
+
+# --- when the shell's on-screen keyboard stands over an application --------
+#
+# What a window of lxb-app knows of it (`ShellsBoard`, `Page::shells_board`),
+# by the shell's own rules, since nothing in Wayland's text input says. The
+# board rises once a field, as the field takes the cursor, where the keyboard
+# is not at hand, and goes with the field.
+function_contains osk.rises.with-the-field "$project_keyboard" set_focused \
+    'if !self.offered && !self.keyboard_at_hand {'
+function_contains osk.goes.with-the-field "$project_keyboard" set_focused 'self.close();'
+function_contains osk.rises.with-the-field.toolkit "$toolkit_app" enabled \
+    'self.up = self.watched && controller_in_hand;'
+function_contains osk.goes.with-the-field.toolkit "$toolkit_app" window_event \
+    'WindowEvent::Ime(Ime::Disabled) => self.state.board.disabled(),'
+# The keyboard at hand is the controller-in-hand the shell writes into
+# shell.toml as the hands move (and seeds itself from), true until it says
+# otherwise; the window reads it as its field takes the cursor.
+function_contains osk.at-hand "$project_keyboard" set_controller_in_hand \
+    'self.keyboard_at_hand = !in_hand;'
+function_contains osk.at-hand.written "$project_main" hands_moved_to \
+    'self.osk.set_controller_in_hand(controller);'
+file_contains osk.at-hand.seeded "$project_main" \
+    '.set_controller_in_hand(settings::controller_in_hand());'
+file_contains osk.at-hand.default "$project_settings" \
+    'static CONTROLLER_IN_HAND: Mutex<bool> = Mutex::new(true);'
+function_contains osk.at-hand.toolkit "$toolkit_app" window_event \
+    '.enabled(lxb_toolkit::settings::controller_in_hand().unwrap_or(true)),'
+# However it is put away, it lets go of the keyboard, and letting go hands the
+# application a report of nothing held: the one thing a window is sent as the
+# board goes (seen in the Linexin Installer's protocol log, 2026-10-14). The
+# board's own keys carry no report of their own.
+function_contains osk.goes.lets-go "$project_keyboard" close 'self.release_keyboard();'
+function_contains osk.goes.reported "$project_keyboard" release_keyboard \
+    'typist.send_modifiers(Modifiers::default());'
+typist_stroke=$(awk '
+    index($0, "    fn type_stroke(&self, stroke: Stroke, at: u32) -> bool {") { open = 1 }
+    open && !done { print; if ($0 == "    }") done = 1 }' "$project_keyboard")
+[[ -n "$typist_stroke" ]] \
+    || fail_setup osk.keys.bare "the virtual keyboard's own keystroke is not in $project_keyboard"
+[[ "$typist_stroke" == *'self.keyboard.key(at, *code, 1);'* && "$typist_stroke" != *modifiers* ]] \
+    || fail_mismatch osk.keys.bare "$typist_stroke" 'a press and a release, and no report of the modifiers'
+function_contains osk.goes.reported.toolkit "$toolkit_app" modifiers \
+    'if self.up && !held && !was {'
+file_contains osk.goes.settled.toolkit "$toolkit_app" \
+    'if std::mem::take(&mut self.letting_go) {'
+# While it is up the shell keeps every pad from applications, so a pad's
+# press reaching a window means it is not.
+function_contains osk.keeps-the-pads "$project_main" sync_surface_state \
+    'keeps_the_pad(self.keep_keyboard_grabbed, *state, self.osk.is_open())'
+function_contains osk.keeps-the-pads.toolkit "$toolkit_app" poll_pads \
+    'self.state.board.pad();'
 
 # --- the noise it answers with ----------------------------------------------
 
@@ -1388,5 +1930,5 @@ if [[ "$shape_count" -ne "$toolkit_count" ]]; then
     exit 1
 fi
 
-printf 'lxb-toolkit matches project-linexinbar %s: %s glyphs, fonts and recordings, 168 palette colours, 34 durations, the context menu shape and material, the file chooser shape, the wallpaper handoff, the control, the three shaders on the processor, what the controls mean, the slide beside a column and the token contracts\n' \
+printf 'lxb-toolkit matches project-linexinbar %s: %s glyphs, fonts and recordings, 168 palette colours, 34 durations, the context menu shape and material, the file chooser shape, the wallpaper handoff, the control, the three shaders on the processor, what the controls mean, the slide beside a column and its spring, where the on-screen keyboard stands and when, the clock, the token contracts, and the places it differs on purpose, each pinned by a line or a sentinel\n' \
     "$head" "$toolkit_count"

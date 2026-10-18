@@ -718,10 +718,19 @@ mod tests {
         assert!(tour.reading);
         // A second of frames, and the list is a strip at the left.
         for frame in 0..60 {
-            tour.draw(&mut ui, width as f32, height as f32, 11.0 + frame as f32 / 60.0);
+            tour.draw(
+                &mut ui,
+                width as f32,
+                height as f32,
+                11.0 + frame as f32 / 60.0,
+            );
         }
         let strip = ui.at(8.0, height as f32 * 0.9);
-        assert_eq!(strip, Spot::Control(0xF0), "the strip of list is not a place");
+        assert_eq!(
+            strip,
+            Spot::Control(0xF0),
+            "the strip of list is not a place"
+        );
         assert_eq!(tour.press_at(strip, false), Some(Sound::Move));
         assert!(!tour.reading);
         // Up and Down are the list's, and Left and Right the page's.

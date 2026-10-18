@@ -4,15 +4,21 @@ use winit::keyboard::{Key as WinitKey, NamedKey};
 use lxb_toolkit::input::Key;
 
 pub fn key_of(event: &KeyEvent, shift: bool) -> Option<Key> {
-    named(&event.logical_key, shift)
+    key_of_logical(&event.logical_key, shift)
 }
 
 /// The same, given the logical key alone.
 ///
-/// Split out because a `KeyEvent` cannot be built outside winit — one of its
-/// fields is crate-private — so this is the largest part of the mapping a test
-/// can reach. See [`tests::the_menu_key_is_the_context_menus`].
-fn named(logical: &WinitKey, shift: bool) -> Option<Key> {
+/// `shift` is whether Shift is held, as the window's last
+/// `WindowEvent::ModifiersChanged` said. It turns Tab into BackTab and
+/// changes no other key: a letter or a symbol already carries its case in the
+/// logical key, and what is typed is the event's own text.
+///
+/// Public, and split out, because a `KeyEvent` cannot be built outside winit
+/// — one of its fields is crate-private — so this is the largest part of the
+/// mapping a test can reach, here or in a window that keeps the keyboard's
+/// modifiers itself. See `tests::the_menu_key_is_the_context_menus`.
+pub fn key_of_logical(logical: &WinitKey, shift: bool) -> Option<Key> {
     match *logical {
         WinitKey::Named(NamedKey::ArrowLeft) => Some(Key::Left),
         WinitKey::Named(NamedKey::ArrowRight) => Some(Key::Right),
@@ -51,16 +57,66 @@ mod tests {
     #[test]
     fn the_menu_key_is_the_context_menus() {
         assert_eq!(
-            named(&WinitKey::Named(NamedKey::ContextMenu), false),
+            key_of_logical(&WinitKey::Named(NamedKey::ContextMenu), false),
             Some(Key::Menu)
         );
         // The other chord a desktop spells it with. `Shift+F10` arrives as
         // plain F10, so the shift flag must not change the answer.
         for shift in [false, true] {
             assert_eq!(
-                named(&WinitKey::Named(NamedKey::F10), shift),
+                key_of_logical(&WinitKey::Named(NamedKey::F10), shift),
                 Some(Key::F10)
             );
         }
+    }
+
+    /// Shift+Tab is BackTab, which walks back (`Action::Previous`), and Shift
+    /// changes no other key: every key the mapping names, and every letter,
+    /// figure and symbol, is the same key with it held as without. A letter
+    /// reads as the keyboard reports it, capital or not, whatever the flag.
+    #[test]
+    fn shift_turns_tab_back_and_no_other_key() {
+        let tab = WinitKey::Named(NamedKey::Tab);
+        assert_eq!(key_of_logical(&tab, false), Some(Key::Tab));
+        assert_eq!(key_of_logical(&tab, true), Some(Key::BackTab));
+
+        let named = [
+            NamedKey::ArrowLeft,
+            NamedKey::ArrowRight,
+            NamedKey::ArrowUp,
+            NamedKey::ArrowDown,
+            NamedKey::Enter,
+            NamedKey::Space,
+            NamedKey::Escape,
+            NamedKey::Backspace,
+            NamedKey::ContextMenu,
+            NamedKey::F10,
+            NamedKey::Shift,
+            NamedKey::Control,
+            NamedKey::Home,
+            NamedKey::Delete,
+            NamedKey::F1,
+        ];
+        let characters = ["a", "A", "y", "Y", "1", "!", "?", " ", "ż", "Ż", "ab"];
+        let others = named.into_iter().map(WinitKey::Named).chain(
+            characters
+                .into_iter()
+                .map(|text| WinitKey::Character(text.into())),
+        );
+        for key in others {
+            assert_eq!(
+                key_of_logical(&key, true),
+                key_of_logical(&key, false),
+                "{key:?}"
+            );
+        }
+        assert_eq!(
+            key_of_logical(&WinitKey::Character("A".into()), true),
+            Some(Key::Letter('A'))
+        );
+        assert_eq!(
+            key_of_logical(&WinitKey::Character("!".into()), true),
+            Some(Key::Letter('!'))
+        );
     }
 }

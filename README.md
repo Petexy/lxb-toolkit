@@ -3,13 +3,13 @@
 **Build applications that belong in [LineXinBar](https://github.com/Petexy/LineXinBar).**
 
 The shell's own interface — its colours, its glass, its motion, its type, its
-108 marks and its recordings — packaged as a library, so that something which is
+113 marks and its recordings — packaged as a library, so that something which is
 not the shell can be built out of the same material and sit beside it.
 
-![The toolkit's own tour: the colour roles, and all 108 marks](docs/tour.png)
+![The toolkit's own tour: the colour roles, and all 113 marks](docs/tour.png)
 
 [![Licence](https://img.shields.io/badge/licence-GPL--3.0--only-blue)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.9.3-informational)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.9.4-informational)](VERSION)
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange)](Cargo.toml)
 [![API](https://img.shields.io/badge/API-Rust%20%7C%20C%20%7C%20Python%20%7C%20CSS-brightgreen)](docs/api-reference.md)
 
@@ -111,7 +111,7 @@ against), and the Python binding. See
   linear-light transition so every surface changes together.
 - **Glass** — dense-panel, control and broad-pane cuts, and the shell's own
   refraction, dispersion, bevel and caustic as binding-free WGSL.
-- **Marks** — all 108 `lxb:shape` SVGs, the exact signed-distance transform, and
+- **Marks** — all 113 `lxb:shape` SVGs, the exact signed-distance transform, and
   both the Default water-bead and Simple flat materials.
 - **Wallpaper** — the analytic scene, and the record that hands its clock from
   one process to the next. A window that opens over a wallpaper already on

@@ -199,6 +199,21 @@ def test_an_unknown_palette_is_refused_rather_than_guessed_at():
         raise AssertionError("an unknown palette was accepted")
 
 
+def test_the_shells_board_crosses_the_abi_whole():
+    # Its own size at the reference height, centred along the foot and
+    # floating 34 pixels clear of it.
+    x, y, w, h = lxb.board_rect(1920.0, 1080.0)
+    assert w == 62.0 * 15.0 + 40.0
+    assert abs(h - (0.56 * 56.0 + 5.0 * 56.0 + 5.0 * 8.0 + 40.0)) < 1e-3
+    assert x == (1920.0 - w) / 2.0
+    assert abs(y + h + 34.0 - 1080.0) < 1e-3
+    # As measured over a nested LineXinBar at 1280x800.
+    assert abs(lxb.board_rect(1280.0, 800.0)[1] - 484.8) < 0.5
+    # Shrunk to fit across a display standing on its side.
+    x, _, w, _ = lxb.board_rect(1080.0, 1920.0)
+    assert x >= 0.0 and x + w <= 1080.0
+
+
 def test_a_column_and_its_page_cross_the_abi_whole():
     # A window wide enough keeps the page beside the column and never slides.
     wide = lxb.beside(1920.0, 24.0, 300.0, 18.0, 600.0)
@@ -508,7 +523,7 @@ def test_a_press_is_a_journey_rather_than_a_state():
 
 
 def test_the_assets_are_really_here():
-    assert len(lxb.GLYPHS) == 109
+    assert len(lxb.GLYPHS) == 113
     assert len(lxb.SOUNDS) == 14
     assert len(lxb.SHELL_SOUNDS) == 12
     assert set(lxb.SOUNDS) - set(lxb.SHELL_SOUNDS) == {"trash", "error"}
@@ -914,6 +929,326 @@ def test_a_wheel_says_which_list_it_was_over_without_taking_its_directions() -> 
     assert asked[2] == (10.0, 20.0, 300.0, 400.0, 40.0, 1.0, 0.5)
 
 
+def test_a_soft_side_edge_goes_to_c_as_it_was_asked() -> None:
+    """The left and right ends of an area, asked the way C asks for them.
+
+    A binding that swapped the two ends, or dropped the default of one, would
+    soften the side a page is not leaving by.
+    """
+    from lxb_toolkit import app as app_module
+
+    asked = []
+
+    class Stub:
+        @staticmethod
+        def lxb_draw_soft_side_edges(_page, rect, band, left, right):
+            asked.append((rect[0], rect[1], rect[2], rect[3], band, left, right))
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        page.draw_soft_side_edges((10.0, 20.0, 300.0, 400.0), 40.0, 0.0, 0.5)
+        page.draw_soft_side_edges((10.0, 20.0, 300.0, 400.0), 40.0)
+    finally:
+        app_module._lib = real
+
+    assert asked == [
+        (10.0, 20.0, 300.0, 400.0, 40.0, 0.0, 0.5),
+        (10.0, 20.0, 300.0, 400.0, 40.0, 1.0, 1.0),
+    ]
+
+
+def test_the_chosen_mark_and_a_switch_go_to_c_as_they_were_asked() -> None:
+    """The tick and the switch, asked the way C asks for them: a switch on as
+    1 and off as 0, each at the strength it was drawn at."""
+    from lxb_toolkit import app as app_module
+
+    asked = []
+
+    class Stub:
+        @staticmethod
+        def lxb_draw_chosen(_page, rect, alpha):
+            asked.append(("chosen", rect[0], rect[1], rect[2], rect[3], alpha))
+
+        @staticmethod
+        def lxb_draw_switch(_page, rect, on, ink):
+            asked.append(("switch", rect[0], rect[1], rect[2], rect[3], on, ink))
+
+        @staticmethod
+        def lxb_switch_width(height):
+            return height * 2.0
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        page.draw_chosen((10.0, 20.0, 30.0, 30.0))
+        page.draw_chosen((10.0, 20.0, 30.0, 30.0), 0.5)
+        page.draw_switch((40.0, 20.0, 60.0, 26.0), True)
+        page.draw_switch((40.0, 20.0, 60.0, 26.0), False, 0.55)
+        width = app_module.Page.switch_width(26.0)
+    finally:
+        app_module._lib = real
+
+    assert asked == [
+        ("chosen", 10.0, 20.0, 30.0, 30.0, 1.0),
+        ("chosen", 10.0, 20.0, 30.0, 30.0, 0.5),
+        ("switch", 40.0, 20.0, 60.0, 26.0, 1, 1.0),
+        ("switch", 40.0, 20.0, 60.0, 26.0, 0, 0.55),
+    ], asked
+    assert width == 52.0
+
+
+def test_a_mark_of_the_applications_own_goes_to_c_whole_or_is_refused() -> None:
+    """``app.mark`` hands C the drawing's bytes and their length, from bytes
+    or from text alike, and a refusal comes back as ValueError with C's
+    reason rather than as a mark that silently never draws."""
+    from lxb_toolkit import app as app_module
+
+    handed = []
+
+    class Stub:
+        @staticmethod
+        def lxb_app_mark(_app, name, svg, length):
+            handed.append((name, svg, length))
+            return 0 if name == b"launch" else 1
+
+        @staticmethod
+        def lxb_app_trouble(_app):
+            return b"launch is one of the toolkit's own marks"
+
+    application = app_module.App.__new__(app_module.App)
+    application._app = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        application.mark("disk", b"<svg>lxb:shape</svg>")
+        application.mark("card", "<svg>lxb:shape \u00b7</svg>")
+        try:
+            application.mark("launch", b"<svg>lxb:shape</svg>")
+        except ValueError as refused:
+            reason = str(refused)
+        else:
+            raise AssertionError("a toolkit mark's name was taken")
+    finally:
+        app_module._lib = real
+
+    text = "<svg>lxb:shape \u00b7</svg>".encode("utf-8")
+    assert handed[0] == (b"disk", b"<svg>lxb:shape</svg>", 20)
+    assert handed[1] == (b"card", text, len(text))
+    assert reason == "launch is one of the toolkit's own marks"
+
+
+def test_hovering_comes_back_the_way_c_says_it() -> None:
+    """Where the pointer rests, whether it moved, and what it moved onto.
+
+    The C side writes two floats and answers 1, or answers 0 and writes
+    nothing; the control comes back as its number or -1. A binding that read
+    the floats whatever the answer, or let -1 through as a control, would light
+    something under a pointer that has gone.
+    """
+    from lxb_toolkit import app as app_module
+
+    resting = {"on": True}
+
+    class Stub:
+        @staticmethod
+        def lxb_page_pointer(_page, out):
+            if not resting["on"]:
+                return 0
+            out[0], out[1] = 120.5, 48.0
+            return 1
+
+        @staticmethod
+        def lxb_page_pointer_moved(_page):
+            return 1 if resting["on"] else 0
+
+        @staticmethod
+        def lxb_page_hovered(_page):
+            return 0x203 if resting["on"] else -1
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        over = (page.pointer(), page.pointer_moved(), page.hovered())
+        resting["on"] = False
+        gone = (page.pointer(), page.pointer_moved(), page.hovered())
+    finally:
+        app_module._lib = real
+
+    assert over == ((120.5, 48.0), True, 0x203), over
+    assert gone == (None, False, None), gone
+
+
+def test_a_moving_picture_asks_for_its_frames_and_a_settled_one_for_none() -> None:
+    """``shot`` and ``shot_after`` reach their own C functions.
+
+    A binding that sent a moving picture to ``lxb_app_shot`` would take a
+    settled frame and a menu photographed half unfolded would come out whole,
+    with nothing going red.
+    """
+    from lxb_toolkit import app as app_module
+
+    asked = []
+
+    class Stub:
+        @staticmethod
+        def lxb_app_shot(_app, path, width, height, seconds, _draw, _data):
+            asked.append(("shot", path, width, height, seconds))
+            return 0
+
+        @staticmethod
+        def lxb_app_shot_after(_app, path, width, height, seconds, frames,
+                               _draw, _data):
+            asked.append(("after", path, width, height, seconds, frames))
+            return 0
+
+    application = app_module.App.__new__(app_module.App)
+    application._app = None
+    application._draw = None
+    application._trampoline = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        application.shot("still.png", 64, 48, 6.0, draw=lambda page: None)
+        application.shot_after("moving.png", 64, 48, 6.0, 9,
+                               draw=lambda page: None)
+        try:
+            application.shot_after("never.png", frames=-1)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a picture before its first frame was taken")
+    finally:
+        app_module._lib = real
+
+    assert asked == [
+        ("shot", b"still.png", 64, 48, 6.0),
+        ("after", b"moving.png", 64, 48, 6.0, 9),
+    ], asked
+
+
+def test_low_end_comes_back_as_a_bool() -> None:
+    """Whether the session is counted low-end, as C answers it: 1 or 0."""
+    from lxb_toolkit import app as app_module
+
+    said = {"low": 1}
+
+    class Stub:
+        @staticmethod
+        def lxb_page_low_end(_page):
+            return said["low"]
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        low = page.low_end()
+        said["low"] = 0
+        high = page.low_end()
+    finally:
+        app_module._lib = real
+
+    assert (low, high) == (True, False), (low, high)
+
+
+def test_an_application_can_be_counted_low_end() -> None:
+    """``low_end=True`` asks C for lxb_app_low_end, and nothing else does."""
+    from lxb_toolkit import app as app_module
+
+    asked = []
+
+    class Stub:
+        @staticmethod
+        def lxb_app_new(_app_id, _title):
+            return 1
+
+        @staticmethod
+        def lxb_app_low_end(app):
+            asked.append(app)
+
+        @staticmethod
+        def lxb_app_free(_app):
+            pass
+
+    made = []
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        made.append(app_module.App("com.example.Test", "Test"))
+        plain = list(asked)
+        made.append(app_module.App("com.example.Test", "Test", low_end=True))
+    finally:
+        for app in made:
+            app._app = None  # never handed to the real library to free
+        app_module._lib = real
+
+    assert (plain, asked) == ([], [1]), (plain, asked)
+
+
+def test_an_action_is_handed_to_the_window_as_its_number() -> None:
+    """``page.act`` passes C the action's own number, as lxb_page_action
+    hands it back."""
+    from lxb_toolkit import Action
+    from lxb_toolkit import app as app_module
+
+    handed = []
+
+    class Stub:
+        @staticmethod
+        def lxb_page_act(page, action):
+            handed.append((page, action))
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = 7
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        page.act(Action.RIGHT)
+    finally:
+        app_module._lib = real
+
+    assert handed == [(7, int(Action.RIGHT))], handed
+
+
+def test_a_menu_opens_on_a_row_without_marking_it() -> None:
+    """``on`` asks C for lxb_page_menu_on; ``marked`` still marks."""
+    from lxb_toolkit import app as app_module
+
+    called = []
+
+    class Stub:
+        @staticmethod
+        def lxb_page_menu_on(_page, _title, _array, count, row):
+            called.append(("on", count, row))
+
+        @staticmethod
+        def lxb_page_menu_marked(_page, _title, _array, count, marked):
+            called.append(("marked", count, marked))
+
+        @staticmethod
+        def lxb_page_menu(_page, _title, _array, count):
+            called.append(("plain", count))
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        rows = ["Storage", "Spare memory", "Your files"]
+        page.menu(rows, title="Options", on=1)
+        page.menu(rows, marked=2)
+        page.menu(rows)
+        # Both at once is a mistake said out loud, not one quietly dropped.
+        try:
+            page.menu(rows, marked=2, on=1)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("marked and on together were taken")
+    finally:
+        app_module._lib = real
+
+    assert called == [("on", 3, 1), ("marked", 3, 2), ("plain", 3)], called
+
+
 def test_what_the_controls_said_comes_back_as_numbers() -> None:
     """Every action a driven page reads, without a window.
 
@@ -1025,6 +1360,137 @@ def test_a_question_names_the_purpose_it_puts() -> None:
     assert [name for name, _ in asked] == ["pick", "pick_many", "save"]
     assert asked[0][1] == (int(lxb.Selection.IMAGE), b"/tmp")
     assert asked[2][1] == (b"notes.txt", b"/tmp")
+
+
+def test_a_light_in_its_own_shape_goes_to_c_as_it_was_asked() -> None:
+    """The light drawn in a card's shape: its radius and strength as given,
+    appearing as 1 and travelling as 0, and where C says it is drawn coming
+    back."""
+    from lxb_toolkit import app as app_module
+
+    asked = []
+
+    class Stub:
+        @staticmethod
+        def lxb_page_light_shaped(_page, rect, radius, strength, appears, out):
+            asked.append((rect[0], rect[1], rect[2], rect[3], radius, strength,
+                          appears))
+            out[0], out[1], out[2], out[3] = 12.0, 34.0, 200.0, 150.0
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        at = page.light_shaped((10.0, 20.0, 200.0, 150.0), 18.0)
+        page.light_shaped((10.0, 20.0, 200.0, 150.0), 18.0, 0.5, appears=True)
+    finally:
+        app_module._lib = real
+
+    assert asked == [
+        (10.0, 20.0, 200.0, 150.0, 18.0, 1.0, 0),
+        (10.0, 20.0, 200.0, 150.0, 18.0, 0.5, 1),
+    ], asked
+    assert at == (12.0, 34.0, 200.0, 150.0), at
+
+
+def test_typing_and_the_board_come_back_the_way_c_says_them() -> None:
+    """A field taking text, what was typed and where the board stands.
+
+    What was typed is a string C owns until it is handed back, so a binding
+    that read it and kept it would leak a little with every key, and one that
+    did not decode it would hand a page bytes where it asked for letters.
+    """
+    from lxb_toolkit import app as app_module
+
+    said = []
+    freed: list[int] = []
+    kept: list[ctypes.Array] = []
+    typing = {"text": "fire\bżółw".encode("utf-8"), "board": True}
+
+    class Stub:
+        @staticmethod
+        def lxb_page_taking_text(_page, taking, rect):
+            said.append((taking, None if rect is None else tuple(rect)))
+
+        @staticmethod
+        def lxb_page_typed(_page):
+            if typing["text"] is None:
+                return None
+            buffer = ctypes.create_string_buffer(typing["text"])
+            kept.append(buffer)
+            return ctypes.cast(buffer, ctypes.c_void_p).value
+
+        @staticmethod
+        def lxb_app_string_free(raw):
+            freed.append(raw)
+
+        @staticmethod
+        def lxb_page_board(_page, out):
+            if not typing["board"]:
+                return 0
+            out[0], out[1], out[2], out[3] = 320.0, 520.0, 640.0, 260.0
+            return 1
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        page.taking_text((10.0, 20.0, 300.0, 40.0))
+        page.taking_text()
+        typed, board = page.typed(), page.board()
+        typing["text"], typing["board"] = None, False
+        nothing, gone = page.typed(), page.board()
+    finally:
+        app_module._lib = real
+
+    assert said == [(1, (10.0, 20.0, 300.0, 40.0)), (1, None)], said
+    assert typed == "fire\bżółw", typed
+    assert len(freed) == 1, "the string C handed over has to be released once"
+    assert board == (320.0, 520.0, 640.0, 260.0), board
+    assert (nothing, gone) == ("", None)
+
+
+def test_a_picture_goes_to_c_as_it_was_asked() -> None:
+    """A picture's path crosses as the file system's bytes, whatever names
+    it, its fit as the number C reads, and a path C would cut short at a NUL
+    is refused rather than drawing some other file."""
+    from lxb_toolkit import app as app_module
+
+    asked = []
+
+    class Stub:
+        @staticmethod
+        def lxb_draw_picture(_page, rect, radius, path, fit, alpha):
+            asked.append((rect[0], rect[1], rect[2], rect[3], radius, path, fit,
+                          alpha))
+            return 1 if fit == app_module.Fit.COVER else 0
+
+    page = app_module.Page.__new__(app_module.Page)
+    page._page = None
+    real, app_module._lib = app_module._lib, Stub()
+    try:
+        contained = page.draw_picture((0.0, 0.0, 64.0, 48.0), 8.0,
+                                      Path("/tmp/one.png"))
+        covered = page.draw_picture((0.0, 0.0, 64.0, 48.0), 8.0,
+                                    "/tmp/\udcffwall.jpg", app_module.Fit.COVER,
+                                    0.5)
+        page.draw_picture((0.0, 0.0, 64.0, 48.0), 0.0, b"/tmp/two.svg")
+        try:
+            page.draw_picture((0.0, 0.0, 64.0, 48.0), 0.0, "/tmp/a\0b.png")
+        except ValueError:
+            pass
+        else:  # pragma: no cover - the guard is the point
+            raise AssertionError("a path with a NUL in it was handed to C")
+    finally:
+        app_module._lib = real
+
+    assert (contained, covered) == (False, True)
+    assert asked == [
+        (0.0, 0.0, 64.0, 48.0, 8.0, b"/tmp/one.png", 0, 1.0),
+        (0.0, 0.0, 64.0, 48.0, 8.0, b"/tmp/\xffwall.jpg", 1, 0.5),
+        (0.0, 0.0, 64.0, 48.0, 0.0, b"/tmp/two.svg", 0, 1.0),
+    ], asked
+    assert lxb.Fit.CONTAIN == 0 and lxb.Fit.COVER == 1
 
 
 if __name__ == "__main__":

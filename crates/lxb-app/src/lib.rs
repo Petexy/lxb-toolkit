@@ -10,7 +10,8 @@ pub use lxb_toolkit;
 use lxb_input::Controls;
 pub use lxb_render::{monotonic_now_ns, Fit, WallpaperClock};
 use lxb_render::{
-    Align, Cadence, ContextMenu, Dialog, Entry, Files, Next, Press, Pressing, Selection, Spot, Ui,
+    Align, Cadence, ContextMenu, Dialog, Entry, Files, Mark, Next, Press, Pressing, Selection,
+    Spot, Ui,
 };
 use lxb_sound::{Level, Sounds};
 use lxb_toolkit::{
@@ -27,9 +28,9 @@ use lxb_toolkit::{
 pub use lxb_toolkit::picker::{Purpose as PickerPurpose, Selection as PickerSelection};
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
+    event::{ElementState, Ime, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-    platform::wayland::WindowAttributesExtWayland,
+    platform::wayland::{ActiveEventLoopExtWayland, WindowAttributesExtWayland},
     window::{CursorIcon, Window, WindowId},
 };
 
@@ -105,6 +106,9 @@ pub struct App {
 
     driven: bool,
     own_questions: bool,
+    low_end: bool,
+
+    marks: Vec<(String, Mark)>,
 }
 
 impl App {
@@ -116,6 +120,8 @@ impl App {
             page: true,
             driven: false,
             own_questions: false,
+            low_end: false,
+            marks: Vec::new(),
         }
     }
 
@@ -139,19 +145,125 @@ impl App {
         self
     }
 
+    /// Count the session as low-end hardware whatever the shell's Settings
+    /// say, as an application's own "low-end" switch would: the window is
+    /// drawn as it is there — the plain materials, the wallpaper held at one
+    /// instant, the frames paced, every light standing on what is chosen at
+    /// once — and [`Page::low_end`] answers true.
+    ///
+    /// A picture of it ([`App::shot`], [`App::shot_after`]) is drawn so too:
+    /// every frame at the one instant it is given, so nothing timed by the
+    /// frame moves, while a menu, a question and a press still move on a
+    /// sixtieth of a second between frames, as they do in the window there.
+    pub fn low_end(mut self) -> Self {
+        self.low_end = true;
+        self
+    }
+
+    /// A mark of the application's own: an SVG drawing of a shape, white
+    /// where the mark is and cut through where it is open, saying
+    /// `lxb:shape` — the way every mark of the toolkit is drawn. From then on
+    /// it is drawn by `name` wherever a mark of the toolkit's is
+    /// ([`Page::icon`], [`Page::head`], `Ui::icon`), in the same material:
+    /// the bead's wall and sheen, the ring round every opening and the
+    /// shadow, lit by the same lamp, so it stands beside them as one of the
+    /// set.
+    ///
+    /// Measured here, so a drawing that is refused is refused at once: one
+    /// that does not say it is a shape, does not parse or has nothing in it,
+    /// and a name the toolkit already draws a mark by. Room is kept for
+    /// [`lxb_render::OWN_MARKS`] of them; the same name given again takes the
+    /// new drawing.
+    pub fn mark(mut self, name: impl Into<String>, svg: &[u8]) -> Result<Self, String> {
+        self.add_mark(name, svg)?;
+        Ok(self)
+    }
+
+    /// [`App::mark`], for an application kept in a variable rather than
+    /// built in one go — and kept whole when a drawing is refused.
+    pub fn add_mark(&mut self, name: impl Into<String>, svg: &[u8]) -> Result<(), String> {
+        let name = name.into();
+        if name.is_empty() {
+            return Err("a mark needs a name".into());
+        }
+        if lxb_toolkit::assets::glyph(&name).is_some() {
+            return Err(format!("{name} is one of the toolkit's own marks"));
+        }
+        let mark = Mark::measure(svg).map_err(|err| format!("{name}: {err}"))?;
+        if let Some((_, kept)) = self.marks.iter_mut().find(|(other, _)| *other == name) {
+            *kept = mark;
+        } else if self.marks.len() < lxb_render::OWN_MARKS {
+            self.marks.push((name, mark));
+        } else {
+            return Err(format!(
+                "there is room for {} marks of an application's own",
+                lxb_render::OWN_MARKS
+            ));
+        }
+        Ok(())
+    }
+
+    fn add_marks(&self, ui: &mut Ui) -> Result<(), String> {
+        for (name, mark) in &self.marks {
+            ui.add_mark(name, mark)?;
+        }
+        Ok(())
+    }
+
     pub fn shot(
         self,
         path: impl AsRef<std::path::Path>,
         width: u32,
         height: u32,
         seconds: f32,
+        page: impl FnMut(&mut Page),
+    ) -> Result<(), String> {
+        self.picture(path.as_ref(), width, height, seconds, None, page)
+    }
+
+    /// A picture of the window `frames` frames after its first, each drawn a
+    /// sixtieth of a second after the one before, with whatever is on its
+    /// way somewhere — a menu unfolding, a question coming up, the page's own
+    /// motion — caught where it has got to.
+    ///
+    /// Where [`App::shot`] is a check of a page at rest (its menus are put
+    /// where they are going before the frame that is kept), this is one of a
+    /// page in motion: the page is handed one frame after another, as in a
+    /// window drawn sixty times a second, `Page::seconds` moving on by a
+    /// sixtieth each time, and the menu, the question and the press moving on
+    /// by as much between them. The last frame is the one written. A page
+    /// that counts the frames it is handed can do something on one of them —
+    /// open a menu, turn a page — and be photographed so long after it.
+    pub fn shot_after(
+        self,
+        path: impl AsRef<std::path::Path>,
+        width: u32,
+        height: u32,
+        seconds: f32,
+        frames: u32,
+        page: impl FnMut(&mut Page),
+    ) -> Result<(), String> {
+        self.picture(path.as_ref(), width, height, seconds, Some(frames), page)
+    }
+
+    fn picture(
+        self,
+        path: &std::path::Path,
+        width: u32,
+        height: u32,
+        seconds: f32,
+        moving: Option<u32>,
         mut page: impl FnMut(&mut Page),
     ) -> Result<(), String> {
+        const FRAME: f32 = 1.0 / 60.0;
         let mut ui = Ui::headless(width, height)?;
-        let theme = ShellTheme::load();
+        self.add_marks(&mut ui)?;
+        ui.set_low_end(self.low_end);
+        let theme = ShellTheme::load().drawn(self.low_end);
         let accent = Accent::new(theme.accent.name).unwrap_or_else(Accent::default_accent);
         let mut state = Interaction {
             driven: self.driven,
+            low_end: self.low_end,
             // Asked here as well as in the window's own constructor, because a
             // shot is a picture of the window: a legend that was in one and not
             // the other would make the two disagree about what the application
@@ -162,15 +274,27 @@ impl App {
         state.files.own_questions();
         let mut sounds = Sounds::silent();
         let mut pixels = Vec::new();
-        for frame in 0..2 {
-            if frame == 1 {
-                for _ in 0..60 {
-                    state.menu.advance(1.0 / 60.0);
-                    state.dialog.advance(1.0 / 60.0);
-                    state.files.advance(1.0 / 60.0);
-                    state.pressing.advance(1.0 / 60.0);
+        // A settled picture is two frames at one instant, everything raised
+        // on the first put where it is going before the second; a moving one
+        // is as many frames as it asks for after the first, a sixtieth of a
+        // second apart.
+        let (count, between) = match moving {
+            None => (2, 60),
+            Some(frames) => (frames.saturating_add(1), 1),
+        };
+        for frame in 0..count {
+            if frame > 0 {
+                for _ in 0..between {
+                    state.menu.advance(FRAME);
+                    state.dialog.advance(FRAME);
+                    state.files.advance(FRAME);
+                    state.pressing.advance(FRAME);
                 }
             }
+            let at = match moving {
+                Some(_) if !self.low_end => seconds + frame as f32 * FRAME,
+                _ => seconds,
+            };
             let rect = start(
                 &mut ui,
                 &self,
@@ -178,7 +302,7 @@ impl App {
                 &theme,
                 width as f32,
                 height as f32,
-                seconds,
+                at,
             );
             let mut frame = Page {
                 ui: &mut ui,
@@ -201,8 +325,8 @@ impl App {
             pixels = ui.end_to_image()?;
         }
 
-        let file = std::fs::File::create(path.as_ref())
-            .map_err(|err| format!("{}: {err}", path.as_ref().display()))?;
+        let file =
+            std::fs::File::create(path).map_err(|err| format!("{}: {err}", path.display()))?;
         let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
@@ -280,6 +404,110 @@ fn escape_closes(driven: bool, over: bool) -> bool {
     !driven && !over
 }
 
+/// What one action does where the window stands: taken by the file chooser,
+/// a question or a menu standing over the page, handed to a driven page in
+/// [`Page::actions`], or walking the flow's light. The window's keys, pads,
+/// pointer and fingers come here, and so does [`Page::act`].
+fn act(state: &mut Interaction, sounds: &mut Sounds, action: Action) {
+    if state.files.is_open() {
+        if let Some(sound) = state.files.act(action) {
+            sounds.play(sound);
+        }
+        return;
+    }
+    if state.dialog.is_open() {
+        let sound = match action {
+            Action::Left => {
+                state.dialog.step(-1);
+                Some(Sound::Move)
+            }
+            Action::Right => {
+                state.dialog.step(1);
+                Some(Sound::Move)
+            }
+            Action::Accept | Action::Submit => {
+                state.dialog.press();
+                state.answered = Some(state.dialog.selected());
+                state.dialog.close();
+                Some(Sound::Press)
+            }
+            Action::Back => {
+                state.dialog.close();
+                Some(Sound::Back)
+            }
+            _ => None,
+        };
+        if let Some(sound) = sound {
+            sounds.play(sound);
+        }
+        return;
+    }
+    if state.menu.is_open() {
+        let sound = match action {
+            Action::Up => {
+                state.menu.step(-1);
+                Some(Sound::Move)
+            }
+            Action::Down => {
+                state.menu.step(1);
+                Some(Sound::Move)
+            }
+            Action::Accept | Action::Submit => {
+                state.menu.press();
+                state.chose = Some(state.menu.selected());
+                state.menu.close();
+                Some(Sound::Press)
+            }
+
+            Action::Back | Action::Menu => {
+                state.menu.close();
+                Some(Sound::Back)
+            }
+            _ => None,
+        };
+        if let Some(sound) = sound {
+            sounds.play(sound);
+        }
+        return;
+    }
+
+    if state.driven {
+        state.arrived.push(action);
+        return;
+    }
+    match action {
+        Action::Accept | Action::Submit => {
+            if state.count > 0 {
+                state.pressing.press();
+                state.fired = Some(state.focused);
+                sounds.play(Sound::Press);
+            }
+        }
+
+        _ => {
+            if let Some(direction) = action.direction() {
+                let back = matches!(
+                    direction,
+                    lxb_toolkit::input::Direction::Up | lxb_toolkit::input::Direction::Left
+                );
+                walk(state, sounds, if back { -1 } else { 1 });
+            }
+        }
+    }
+}
+
+fn walk(state: &mut Interaction, sounds: &mut Sounds, delta: isize) {
+    if state.count == 0 {
+        return;
+    }
+    let last = state.count - 1;
+    let want = (state.focused as isize + delta).clamp(0, last as isize) as usize;
+    if want != state.focused {
+        state.focused = want;
+        sounds.play(Sound::Move);
+    }
+}
+
 fn settle(state: &mut Interaction, drawn: usize) {
     if let Some(answer) = state.files.answered() {
         state.picked_files = answer;
@@ -290,6 +518,8 @@ fn settle(state: &mut Interaction, drawn: usize) {
     }
 
     state.fired = None;
+    state.pointer_moved = false;
+    state.hovered = None;
 
     state.arrived.clear();
     state.scrolled.clear();
@@ -298,6 +528,9 @@ fn settle(state: &mut Interaction, drawn: usize) {
     // again. See `Interaction::taking_text`.
     state.taking_text = state.asked_text;
     state.asked_text = false;
+    state.taking_keys = state.asked_keys;
+    state.asked_keys = false;
+    state.bars = std::mem::take(&mut state.asked_bars);
 }
 
 #[derive(Default)]
@@ -317,15 +550,32 @@ struct Interaction {
 
     fired: Option<usize>,
     pointer: [f32; 2],
+    /// Whether the pointer is over the window and is what the user last
+    /// reached for. A key or a pad takes this away until the pointer moves
+    /// again, so a light the hands moved is not pulled back under a pointer
+    /// that is only resting. See [`Page::pointer`].
+    hovering: bool,
+    /// Whether the pointer moved since the last frame, which is the only time
+    /// hovering may move a light.
+    pointer_moved: bool,
+    /// The control it moved onto, read off the frame it was moving over.
+    hovered: Option<u32>,
 
     focus_rect: [f32; 4],
 
     hand: bool,
-    /// Which control a press that is still held down began on.
+    /// The bar a press still held down took hold of, the shell's `held_bar`.
     ///
     /// The one gesture a press and a release cannot describe between them: a
-    /// bar taken hold of and moved. See [`Page::dragging`].
+    /// bar taken hold of and moved. See [`Interaction::take_hold`].
     held: Option<u32>,
+    /// The controls a press takes hold of: those the page followed with
+    /// [`Page::dragging`] on the frame last drawn, which is the frame a press
+    /// lands on. What a bar is, to an application.
+    bars: Vec<u32>,
+    /// What the page asked [`Page::dragging`] about on the frame being drawn
+    /// now, which becomes [`Interaction::bars`] when that frame ends.
+    asked_bars: Vec<u32>,
     menu: ContextMenu,
     dialog: Dialog,
     files: Files,
@@ -351,6 +601,11 @@ struct Interaction {
     /// What the page asked for on the frame being drawn now, which becomes
     /// what is in force when that frame ends.
     asked_text: bool,
+    /// Whether a keyboard's typing is taken as text **now** with nothing said
+    /// to the compositor (`Page::taking_keys`), and what the page asked for
+    /// on the frame being drawn: two flags, as `taking_text` is.
+    taking_keys: bool,
+    asked_keys: bool,
     /// Where on the page the field being typed into is, in points.
     ///
     /// Told to the compositor along with the fact that there *is* one, so an
@@ -386,7 +641,237 @@ struct Interaction {
     /// there was a setting at all.
     hints: Option<bool>,
 
+    /// Whether the toolkit counts this session as low-end hardware, as the
+    /// window decided when it opened. See [`Page::low_end`].
+    low_end: bool,
+
+    /// What the window knows of LineXinBar's on-screen keyboard standing over
+    /// it. See [`Page::shells_board`].
+    board: ShellsBoard,
+
+    /// Whether Shift is held, as the keyboard's modifiers were last reported:
+    /// what turns Tab back. See [`Interaction::key_of`].
+    shift: bool,
+
     driven: bool,
+}
+
+/// What a window knows of LineXinBar's on-screen keyboard standing over it,
+/// by the shell's own rules for it.
+///
+/// The shell raises its board over a field of an application the moment the
+/// field says it takes text — Wayland's text input enabled — while a
+/// controller is in hand, once a field, however the field was chosen: a pad,
+/// a click, a finger. It draws the board along the foot of the display and
+/// says nothing back about where it went or that it went away. What a window
+/// is sent as the board goes is the board letting go of the keyboard: a
+/// report of the keyboard's modifiers saying nothing is held, standing alone,
+/// whichever way it was put away — its own hide key, B, Start after the Enter
+/// it types, a key of the person's own keyboard after that key is passed on.
+/// The same report heads the board's first key after it rises, with the
+/// board's keymap, so one a key follows in the same pass is that key's; one
+/// after a report that held something is a modifier coming up; and one after
+/// the keyboard arrives at the window is the seat saying what is held. While
+/// the board is up the shell keeps every pad from applications, so a pad's
+/// press reaching the window means it is not up.
+#[derive(Debug, Default)]
+struct ShellsBoard {
+    /// Whether the window is under LineXinBar at all: decided as it opens.
+    watched: bool,
+    up: bool,
+    /// Whether the last report of the keyboard's modifiers held anything.
+    held: bool,
+    /// A report saying nothing is held after one that held nothing either,
+    /// no key after it yet in this pass of events: the board letting go,
+    /// unless a key follows.
+    letting_go: bool,
+    /// The keyboard arrived at the window in this pass: the report that comes
+    /// with it is the seat's.
+    arriving: bool,
+}
+
+impl ShellsBoard {
+    fn watching(watched: bool) -> Self {
+        Self {
+            watched,
+            ..Self::default()
+        }
+    }
+
+    /// The window's text input enabled, which the shell hears as a field of
+    /// it taking the cursor: the board rises where it has a controller in
+    /// hand, as it last wrote down.
+    fn enabled(&mut self, controller_in_hand: bool) {
+        self.up = self.watched && controller_in_hand;
+        self.letting_go = false;
+    }
+
+    /// The window's text input disabled, or left with the keyboard: the
+    /// shell's field is gone, and the board with it.
+    fn disabled(&mut self) {
+        self.up = false;
+        self.letting_go = false;
+    }
+
+    fn focused(&mut self, focused: bool) {
+        if focused {
+            self.arriving = true;
+        } else {
+            self.disabled();
+        }
+    }
+
+    fn modifiers(&mut self, held: bool) {
+        let was = std::mem::replace(&mut self.held, held);
+        if std::mem::take(&mut self.arriving) {
+            return;
+        }
+        if self.up && !held && !was {
+            self.letting_go = true;
+        }
+    }
+
+    fn key(&mut self) {
+        self.letting_go = false;
+    }
+
+    fn pad(&mut self) {
+        self.disabled();
+    }
+
+    /// A pass of events over: a report nothing followed was the board letting
+    /// go of the keyboard.
+    fn settle(&mut self) {
+        if std::mem::take(&mut self.letting_go) {
+            self.up = false;
+        }
+        self.arriving = false;
+    }
+
+    fn up(&self) -> bool {
+        self.up
+    }
+}
+
+/// Whether a window is under LineXinBar, whose on-screen keyboard is watched
+/// for: `desktop` (`XDG_CURRENT_DESKTOP`, a `:`-separated list the session and
+/// its compositor set) names it, compared without regard to case as the shell
+/// reads it, and the window is a Wayland client — the board answers Wayland's
+/// text input only.
+fn under_linexinbar(desktop: Option<&str>, wayland: bool) -> bool {
+    wayland
+        && desktop.is_some_and(|desktops| {
+            desktops
+                .split(':')
+                .any(|name| name.trim().eq_ignore_ascii_case("LineXinBar"))
+        })
+}
+
+impl Interaction {
+    /// The pointer arriving at `at` over `spot`, which is read off the frame
+    /// it was moving over. Answers whether it moved.
+    ///
+    /// **Hovering is selecting**, as it is in the shell, for whatever stands
+    /// still: the flow's own controls take the light the moment the pointer
+    /// moves onto them, silently, and a driven page is told what it moved
+    /// onto and decides for itself. A press holding a bar is a drag, not a
+    /// hover, and moving the light under it would take the selection out from
+    /// under the handle it is carrying; a press on anything else holds
+    /// nothing, and the pointer goes on hovering with the button down.
+    fn pointer_to(&mut self, at: [f32; 2], spot: Spot) -> bool {
+        let moved = at != self.pointer;
+        self.pointer = at;
+        if !moved || self.held.is_some() {
+            return false;
+        }
+        self.hovering = true;
+        self.pointer_moved = true;
+        self.hovered = match spot {
+            Spot::Control(id) => Some(id),
+            _ => None,
+        };
+        if let Some(index) = self.hovered.map(|id| id as usize) {
+            if !self.driven && index < self.count {
+                self.focused = index;
+            }
+        }
+        true
+    }
+
+    /// The left button going down over `spot`: what it takes hold of, if
+    /// anything.
+    ///
+    /// As in the shell, only a bar is held — a control the page follows with
+    /// [`Page::dragging`] — and every motion until the button comes up is that
+    /// press asking for another value. A press on anything else is over the
+    /// moment it lands.
+    fn take_hold(&mut self, spot: Spot) {
+        self.held = match spot {
+            Spot::Control(id) if self.bars.contains(&id) => Some(id),
+            _ => None,
+        };
+    }
+
+    /// A button coming up. Letting go is the end of the press, and the only
+    /// thing it is the end of: what a bar was left at was set on the way
+    /// there. Only the left button takes hold, so only it lets go.
+    fn let_go(&mut self, button: MouseButton) {
+        if button == MouseButton::Left {
+            self.held = None;
+        }
+    }
+
+    /// The pointer leaving the window. Nothing is hovered until it moves
+    /// again, and on Wayland a bar's hold ends with it, as a leave ends one in
+    /// the shell: a button held there keeps the pointer on the window wherever
+    /// it travels, so a leave is the hold taken away, and the release goes to
+    /// whatever has the pointer now. X tells a window it was left in the
+    /// middle of a drag and goes on sending it the motion and the release, so
+    /// there a leave is only the pointer outside, and the drag goes on.
+    fn pointer_left(&mut self, on_wayland: bool) {
+        self.pointer_away();
+        if on_wayland {
+            self.held = None;
+        }
+    }
+
+    /// The pointer gone from the window, or a key, a pad or a finger reached
+    /// for instead: nothing is hovered until the pointer moves again.
+    fn pointer_away(&mut self) {
+        self.hovering = false;
+        self.pointer_moved = false;
+        self.hovered = None;
+    }
+
+    /// Whether a menu, a dialog or the file chooser stands over the page,
+    /// which is then not what the pointer is over.
+    fn covered(&self) -> bool {
+        self.menu.is_open() || self.dialog.is_open() || self.files.busy()
+    }
+
+    /// Whether a key that writes something arrives as text now: a field
+    /// takes text (`Page::taking_text`), or takes a keyboard's typing with
+    /// nothing said to the compositor (`Page::taking_keys`).
+    fn takes_typing(&self) -> bool {
+        self.taking_text || self.taking_keys
+    }
+
+    /// The keyboard's modifiers, as the window was last told of them: Shift
+    /// is kept for the keys that follow, and LineXinBar's board reads the
+    /// same report as it always has (`ShellsBoard::modifiers`).
+    fn modifiers_reported(&mut self, held: winit::keyboard::ModifiersState) {
+        self.shift = held.shift_key();
+        self.board.modifiers(!held.is_empty());
+    }
+
+    /// The key a keyboard's press names, read with Shift as it was last
+    /// reported held: Shift+Tab is BackTab, which walks back, as a left
+    /// bumper does. No other key reads differently with Shift
+    /// (`lxb_input::key_of_logical`), and what a key types is the event's
+    /// own text, never this.
+    fn key_of(&self, logical: &winit::keyboard::Key) -> Option<Key> {
+        lxb_input::key_of_logical(logical, self.shift)
+    }
 }
 
 pub struct Page<'a> {
@@ -462,10 +947,43 @@ impl Page<'_> {
         self.state.asked_text = taking;
     }
 
+    /// Have what a keyboard types between this frame and the next arrive as
+    /// text (`typed`) — its letters written, Backspace rubbing one out —
+    /// with nothing said to the compositor: no text input enabled, so no
+    /// on-screen keyboard is summoned. For a field the light stands in while
+    /// a controller is in hand, which LineXinBar answers a field taking text
+    /// by raising its keyboard over: a keyboard reached for types into it
+    /// from its first key, and nothing rises unasked. `taking_text` says
+    /// both, and is what a field being typed into says.
+    pub fn taking_keys(&mut self, taking: bool) {
+        self.state.asked_keys = taking;
+    }
+
     /// Where the field being typed into is, for whatever wants to stand clear
     /// of it. Said with `taking_text`, and only meant while that is true.
     pub fn text_at(&mut self, rect: [f32; 4]) {
         self.state.text_at = rect;
+    }
+
+    /// Where LineXinBar's on-screen keyboard stands over this window now —
+    /// [`lxb_toolkit::board::rect`] for the window's size — or `None` where it
+    /// is not up, by everything the window has been told of it.
+    ///
+    /// The shell raises its board over a field the moment the field takes
+    /// text ([`Page::taking_text`]) with a controller in hand, however the
+    /// field was chosen — a pad, a click, a finger on a handheld's screen —
+    /// and never moves it out of the field's way. A field being typed into
+    /// belongs above the rectangle's top for as long as this says it. It goes
+    /// on the frame after the board is put away (its own hide key, B, Start,
+    /// a key of the person's own keyboard), after the field stops taking
+    /// text, and after a pad's press reaches the window. `None` everywhere
+    /// but under LineXinBar, and wherever the shell last saw a keyboard in
+    /// the person's hands, where it raises nothing by itself.
+    pub fn shells_board(&self) -> Option<[f32; 4]> {
+        self.state
+            .board
+            .up()
+            .then(|| lxb_toolkit::board::rect(self.width(), self.height()))
     }
 
     /// Whether a pad is what the user last reached for, rather than a keyboard
@@ -480,12 +998,43 @@ impl Page<'_> {
         self.state.pad_in_hand
     }
 
+    /// Whether the toolkit counts this session as low-end hardware: the
+    /// shell's own low-end mode where Settings has said one way or the other
+    /// (`low-end-mode` in its settings file), and otherwise whether the
+    /// window is drawn in software.
+    ///
+    /// What a page that moves things itself asks — a page giving way to the
+    /// next, a column stepping in — before it moves them: where this is true
+    /// it puts them where they are going at once. The toolkit itself draws a
+    /// still window here once a second rather than every frame, and holds the
+    /// wallpaper at one instant. Decided once, as the window opens, and true
+    /// whatever Settings say for an application built with [`App::low_end`].
+    /// A picture (`App::shot`) answers false unless it was asked for of such
+    /// an application: it is drawn as the window is drawn on hardware that is
+    /// not low-end.
+    pub fn low_end(&self) -> bool {
+        self.state.low_end
+    }
+
     pub fn typed(&mut self) -> std::vec::Drain<'_, Typed> {
         self.state.typed.drain(..)
     }
 
     pub fn actions(&mut self) -> std::vec::Drain<'_, Action> {
         self.state.arrived.drain(..)
+    }
+
+    /// Hand the window `action` as a key or a controller would: a question,
+    /// a menu or the file chooser standing over the page takes it, a driven
+    /// page finds it among [`Page::actions`] still to be read, and otherwise
+    /// it walks or presses the flow's light.
+    ///
+    /// What a picture of something being answered presses with
+    /// ([`App::shot_after`]): the window answers its own question and menus,
+    /// and nothing else can reach them. A page asks it before it reads its
+    /// actions.
+    pub fn act(&mut self, action: Action) {
+        act(self.state, self.sounds, action);
     }
 
     /// The wheel and touchpad gestures behind some of this frame's actions.
@@ -529,8 +1078,9 @@ impl Page<'_> {
         if self.state.count == 0 {
             return;
         }
-        let dt = self.ui.dt();
-        let at = self.state.flow_light.glide(self.state.focus_rect, dt);
+        let at = self
+            .ui
+            .glide(&mut self.state.flow_light, self.state.focus_rect);
 
         let strength = match self.state.pressing.through() {
             Some(through) => 1.0 - through * 0.35,
@@ -540,9 +1090,31 @@ impl Page<'_> {
     }
 
     pub fn glide(&mut self, rect: [f32; 4], strength: f32) -> [f32; 4] {
-        let dt = self.ui.dt();
-        let at = self.state.light.glide(rect, dt);
+        let at = self.ui.glide(&mut self.state.light, rect);
         self.ui.selection(at, strength);
+        at
+    }
+
+    /// The light carried to `rect` as [`Page::glide`] carries it — or put
+    /// there at once, `appears`, as [`Page::place`] puts it — and drawn in
+    /// that rectangle's own shape, its corners rounded by `radius` rather
+    /// than a capsule's: a card or a picture is lit as itself. It is the one
+    /// light the capsule is, so a page that lights its rows with one and its
+    /// cards with the other has it travel between them. Answers where it is
+    /// drawn this frame.
+    pub fn light_shaped(
+        &mut self,
+        rect: [f32; 4],
+        radius: f32,
+        strength: f32,
+        appears: bool,
+    ) -> [f32; 4] {
+        if appears {
+            self.state.light.clear();
+        }
+        let at = self.ui.glide(&mut self.state.light, rect);
+        self.ui
+            .lit(at, radius, lxb_toolkit::control::LIT_ROLE, at[2], strength);
         at
     }
 
@@ -555,15 +1127,59 @@ impl Page<'_> {
         self.state.pressing.state(lit)
     }
 
-    /// Where the pointer is while a press that began on this control is still
-    /// held down, in the page's own space — `None` when nothing is being
+    /// Where the pointer is while a press that took hold of this control is
+    /// still held down, in the page's own space — `None` when nothing is being
     /// dragged from there.
+    ///
+    /// Asking is what makes `id` a bar. A press on a control the page asked
+    /// about on the frame it landed on takes hold of it, and every motion
+    /// until the button comes up is that drag, not a hover. A press on any
+    /// other control holds nothing, and the pointer goes on hovering with the
+    /// button down, as it does in the shell, where only a bar is held. So ask
+    /// on every frame the bar is drawn.
     ///
     /// Only a pointer drags. A finger on the same control drags the list
     /// instead, which is what a finger does everywhere else on the page and
     /// what somebody holding a touchscreen expects of it; see `Finger`.
-    pub fn dragging(&self, id: u32) -> Option<[f32; 2]> {
+    pub fn dragging(&mut self, id: u32) -> Option<[f32; 2]> {
+        if !self.state.asked_bars.contains(&id) {
+            self.state.asked_bars.push(id);
+        }
         (self.state.held == Some(id)).then_some(self.state.pointer)
+    }
+
+    /// Where the pointer rests over the page, in the page's own space.
+    ///
+    /// `None` once it has left the window, while a menu, a dialog or the file
+    /// chooser stands over the page, from the moment a key, a pad or a finger
+    /// is reached for until the pointer moves again, and while a press that
+    /// took hold of a bar is held down: that is a drag, which
+    /// [`Page::dragging`] follows, and not a hover. A press held on any other
+    /// control leaves it answering.
+    pub fn pointer(&self) -> Option<[f32; 2]> {
+        (self.state.hovering && self.state.held.is_none() && !self.state.covered())
+            .then_some(self.state.pointer)
+    }
+
+    /// Whether the pointer moved over the page since the last frame.
+    ///
+    /// The only time hovering may move a light: one moved by the pad stays
+    /// where the pad put it under a pointer that is resting.
+    pub fn pointer_moved(&self) -> bool {
+        self.state.pointer_moved && self.pointer().is_some()
+    }
+
+    /// The control the pointer moved onto since the last frame, by the number
+    /// it was drawn with — `None` on a frame it did not move, and over
+    /// nothing of the page's own.
+    ///
+    /// Read off the frame the pointer was moving over, so it can be asked
+    /// before anything is drawn. A page lights what stands still — a row, a
+    /// button, a card — with it, and leaves alone what moves under the
+    /// pointer, such as a list that scrolls to its selection, where a first
+    /// click carries the light instead.
+    pub fn hovered(&self) -> Option<u32> {
+        self.state.hovered.filter(|_| self.pointer_moved())
     }
 
     pub fn pressed(&mut self, id: u32) -> bool {
@@ -742,7 +1358,27 @@ impl Page<'_> {
     /// somebody has to press to find out. `marked` is an index into
     /// `commands`; anything past the end marks nothing, which is what
     /// [`Page::menu`] passes for a menu of acts rather than of answers.
+    ///
+    /// It opens with the light on the marked row, as the shell opens a list
+    /// of values: the question is what this is set to, and the light arriving
+    /// on the answer is half of the reply — and Accept at once keeps it.
     pub fn menu_marked(&mut self, title: Option<&str>, commands: &[&str], marked: usize) {
+        self.raise_menu(title, commands, marked, marked);
+    }
+
+    /// The same menu of acts, marking nothing, with the light on the command
+    /// at `row` as it opens rather than on its first.
+    ///
+    /// What a menu a person comes back to does: one that opened another
+    /// menu from one of its rows and is raised again once that is answered
+    /// opens with the light on the row they went in by — the one just
+    /// changed — as the shell's Settings come back to the row a page was
+    /// opened from. A row past the end is the first.
+    pub fn menu_on(&mut self, title: Option<&str>, commands: &[&str], row: usize) {
+        self.raise_menu(title, commands, usize::MAX, row);
+    }
+
+    fn raise_menu(&mut self, title: Option<&str>, commands: &[&str], marked: usize, from: usize) {
         if self.state.menu.is_open() || self.state.dialog.is_open() || self.state.files.busy() {
             return;
         }
@@ -768,7 +1404,7 @@ impl Page<'_> {
         if self
             .state
             .menu
-            .open_at(anchor, title.map(str::to_string), entries)
+            .open_selecting(anchor, title.map(str::to_string), entries, from)
         {
             self.sounds.play(Sound::Press);
         }
@@ -778,6 +1414,12 @@ impl Page<'_> {
         self.state.chose.take()
     }
 
+    /// Ask a question, modal until it is answered.
+    ///
+    /// The body keeps the lines it is given: a line break is a line break on
+    /// the pane and a line that fits is written as it came. Only a line too
+    /// wide is broken again, at a space, and never at a no-break space, inside
+    /// quotation marks or before a lone "·" or "/".
     pub fn ask(&mut self, title: &str, body: &str, answers: &[&str]) {
         if self.state.dialog.is_open() || self.state.menu.is_open() || self.state.files.busy() {
             return;
@@ -1000,7 +1642,10 @@ impl<F: FnMut(&mut Page)> Runtime<F> {
     }
 
     fn spot(&self) -> Spot {
-        let [x, y] = self.state.pointer;
+        self.spot_at(self.state.pointer)
+    }
+
+    fn spot_at(&self, [x, y]: [f32; 2]) -> Spot {
         self.ui.as_ref().map_or(Spot::Nothing, |ui| ui.at(x, y))
     }
 
@@ -1074,6 +1719,7 @@ impl<F: FnMut(&mut Page)> Runtime<F> {
                     return;
                 }
                 self.state.pad_in_hand = false;
+                self.state.pointer_away();
                 self.state.pointer = at;
                 let spot = self.spot();
                 self.point_here(spot);
@@ -1143,113 +1789,21 @@ impl<F: FnMut(&mut Page)> Runtime<F> {
         let actions = self.controls.poll(self.now());
         let any = !actions.is_empty();
         for action in actions {
+            self.state.board.pad();
             self.state.pad_in_hand = true;
+            self.state.pointer_away();
             self.act(action);
         }
         any
     }
 
     fn act(&mut self, action: Action) {
-        if self.state.files.is_open() {
-            if let Some(sound) = self.state.files.act(action) {
-                self.sounds.play(sound);
-            }
-            return;
-        }
-        if self.state.dialog.is_open() {
-            let sound = match action {
-                Action::Left => {
-                    self.state.dialog.step(-1);
-                    Some(Sound::Move)
-                }
-                Action::Right => {
-                    self.state.dialog.step(1);
-                    Some(Sound::Move)
-                }
-                Action::Accept | Action::Submit => {
-                    self.state.dialog.press();
-                    self.state.answered = Some(self.state.dialog.selected());
-                    self.state.dialog.close();
-                    Some(Sound::Press)
-                }
-                Action::Back => {
-                    self.state.dialog.close();
-                    Some(Sound::Back)
-                }
-                _ => None,
-            };
-            if let Some(sound) = sound {
-                self.sounds.play(sound);
-            }
-            return;
-        }
-        if self.state.menu.is_open() {
-            let sound = match action {
-                Action::Up => {
-                    self.state.menu.step(-1);
-                    Some(Sound::Move)
-                }
-                Action::Down => {
-                    self.state.menu.step(1);
-                    Some(Sound::Move)
-                }
-                Action::Accept | Action::Submit => {
-                    self.state.menu.press();
-                    self.state.chose = Some(self.state.menu.selected());
-                    self.state.menu.close();
-                    Some(Sound::Press)
-                }
-
-                Action::Back | Action::Menu => {
-                    self.state.menu.close();
-                    Some(Sound::Back)
-                }
-                _ => None,
-            };
-            if let Some(sound) = sound {
-                self.sounds.play(sound);
-            }
-            return;
-        }
-
-        if self.state.driven {
-            self.state.arrived.push(action);
-            return;
-        }
-        match action {
-            Action::Accept | Action::Submit => {
-                if self.state.count > 0 {
-                    self.state.pressing.press();
-                    self.state.fired = Some(self.state.focused);
-                    self.sounds.play(Sound::Press);
-                }
-            }
-
-            _ => {
-                if let Some(direction) = action.direction() {
-                    let back = matches!(
-                        direction,
-                        lxb_toolkit::input::Direction::Up | lxb_toolkit::input::Direction::Left
-                    );
-                    self.walk(if back { -1 } else { 1 });
-                }
-            }
-        }
-    }
-
-    fn walk(&mut self, delta: isize) {
-        if self.state.count == 0 {
-            return;
-        }
-        let last = self.state.count - 1;
-        let want = (self.state.focused as isize + delta).clamp(0, last as isize) as usize;
-        if want != self.state.focused {
-            self.state.focused = want;
-            self.sounds.play(Sound::Move);
-        }
+        act(&mut self.state, &mut self.sounds, action);
     }
 
     fn draw(&mut self, width: f32, height: f32, elapsed: f32) {
+        // Every event of this pass has arrived before it is drawn.
+        self.state.board.settle();
         let Some(ui) = self.ui.as_mut() else {
             return;
         };
@@ -1323,6 +1877,41 @@ fn says_what_the_buttons_do() -> bool {
     lxb_toolkit::settings::button_hints().unwrap_or(true)
 }
 
+/// What a letter means to a window where no field takes it as text: `y`,
+/// the letter printed on a pad's top face button, is that button — the
+/// context menu — as LineXinBar reads it beside the Menu key and F10. The
+/// shell's other letter shorthands, `wasd` and `hjkl`, are left to an
+/// application that asks `Action::of_letter` for them: a list walked by
+/// letters would walk under a person typing the first letters of a name
+/// before the field takes them.
+fn letter_press(key: Key) -> Option<Action> {
+    match key {
+        Key::Letter(letter) => Action::of_letter(letter).filter(|action| *action == Action::Menu),
+        _ => None,
+    }
+}
+
+/// Whether an event wakes a low-end loop that is waiting between frames.
+///
+/// Everything a hand does, and the window changing size. A pointer moving, or
+/// arriving or leaving, is in it because a page lights what it hovers: a
+/// light that waited for the next still frame to follow the pointer would be
+/// a second behind it.
+fn wakes(event: &WindowEvent) -> bool {
+    matches!(
+        event,
+        WindowEvent::KeyboardInput { .. }
+            | WindowEvent::MouseInput { .. }
+            | WindowEvent::MouseWheel { .. }
+            | WindowEvent::CursorMoved { .. }
+            | WindowEvent::CursorEntered { .. }
+            | WindowEvent::CursorLeft { .. }
+            | WindowEvent::Touch(_)
+            | WindowEvent::Ime(_)
+            | WindowEvent::Resized(_)
+    )
+}
+
 /// Normalize traditional wheel lines and touchpad pixels into signed steps.
 /// [`Wheel`] carries their fractional remainder between events so both feel
 /// deliberate at low speed.
@@ -1377,7 +1966,7 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
             Err(err) => return self.give_up(event_loop, format!("no surface: {err}")),
         };
         let size = window.inner_size();
-        let ui = match pollster::block_on(Ui::new(
+        let mut ui = match pollster::block_on(Ui::new(
             &self.instance,
             Some(&surface),
             SURFACE,
@@ -1387,9 +1976,18 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
             Ok(ui) => ui,
             Err(message) => return self.give_up(event_loop, message),
         };
+        if let Err(message) = self.app.add_marks(&mut ui) {
+            return self.give_up(event_loop, message);
+        }
         configure(&surface, &ui, size.width, size.height);
-        self.low_end = self.theme.low_end_on(ui.software());
+        self.low_end = self.app.low_end || self.theme.low_end_on(ui.software());
+        self.state.low_end = self.low_end;
+        ui.set_low_end(self.low_end);
         self.theme = self.theme.drawn(self.low_end);
+        self.state.board = ShellsBoard::watching(under_linexinbar(
+            std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref(),
+            event_loop.is_wayland(),
+        ));
         self.window = Some(window);
         self.surface = Some(surface);
         self.ui = Some(ui);
@@ -1402,18 +2000,7 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
         let Some(window) = self.window.clone() else {
             return;
         };
-        if self.low_end
-            && matches!(
-                event,
-                WindowEvent::KeyboardInput { .. }
-                    | WindowEvent::MouseInput { .. }
-                    | WindowEvent::MouseWheel { .. }
-                    | WindowEvent::CursorMoved { .. }
-                    | WindowEvent::Touch(_)
-                    | WindowEvent::Ime(_)
-                    | WindowEvent::Resized(_)
-            )
-        {
+        if self.low_end && wakes(&event) {
             let now = std::time::Instant::now();
             self.touched = now;
             self.next_frame = now;
@@ -1422,6 +2009,7 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
             WindowEvent::CloseRequested => event_loop.exit(),
 
             WindowEvent::Focused(false) => {
+                self.state.board.focused(false);
                 self.controls.release();
                 self.wheel.reset();
                 // Whatever was being held is not being held now: the release
@@ -1429,15 +2017,33 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
                 self.state.held = None;
                 self.finger = None;
             }
+            WindowEvent::Focused(true) => self.state.board.focused(true),
+            // What LineXinBar's board hears as a field of this window taking
+            // the cursor and giving it up, and what it sends as it lets go of
+            // the keyboard. See `ShellsBoard`.
+            WindowEvent::Ime(Ime::Enabled) => self
+                .state
+                .board
+                .enabled(lxb_toolkit::settings::controller_in_hand().unwrap_or(true)),
+            WindowEvent::Ime(Ime::Disabled) => self.state.board.disabled(),
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.state.modifiers_reported(modifiers.state())
+            }
             WindowEvent::Resized(size) => {
                 if let (Some(surface), Some(ui)) = (self.surface.as_ref(), self.ui.as_ref()) {
                     configure(surface, ui, size.width, size.height);
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.state.pointer = [position.x as f32, position.y as f32];
-
-                let spot = self.spot();
+                let at = [position.x as f32, position.y as f32];
+                let spot = self.spot_at(at);
+                self.state.pointer_to(at, spot);
+                // A button still down on a bar is a value still being set,
+                // wherever the pointer has since travelled: the drag is all
+                // this motion is about, as it is in the shell.
+                if self.state.held.is_some() {
+                    return;
+                }
                 self.point_here(spot);
 
                 let hand = spot.pressable();
@@ -1454,15 +2060,15 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
                 // A partial gesture belongs to the thing it began over, not
                 // to whatever the pointer enters next.
                 self.wheel.reset();
+                self.state.pointer_left(event_loop.is_wayland());
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 if state != ElementState::Pressed {
-                    // Letting go is half of the one gesture a press cannot
-                    // describe on its own. See [`Page::dragging`].
-                    self.state.held = None;
+                    self.state.let_go(button);
                     return;
                 }
                 self.state.pad_in_hand = false;
+                self.state.hovering = true;
 
                 if button == MouseButton::Right {
                     if self.state.files.is_open() {
@@ -1484,9 +2090,7 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
                     return;
                 }
                 let spot = self.spot();
-                if let Spot::Control(id) = spot {
-                    self.state.held = Some(id);
-                }
+                self.state.take_hold(spot);
                 self.press_here(spot);
             }
             WindowEvent::Touch(touch) => self.finger(touch),
@@ -1526,16 +2130,18 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
                     return;
                 }
                 let down = event.state == ElementState::Pressed;
-                let key = lxb_input::key_of(&event, false);
+                let key = self.state.key_of(&event.logical_key);
                 if down {
+                    self.state.board.key();
                     self.state.pad_in_hand = false;
+                    self.state.pointer_away();
                 }
 
                 if down && self.state.files.key(key, event.text.as_deref()) {
                     return;
                 }
 
-                if down && self.state.taking_text {
+                if down && self.state.takes_typing() {
                     if key == Some(Key::Backspace) {
                         self.state.typed.push(Typed::Rubbed);
                         return;
@@ -1566,6 +2172,8 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
                 }
                 let now = self.now();
                 if let Some(action) = self.controls.key(key, down, now) {
+                    self.act(action);
+                } else if let Some(action) = letter_press(key).filter(|_| down) {
                     self.act(action);
                 }
             }
@@ -1648,6 +2256,7 @@ impl<F: FnMut(&mut Page)> ApplicationHandler for Runtime<F> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.state.board.settle();
         self.sounds.rest(std::time::Instant::now());
         if !self.low_end {
             if let Some(window) = self.window.as_ref() {
@@ -2019,6 +2628,524 @@ mod tests {
         );
     }
 
+    /// Where the middle of control `index` was drawn on the last frame.
+    fn middle_of(ui: &Ui, index: u32) -> [f32; 2] {
+        let mut y = 0.0;
+        while y < 800.0 {
+            let mut x = 0.0;
+            while x < 1280.0 {
+                if ui.at(x, y) == Spot::Control(index) {
+                    return [x + 8.0, y + 8.0];
+                }
+                x += 4.0;
+            }
+            y += 4.0;
+        }
+        panic!("control {index} was not drawn");
+    }
+
+    fn four_rows(page: &mut Page) {
+        for name in ["Hello", "Colour", "Material", "Marks"] {
+            page.item(name);
+        }
+    }
+
+    type Told = (Option<[f32; 2]>, bool, Option<u32>);
+
+    fn told(page: &Page) -> Told {
+        (page.pointer(), page.pointer_moved(), page.hovered())
+    }
+
+    #[test]
+    fn a_driven_page_is_told_what_the_pointer_moved_onto_and_where_it_rests() {
+        let mut headless = headless!("hovering over a driven page");
+        headless.state.driven = true;
+        headless.draw(four_rows);
+
+        let at = middle_of(&headless.ui, 1);
+        let spot = headless.ui.at(at[0], at[1]);
+        assert!(headless.state.pointer_to(at, spot));
+
+        let mut heard = None;
+        headless.draw(|page| {
+            heard = Some(told(page));
+            four_rows(page);
+        });
+        assert_eq!(
+            heard,
+            Some((Some(at), true, Some(1))),
+            "asked before anything was drawn, the page still hears what the \
+             pointer moved onto"
+        );
+        assert_eq!(
+            headless.state.focused, 0,
+            "a driven page moves its own light"
+        );
+
+        headless.draw(|page| {
+            heard = Some(told(page));
+            four_rows(page);
+        });
+        assert_eq!(
+            heard,
+            Some((Some(at), false, None)),
+            "a pointer that rests is still there, and has moved onto nothing"
+        );
+
+        assert!(!headless.state.pointer_to(at, spot), "the same place again");
+        headless.draw(|page| heard = Some(told(page)));
+        assert_eq!(heard, Some((Some(at), false, None)));
+    }
+
+    #[test]
+    fn a_key_or_a_pad_takes_hovering_away_until_the_pointer_moves() {
+        let mut headless = headless!("hovering given up to the hands");
+        headless.state.driven = true;
+        headless.draw(four_rows);
+        let at = middle_of(&headless.ui, 2);
+        let spot = headless.ui.at(at[0], at[1]);
+        headless.state.pointer_to(at, spot);
+
+        headless.state.pointer_away();
+        let mut heard = None;
+        headless.draw(|page| {
+            heard = Some(told(page));
+            four_rows(page);
+        });
+        assert_eq!(
+            heard,
+            Some((None, false, None)),
+            "the pad moved the light, and the resting pointer must not fight it"
+        );
+
+        assert!(!headless.state.pointer_to(at, spot));
+        headless.draw(|page| {
+            heard = Some(told(page));
+            four_rows(page);
+        });
+        assert_eq!(heard, Some((None, false, None)), "it has not moved yet");
+
+        let on = [at[0] + 2.0, at[1]];
+        assert!(headless.state.pointer_to(on, spot));
+        headless.draw(|page| heard = Some(told(page)));
+        assert_eq!(heard, Some((Some(on), true, Some(2))), "now it has");
+    }
+
+    #[test]
+    fn the_flows_light_follows_the_pointer() {
+        let mut headless = headless!("hovering over the flow");
+        headless.draw(four_rows);
+        assert_eq!(headless.state.focused, 0);
+
+        let at = middle_of(&headless.ui, 3);
+        let spot = headless.ui.at(at[0], at[1]);
+        headless.state.pointer_to(at, spot);
+        assert_eq!(headless.state.focused, 3, "hovering is selecting");
+
+        headless.state.pointer_to([at[0], 799.0], Spot::Nothing);
+        assert_eq!(
+            headless.state.focused, 3,
+            "off every control, the light stays where it was"
+        );
+    }
+
+    const BAR: u32 = 0x400;
+
+    /// Four rows and a bar beside them, which the page follows with
+    /// `dragging` — what makes it a bar.
+    fn rows_and_a_bar(page: &mut Page) -> Option<[f32; 2]> {
+        four_rows(page);
+        let dragged = page.dragging(BAR);
+        page.ui().spot(BAR, [1180.0, 120.0, 24.0, 560.0]);
+        dragged
+    }
+
+    #[test]
+    fn a_press_held_on_a_plain_control_goes_on_hovering() {
+        for driven in [false, true] {
+            let mut headless = headless!("a press held over the flow");
+            headless.state.driven = driven;
+            headless.draw(|page| {
+                rows_and_a_bar(page);
+            });
+            let from = middle_of(&headless.ui, 0);
+            headless
+                .state
+                .pointer_to(from, headless.ui.at(from[0], from[1]));
+
+            headless.state.take_hold(Spot::Control(0));
+            assert_eq!(headless.state.held, None, "a row is not a bar");
+
+            let at = middle_of(&headless.ui, 2);
+            let spot = headless.ui.at(at[0], at[1]);
+            assert!(headless.state.pointer_to(at, spot));
+            assert_eq!(headless.state.hovered, Some(2));
+            assert_eq!(
+                headless.state.focused,
+                if driven { 0 } else { 2 },
+                "with the button still down, hovering is still selecting"
+            );
+
+            let mut heard = None;
+            let mut dragged = None;
+            headless.draw(|page| {
+                heard = Some(told(page));
+                dragged = page.dragging(0);
+                rows_and_a_bar(page);
+            });
+            assert_eq!(
+                heard,
+                Some((Some(at), true, Some(2))),
+                "a driven page hears the pointer move with a button down"
+            );
+            assert_eq!(dragged, None, "nothing is dragged from a row");
+        }
+    }
+
+    #[test]
+    fn a_press_held_on_a_bar_is_a_drag_and_not_a_hover() {
+        let mut headless = headless!("a drag over the flow");
+        headless.draw(|page| {
+            rows_and_a_bar(page);
+        });
+        let at = middle_of(&headless.ui, 2);
+        let spot = headless.ui.at(at[0], at[1]);
+
+        headless.state.hovering = true;
+        headless.state.take_hold(Spot::Control(BAR));
+        assert_eq!(headless.state.held, Some(BAR), "the bar is taken hold of");
+        assert!(!headless.state.pointer_to(at, spot));
+        assert_eq!(headless.state.focused, 0, "the light left what was held");
+        assert_eq!(headless.state.pointer, at, "and the drag still follows it");
+        assert_eq!(headless.state.hovered, None);
+
+        let mut heard = None;
+        let mut dragged = None;
+        headless.draw(|page| {
+            heard = Some(told(page));
+            dragged = rows_and_a_bar(page);
+        });
+        assert_eq!(
+            heard,
+            Some((None, false, None)),
+            "a page measuring its own rows is not told of a drag as a hover"
+        );
+        assert_eq!(dragged, Some(at), "the drag is told where it is");
+
+        headless.state.let_go(MouseButton::Right);
+        assert_eq!(
+            headless.state.held,
+            Some(BAR),
+            "another button coming up is not the press ending"
+        );
+        headless.state.let_go(MouseButton::Left);
+        assert_eq!(headless.state.held, None);
+        headless.draw(|page| heard = Some(told(page)));
+        assert_eq!(
+            heard,
+            Some((Some(at), false, None)),
+            "let go, the pointer rests where the drag ended"
+        );
+    }
+
+    #[test]
+    fn only_a_control_followed_on_the_frame_pressed_is_taken_hold_of() {
+        let mut headless = headless!("what a press takes hold of");
+        headless.draw(|page| {
+            rows_and_a_bar(page);
+        });
+        headless.draw(four_rows);
+        headless.state.take_hold(Spot::Control(BAR));
+        assert_eq!(
+            headless.state.held, None,
+            "a bar the frame pressed on did not follow is a bar no longer"
+        );
+
+        headless.draw(|page| {
+            rows_and_a_bar(page);
+        });
+        for elsewhere in [
+            Spot::Nothing,
+            Spot::OutsidePanel,
+            Spot::MenuRow {
+                row: 0,
+                aside: false,
+            },
+        ] {
+            headless.state.take_hold(elsewhere);
+            assert_eq!(headless.state.held, None, "{elsewhere:?}");
+        }
+
+        headless.state.take_hold(Spot::Control(BAR));
+        assert_eq!(headless.state.held, Some(BAR));
+        headless.state.take_hold(Spot::Control(1));
+        assert_eq!(
+            headless.state.held, None,
+            "a press elsewhere holds nothing, whatever was held before"
+        );
+    }
+
+    #[test]
+    fn a_leave_lets_go_of_a_bar_on_wayland_and_not_on_x() {
+        let mut state = Interaction {
+            bars: vec![BAR],
+            hovering: true,
+            ..Interaction::default()
+        };
+        state.take_hold(Spot::Control(BAR));
+
+        state.pointer_left(false);
+        assert_eq!(state.held, Some(BAR), "X goes on sending the drag");
+        assert!(!state.hovering, "and nothing is hovered");
+
+        state.pointer_left(true);
+        assert_eq!(
+            state.held, None,
+            "on Wayland the release goes to whatever has the pointer now"
+        );
+    }
+
+    #[test]
+    fn nothing_on_the_page_is_hovered_under_a_menu() {
+        let mut headless = headless!("hovering under a menu");
+        headless.state.driven = true;
+        headless.draw(four_rows);
+        let at = middle_of(&headless.ui, 1);
+        headless.draw(|page| {
+            four_rows(page);
+            page.menu(None, &["One", "Two"]);
+        });
+        assert!(headless.state.menu.is_open());
+
+        headless.state.pointer_to(at, Spot::Control(1));
+        let mut heard = None;
+        headless.draw(|page| heard = Some(told(page)));
+        assert_eq!(heard, Some((None, false, None)));
+    }
+
+    #[test]
+    fn a_menu_of_alternatives_opens_on_the_one_in_force() {
+        let mut headless = headless!("a menu of alternatives");
+        headless.draw(|page| {
+            four_rows(page);
+            page.menu_marked(Some("Spare memory"), &["Off", "Small", "Large"], 0);
+        });
+        assert_eq!(headless.state.menu.selected(), 0);
+        headless.state.menu.close();
+
+        headless.draw(|page| {
+            four_rows(page);
+            page.menu_marked(Some("Spare memory"), &["Off", "Small", "Large"], 2);
+        });
+        assert!(headless.state.menu.is_open());
+        assert_eq!(
+            headless.state.menu.selected(),
+            2,
+            "Accept at once keeps what is in force rather than choosing Off"
+        );
+        headless.state.menu.close();
+
+        headless.draw(|page| {
+            four_rows(page);
+            page.menu(None, &["Copy", "Rename", "Delete"]);
+        });
+        assert_eq!(
+            headless.state.menu.selected(),
+            0,
+            "a menu of acts opens at its top"
+        );
+    }
+
+    #[test]
+    fn a_moving_picture_hands_the_page_a_frame_every_sixtieth_of_a_second() {
+        let path =
+            std::env::temp_dir().join(format!("lxb-app-shot-after-{}.png", std::process::id()));
+        let mut clock = Vec::new();
+        let taken = App::new("com.example.Test", "Test").plain().shot_after(
+            &path,
+            64,
+            48,
+            10.0,
+            3,
+            |page| clock.push(page.seconds()),
+        );
+        if let Err(trouble) = taken {
+            eprintln!("no adapter: a moving picture was not checked ({trouble})");
+            return;
+        }
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(clock.len(), 4, "the first frame and three after it");
+        for (index, seconds) in clock.iter().enumerate() {
+            let wanted = 10.0 + index as f32 / 60.0;
+            assert!(
+                (seconds - wanted).abs() < 1e-4,
+                "frame {index} was drawn at {seconds}, not {wanted}"
+            );
+        }
+
+        let mut settled = Vec::new();
+        App::new("com.example.Test", "Test")
+            .plain()
+            .shot(&path, 64, 48, 10.0, |page| settled.push(page.seconds()))
+            .expect("a settled picture where a moving one was taken");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(settled, [10.0, 10.0], "a settled picture is one instant");
+    }
+
+    #[test]
+    fn a_page_is_told_whether_the_session_is_counted_low_end() {
+        let mut headless = headless!("telling a page it is low-end");
+        let mut told = None;
+        headless.draw(|page| told = Some(page.low_end()));
+        assert_eq!(told, Some(false), "a page is not low-end until it is said");
+
+        headless.state.low_end = true;
+        headless.draw(|page| told = Some(page.low_end()));
+        assert_eq!(told, Some(true));
+    }
+
+    #[test]
+    fn a_picture_of_a_low_end_window_is_drawn_at_one_instant() {
+        let path = std::env::temp_dir().join(format!(
+            "lxb-app-low-end-picture-{}.png",
+            std::process::id()
+        ));
+        let mut told = Vec::new();
+        let taken = App::new("com.example.Test", "Test")
+            .plain()
+            .driven()
+            .low_end()
+            .shot_after(&path, 64, 48, 10.0, 3, |page| {
+                told.push((page.seconds(), page.low_end()));
+            });
+        let _ = std::fs::remove_file(&path);
+        if let Err(trouble) = taken {
+            eprintln!("no adapter: a low-end picture was not checked ({trouble})");
+            return;
+        }
+        assert_eq!(
+            told,
+            [(10.0, true); 4],
+            "a low-end window holds its clock still and says it is low-end"
+        );
+    }
+
+    const A_DISC: &[u8] = b"<svg data-lxb-material=\"lxb:shape\" \
+        xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\">\
+        <circle cx=\"16\" cy=\"16\" r=\"10\" fill=\"#ffffff\"/></svg>";
+
+    #[test]
+    fn a_mark_of_the_applications_own_is_refused_at_once_and_the_application_kept() {
+        let mut app = App::new("com.example.Test", "Test");
+        assert!(
+            app.add_mark("launch", A_DISC).is_err(),
+            "a toolkit mark's name"
+        );
+        assert!(app.add_mark("", A_DISC).is_err(), "no name");
+        assert!(app.add_mark("app-blank", b"<svg/>").is_err(), "not a shape");
+        app.add_mark("app-disc", A_DISC).expect("a shape");
+        app.add_mark("app-disc", A_DISC).expect("drawn again");
+        assert_eq!(app.marks.len(), 1, "a name given again took a second place");
+        let app = app.mark("app-ring", A_DISC).expect("chained");
+        assert_eq!(app.marks.len(), 2);
+        assert!(app.mark("logo", A_DISC).is_err());
+    }
+
+    #[test]
+    fn a_picture_draws_the_applications_own_marks() {
+        let path = std::env::temp_dir().join(format!(
+            "lxb-app-own-mark-picture-{}.png",
+            std::process::id()
+        ));
+        let mut known = Vec::new();
+        let taken = App::new("com.example.Test", "Test")
+            .mark("app-disc", A_DISC)
+            .expect("a shape")
+            .shot(&path, 64, 48, 10.0, |page| {
+                page.icon("app-disc");
+                known.push(page.ui().has_mark("app-disc"));
+            });
+        let _ = std::fs::remove_file(&path);
+        if let Err(trouble) = taken {
+            eprintln!("no adapter: an application's mark was not checked ({trouble})");
+            return;
+        }
+        assert_eq!(known, [true, true], "the picture did not have the mark");
+    }
+
+    #[test]
+    fn a_page_can_answer_the_question_over_it_as_a_key_would() {
+        let mut headless = headless!("a press handed to the window");
+        headless.state.driven = true;
+        headless.draw(|page| page.ask("Erase?", "It goes.", &["Go back", "Erase"]));
+        assert!(headless.state.dialog.is_open());
+
+        headless.draw(|page| page.act(Action::Right));
+        assert_eq!(headless.state.dialog.selected(), 1, "Right moved to Erase");
+        let mut read = Vec::new();
+        headless.draw(|page| {
+            page.act(Action::Accept);
+            read.extend(page.actions());
+        });
+        assert!(read.is_empty(), "the question took the press, not the page");
+        assert!(!headless.state.dialog.is_open());
+        let mut answer = None;
+        headless.draw(|page| answer = page.answered());
+        assert_eq!(answer, Some(1));
+
+        headless.draw(|page| {
+            page.act(Action::Down);
+            read.extend(page.actions());
+        });
+        assert_eq!(
+            read,
+            [Action::Down],
+            "with nothing over it a driven page reads it"
+        );
+    }
+
+    #[test]
+    fn a_menu_come_back_to_opens_on_the_row_it_was_left_by() {
+        let mut headless = headless!("a menu opening on a row");
+        headless.state.driven = true;
+        let rows = ["Storage", "Spare memory", "Your files"];
+        headless.draw(|page| page.menu_on(Some("Options"), &rows, 1));
+        assert!(headless.state.menu.is_open());
+        assert_eq!(
+            headless.state.menu.selected(),
+            1,
+            "the light opens on the row"
+        );
+        headless.draw(|page| page.act(Action::Accept));
+        let mut chose = None;
+        headless.draw(|page| chose = page.chose());
+        assert_eq!(
+            chose,
+            Some(1),
+            "Accept at once answers the row the light opened on"
+        );
+
+        headless.draw(|page| page.menu_on(None, &rows, 9));
+        assert_eq!(
+            headless.state.menu.selected(),
+            0,
+            "past the end is the first row"
+        );
+    }
+
+    #[test]
+    fn a_pointer_moving_arriving_or_leaving_wakes_a_low_end_loop() {
+        use winit::event::DeviceId;
+        let device_id = DeviceId::dummy();
+        assert!(wakes(&WindowEvent::CursorMoved {
+            device_id,
+            position: winit::dpi::PhysicalPosition::new(10.0, 20.0),
+        }));
+        assert!(wakes(&WindowEvent::CursorEntered { device_id }));
+        assert!(wakes(&WindowEvent::CursorLeft { device_id }));
+        assert!(!wakes(&WindowEvent::Focused(true)));
+    }
+
     #[test]
     fn the_flows_light_travels_between_its_controls() {
         let mut headless = headless!("the flow's light");
@@ -2047,6 +3174,88 @@ mod tests {
             at[1] > first[1] && at[1] < third[1],
             "the light is between the row it left and the row it is going to, \
              not on either: left {first:?}, going to {third:?}, at {at:?}"
+        );
+    }
+
+    /// Low-end hardware draws every frame at one instant (the wallpaper held
+    /// still), so a light timed by the frame never moved: the flow's stayed
+    /// on the control it was first drawn on, and so did a driven page's.
+    #[test]
+    fn on_low_end_hardware_a_pages_lights_stand_where_they_are_going() {
+        let mut headless = headless!("a page's lights on low-end hardware");
+        let still = lxb_toolkit::settings::STILL_WALLPAPER_AT;
+        headless.ui.set_low_end(true);
+        let rows = |page: &mut Page| {
+            for name in ["Hello", "Colour", "Material"] {
+                page.item(name);
+            }
+        };
+        headless.draw_at(still, rows);
+        headless.state.focused = 2;
+        // The flow's light is laid under its controls, before the one it is
+        // going to is drawn, so it sets off a frame after the light is moved.
+        headless.draw_at(still, rows);
+        headless.draw_at(still, rows);
+        assert_eq!(
+            headless.state.flow_light.rect(),
+            Some(headless.state.focus_rect),
+            "the flow's light was left where it was first drawn"
+        );
+
+        headless.state.driven = true;
+        let (here, there) = ([40.0, 60.0, 300.0, 70.0], [40.0, 160.0, 300.0, 70.0]);
+        let mut at = [0.0; 4];
+        headless.draw_at(still, |page| at = page.glide(here, 1.0));
+        assert_eq!(at, here);
+        headless.draw_at(still, |page| at = page.glide(there, 1.0));
+        assert_eq!(
+            at, there,
+            "a driven page's light was left on the row it left"
+        );
+
+        headless.ui.set_low_end(false);
+        headless.draw_at(still, |page| at = page.glide(here, 1.0));
+        assert_eq!(at, there, "a frame of no time moved a gliding light");
+    }
+
+    /// A card lit as itself is lit by the page's one light: put on it at once
+    /// where it appears, and the capsule sets off from it to the next row
+    /// rather than appearing there, as it would from a row of its own.
+    #[test]
+    fn a_light_in_a_cards_shape_is_the_pages_one_light() {
+        let mut headless = headless!("a light in a card's shape");
+        headless.state.driven = true;
+        let (card, row) = ([40.0, 60.0, 300.0, 200.0], [40.0, 400.0, 300.0, 70.0]);
+        let mut at = [0.0; 4];
+        headless.draw_at(10.0, |page| at = page.light_shaped(card, 24.0, 1.0, true));
+        assert_eq!(
+            at, card,
+            "a light that appears stands where it is asked for"
+        );
+
+        for seconds in [10.016, 10.032, 10.048] {
+            headless.draw_at(seconds, |page| at = page.glide(row, 1.0));
+        }
+        assert!(
+            at[1] > card[1] && at[1] < row[1],
+            "the capsule did not set off from the card: left {card:?}, going \
+             to {row:?}, at {at:?}"
+        );
+
+        headless.draw_at(10.064, |page| {
+            at = page.light_shaped(card, 24.0, 1.0, false)
+        });
+        assert!(
+            at[1] > card[1] && at[1] < row[1],
+            "the card's light did not travel back from where the capsule had \
+             got to: at {at:?}"
+        );
+
+        // On its way back, put there at once: on the card that same frame.
+        headless.draw_at(10.080, |page| at = page.light_shaped(card, 24.0, 1.0, true));
+        assert_eq!(
+            at, card,
+            "a light that appears did not stand on the card at once"
         );
     }
 
@@ -2251,6 +3460,247 @@ mod tests {
             );
             assert!(page.picked_files().is_empty());
         });
+    }
+
+    /// The letter y raises the context menu where no field takes it, as the
+    /// Menu key, F10 and the shell's own y do; no other letter is a press.
+    #[test]
+    fn the_letter_y_is_the_context_menu_and_no_other_letter_is_a_press() {
+        assert_eq!(letter_press(Key::Letter('y')), Some(Action::Menu));
+        assert_eq!(letter_press(Key::Letter('Y')), Some(Action::Menu));
+        for letter in ['w', 'a', 's', 'd', 'h', 'j', 'k', 'l', 'q', 'ż'] {
+            assert_eq!(letter_press(Key::Letter(letter)), None, "{letter}");
+        }
+        assert_eq!(letter_press(Key::Menu), None, "the controls' own");
+    }
+
+    /// A page that takes a keyboard's typing quietly takes it from the end
+    /// of the frame that asked, as `taking_text` does, for as long as it
+    /// goes on asking — and never as text the compositor is told of, which
+    /// is `taking_text` alone (what summons an on-screen keyboard).
+    #[test]
+    fn keys_are_taken_quietly_from_the_frame_that_asked() {
+        let mut state = Interaction::default();
+        assert!(!state.takes_typing());
+        state.asked_keys = true;
+        settle(&mut state, 0);
+        assert!(state.takes_typing());
+        assert!(
+            !state.taking_text && !state.asked_text,
+            "a quiet field was said to the compositor"
+        );
+        settle(&mut state, 0);
+        assert!(
+            !state.takes_typing(),
+            "a page that stopped asking still took keys"
+        );
+        state.asked_text = true;
+        settle(&mut state, 0);
+        assert!(state.takes_typing(), "a field taking text takes keys too");
+    }
+
+    /// The shell's board rises over a field taking text where the shell has
+    /// a controller in hand, whatever chose the field; where it last saw a
+    /// keyboard it raises nothing, and nowhere but under LineXinBar is it
+    /// watched for.
+    #[test]
+    fn the_shells_board_rises_over_a_field_taking_text_with_a_controller_in_hand() {
+        let mut board = ShellsBoard::watching(true);
+        assert!(!board.up());
+        board.enabled(true);
+        board.settle();
+        assert!(board.up(), "a field taking text raised no board");
+        board.disabled();
+        assert!(!board.up(), "the board outlived its field");
+        board.enabled(false);
+        assert!(!board.up(), "a board rose over a keyboard in hand");
+        let mut elsewhere = ShellsBoard::watching(false);
+        elsewhere.enabled(true);
+        assert!(
+            !elsewhere.up(),
+            "a board was watched for outside LineXinBar"
+        );
+    }
+
+    /// Put away by its own hide key, by B or by Start, the board lets go of
+    /// the keyboard, and what reaches the window is a report of nothing held
+    /// and nothing after it (seen live: `wl_keyboard.keymap` and
+    /// `modifiers(…, 0, 0, 0, 0)`, then nothing). Start's Enter comes first.
+    #[test]
+    fn the_board_letting_go_of_the_keyboard_is_the_board_put_away() {
+        let mut board = ShellsBoard::watching(true);
+        board.enabled(true);
+        board.modifiers(false);
+        board.settle();
+        assert!(!board.up(), "the band stayed after the board's hide key");
+
+        board.enabled(true);
+        board.key();
+        board.modifiers(false);
+        board.settle();
+        assert!(!board.up(), "Start's Enter kept the board up after it");
+    }
+
+    /// The board's first key after it rises carries the board's keymap and
+    /// the same report ahead of it; a modifier the board held round a key
+    /// comes up after it; the keyboard arriving at the window brings the
+    /// seat's report. None of them is the board going.
+    #[test]
+    fn a_report_that_belongs_to_a_key_or_the_keyboards_arrival_keeps_the_board_up() {
+        let mut board = ShellsBoard::watching(true);
+        board.enabled(true);
+        board.modifiers(false);
+        board.key();
+        board.settle();
+        assert!(board.up(), "the board's first letter put it away");
+
+        board.modifiers(true);
+        board.key();
+        board.modifiers(false);
+        board.settle();
+        assert!(board.up(), "Ctrl coming up put the board away");
+
+        board.focused(false);
+        assert!(!board.up(), "the board outlived the keyboard leaving");
+        board.focused(true);
+        board.enabled(true);
+        board.modifiers(false);
+        board.settle();
+        assert!(
+            board.up(),
+            "the seat's report put a board offered again away"
+        );
+    }
+
+    /// Shift+Tab walks back, with Shift as the keyboard last reported it. The
+    /// window handed every key on as though Shift were not held, so on a
+    /// keyboard Shift+Tab was Tab in every application: in the Linexin
+    /// Installer's Partitions it went on to the next disk, not the one before.
+    #[test]
+    fn shift_tab_walks_back_with_shift_as_the_keyboard_last_reported_it() {
+        use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
+        let tab = WinitKey::Named(NamedKey::Tab);
+        let mut state = Interaction::default();
+        assert_eq!(state.key_of(&tab), Some(Key::Tab));
+        state.modifiers_reported(ModifiersState::SHIFT);
+        assert_eq!(state.key_of(&tab), Some(Key::BackTab), "Shift+Tab");
+        assert_eq!(
+            state.key_of(&tab).and_then(Action::of_key),
+            Some(Action::Previous)
+        );
+        state.modifiers_reported(ModifiersState::SHIFT | ModifiersState::CONTROL);
+        assert_eq!(state.key_of(&tab), Some(Key::BackTab), "Ctrl beside it");
+        state.modifiers_reported(ModifiersState::CONTROL);
+        assert_eq!(state.key_of(&tab), Some(Key::Tab), "Ctrl alone");
+        state.modifiers_reported(ModifiersState::empty());
+        assert_eq!(state.key_of(&tab), Some(Key::Tab), "Shift let go");
+        assert_eq!(
+            state.key_of(&tab).and_then(Action::of_key),
+            Some(Action::Next)
+        );
+    }
+
+    /// Shift reaches no other key's action: with it held, every key names
+    /// the same key — a letter as the keyboard reports it, capital or not —
+    /// so every action, the letter y's menu and Backspace's rubbing out are
+    /// as they were. And LineXinBar's board reads the same report as before:
+    /// Shift or Ctrl coming up after a key is not the board going, a report
+    /// of nothing held after nothing is.
+    #[test]
+    fn shift_changes_no_other_key_and_the_board_reads_the_report_as_before() {
+        use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
+        let loose = Interaction::default();
+        let mut held = Interaction::default();
+        held.modifiers_reported(ModifiersState::SHIFT);
+        let named = [
+            NamedKey::ArrowLeft,
+            NamedKey::ArrowRight,
+            NamedKey::ArrowUp,
+            NamedKey::ArrowDown,
+            NamedKey::Enter,
+            NamedKey::Space,
+            NamedKey::Escape,
+            NamedKey::Backspace,
+            NamedKey::ContextMenu,
+            NamedKey::F10,
+            NamedKey::Shift,
+            NamedKey::Home,
+        ];
+        let characters = ["a", "A", "y", "Y", "1", "!", " ", "ż", "Ż"];
+        let others = named.into_iter().map(WinitKey::Named).chain(
+            characters
+                .into_iter()
+                .map(|text| WinitKey::Character(text.into())),
+        );
+        for key in others {
+            let (with, without) = (held.key_of(&key), loose.key_of(&key));
+            assert_eq!(with, without, "{key:?}");
+            assert_eq!(
+                with.and_then(Action::of_key),
+                without.and_then(Action::of_key),
+                "{key:?}"
+            );
+            assert_eq!(
+                with.and_then(letter_press),
+                without.and_then(letter_press),
+                "{key:?}"
+            );
+        }
+
+        let mut state = Interaction {
+            board: ShellsBoard::watching(true),
+            ..Interaction::default()
+        };
+        state.board.enabled(true);
+        for modifier in [ModifiersState::SHIFT, ModifiersState::CONTROL] {
+            state.modifiers_reported(modifier);
+            state.board.key();
+            state.modifiers_reported(ModifiersState::empty());
+            state.board.settle();
+            assert!(
+                state.board.up(),
+                "{modifier:?} coming up put the board away"
+            );
+        }
+        state.modifiers_reported(ModifiersState::empty());
+        state.board.settle();
+        assert!(!state.board.up(), "the board letting go was not heard");
+    }
+
+    /// While the board is up the shell keeps every pad from applications: a
+    /// pad's press reaching the window is a board already gone.
+    #[test]
+    fn a_pads_press_reaching_the_window_is_the_board_gone() {
+        let mut board = ShellsBoard::watching(true);
+        board.enabled(true);
+        board.pad();
+        assert!(!board.up());
+    }
+
+    /// The page is told where the board stands only while it is up, by the
+    /// shell's own rule for the window's size.
+    #[test]
+    fn a_page_is_told_where_the_shells_board_stands_while_it_is_up() {
+        let mut headless = headless!("where the shell's board stands");
+        let mut told = None;
+        headless.draw(|page| told = Some(page.shells_board()));
+        assert_eq!(told, Some(None));
+        headless.state.board = ShellsBoard::watching(true);
+        headless.state.board.enabled(true);
+        headless.draw(|page| told = Some(page.shells_board()));
+        assert_eq!(told, Some(Some(lxb_toolkit::board::rect(1280.0, 800.0))));
+    }
+
+    #[test]
+    fn a_window_is_under_linexinbar_where_the_desktop_names_it_on_wayland() {
+        assert!(under_linexinbar(Some("LineXinBar"), true));
+        assert!(under_linexinbar(Some("GNOME: linexinbar"), true));
+        assert!(
+            !under_linexinbar(Some("LineXinBar"), false),
+            "an X11 window"
+        );
+        assert!(!under_linexinbar(Some("KDE"), true));
+        assert!(!under_linexinbar(None, true));
     }
 
     #[test]

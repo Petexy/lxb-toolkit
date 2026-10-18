@@ -74,9 +74,46 @@ far the wheel moved over one spot the page drew. That distinction matters for a
 shelf panel beside a product list — the wheel moves the pane under the hand,
 not whichever pane a keyboard or controller happened to leave selected.
 
+**Hovering is selecting, for what stands still.** On a page that does not
+drive itself, the flow's own controls take the light the moment the pointer
+moves onto them, silently. A driven page is told and decides for itself:
+`Page::hovered()` is the control the pointer moved onto since the last frame —
+a flow index or a spot the page wrote down — read off the frame it was moving
+over, so it can be asked before anything is drawn;
+`Page::pointer()` is where it rests, for a page that measures its own rows;
+`Page::pointer_moved()` is whether it moved at all. All three go quiet the
+moment a key, a pad or a finger is reached for, and stay quiet until the
+pointer moves again, so a light the hands moved is never pulled back under a
+pointer that is only resting; the pointer leaving the window, a menu, a dialog
+or the file chooser over the page, and a bar held down (a drag) do the same.
+Light a row, a button or a card with it; a list that scrolls to its selection
+moves under the pointer, and there a first click carries the light instead. C
+and Python have `lxb_page_hovered` / `page.hovered()`, `lxb_page_pointer` /
+`page.pointer()` and `lxb_page_pointer_moved` / `page.pointer_moved()`.
+
+**Only a bar is held.** A click is answered the moment the button goes down,
+on the control it went down on; letting go answers nothing. A page that draws a
+bar asks `Page::dragging(id)` (C `lxb_page_dragging`, Python `page.dragging`)
+about it on every frame it draws it, and asking is what makes it one: a press
+landing on it takes hold, and every motion until the button comes up is the
+drag, told to `dragging`, and no hover. A press on any other control holds
+nothing, so the pointer goes on hovering, and lighting what it moves onto, with
+the button still down — as it does in LineXinBar. On Wayland the pointer
+leaving the window lets go of a bar as well, as it does in LineXinBar, because
+there the release then goes elsewhere; under X a drag goes on outside the
+window until the button comes up.
+
 `App::shot` draws a settled frame to a PNG with no display at all, through the
 same page function and the same renderer as the window. It is how an interface
-in this language is checked without a screen.
+in this language is checked without a screen. `App::shot_after` (C
+`lxb_app_shot_after`, Python `app.shot_after`) is the same for something on its
+way somewhere: it hands the page one frame after another, a sixtieth of a
+second apart, and writes the last, so a menu unfolding or a page the program
+turns on one of those frames is caught where it has got to. A press on one of
+those frames is `Page::act(action)` (C `lxb_page_act`, Python `page.act`),
+which hands the window the action as a key would: the question or menu over
+the page takes it — nothing else can, since the window answers them itself —
+and otherwise the page reads it among its actions.
 
 ## The same thing, elsewhere
 
@@ -220,7 +257,18 @@ device that misses more than a fifth of its refreshes while something moves is
 drawn at every other one instead, evenly, and is given the full rate back once
 it has shown for long enough that it can. A page with something running that
 only its frame notices — a song reaching its end, a download's bar — asks for
-its next frame sooner with `Page::redraw_within(duration)`. A program that
+its next frame sooner with `Page::redraw_within(duration)`, and a page that
+moves things itself — a page giving way to the next, a column stepping in —
+asks `Page::low_end()` (`lxb_page_low_end`, `page.low_end()`), the answer the
+window decided as it opened, and puts them where they are going at once where
+it is true. The window's clock stands still there with its wallpaper, so the
+toolkit's own lights — the flow's, `Page::glide`'s, a menu's and a question's —
+stand on what is chosen at once rather than gliding to it (`Ui::set_low_end`
+tells a renderer of one's own, and `Ui::glide` moves a `Selection` by it). An
+application with a low-end switch of its own builds with `App::low_end()`
+(`lxb_app_low_end`, `App(..., low_end=True)`), which counts the session
+low-end whatever Settings say, and a picture taken of it is one of the window
+there: every frame at the one instant it is given. A program that
 draws its own window should do the same: a machine that asked for this mode is
 one that cannot afford a wallpaper redrawn at the display's rate while nothing
 moves. `lxb_render::Cadence` is the pace while something does: call
@@ -650,18 +698,22 @@ Six rules are worth knowing before wiring any of it up.
   touchpad fractions are kept until they make one.
 - **The letter shorthands are asked for separately.** `Action::of_letter` has
   the shell's `wasd`, `hjkl` and `y`; `Action::of_key` deliberately does not.
-  Bind it only where nothing in your application is being typed into.
+  Bind it only where nothing in your application is being typed into. A
+  window of `lxb-app` answers `y` as the context menu itself wherever no field
+  takes it as text (`Page::taking_text`, `Page::taking_keys`), as the shell
+  reads it beside the Menu key and F10; `wasd` and `hjkl` it leaves alone, so
+  a list never walks under the first letters of a name typed before its field
+  takes them.
 
 **The right button raises the context menu**, which is what the Menu key does —
 the same `Action::Menu`, so a menu cannot come to mean two things depending on
 how it was asked for. The light lands on whatever was pointed at first, so a
 menu raised by a click is about the thing that was clicked.
 
-Two things differ from the shell on purpose, and both are the same difference —
-the shell has to keep a way out of a game that the game cannot take, and an
-application has nothing to keep a way out of. The **Menu key** is the context
-menu here rather than the guide, and **Tab** moves within the application rather
-than between displays.
+One key differs from the shell on purpose: **Tab** moves within the application
+rather than between displays, because the shell has to keep a way out of a game
+that the game cannot take, and an application has nothing to keep a way out of.
+The **Menu key** raises the context menu in both.
 
 A controller is not a Wayland input device and never passes through a
 compositor, so every application on the machine reads the same pad at the same
@@ -675,6 +727,15 @@ with your application in front of it — so the same press would arrive twice,
 once from the controller and once from Steam's copy. Where Steam's pad is the
 only one on the machine it is read, because it is then the whole of the
 controller rather than a copy of it.
+
+A copy can carry ids nobody has heard of, so the pad's ids are not the whole
+answer. A press is answered once however many pads report it: the same action
+arriving from a *different* pad within `input::COINCIDENCE` (150 ms) of the
+first is taken for the copy it looks exactly like, as it is in the shell. Two
+presses on one pad are always two presses, and a held direction still repeats,
+because directions are read from every pad together. The cost is a second
+person pressing the same button on a second pad within that sixth of a second,
+which is read as one press.
 
 What is under the pointer is answered by `lxb-render` rather than by
 `lxb-input`, because a pointer has to know what is on the screen: every
@@ -710,6 +771,33 @@ infallible and one that found no device simply made no sound.
 ## Lifecycle
 
 - Keyboard, pointer, touch, clipboard and text input are standard Wayland.
+- **A field LineXinBar's on-screen keyboard types into is yours to keep in
+  view.** The shell raises its board when a field says it takes text
+  (`Page::taking_text`, Wayland's text input) while a controller is in hand —
+  however the field was chosen: a pad, a click, a finger on a handheld's
+  screen — and draws it along the foot of the display wherever the field is:
+  it never moves it out of the way, and nothing in the text input comes back
+  to say where it went or that it went. `board::rect(width, height)`
+  (`lxb_board_rect`, `lxb.board_rect`) is where it settles, by the shell's own
+  rule, for a window that fills the display — every window does under
+  LineXinBar. `Page::shells_board()` is that rectangle while a window of
+  `lxb-app` knows the board stands over it, and `None` once it is gone: the
+  window watches for it by the shell's rules — up as a field takes text where
+  the shell last wrote down a controller in hand (`controller-in-hand`),
+  gone with the field, and gone the moment it lets go of the keyboard (its
+  own hide key, B, Start, a key of the person's own), which is the one thing
+  a window is sent as it goes. While it stands there, stand the field typed
+  into above its top: lift it, or scroll the form it is in; and give the room
+  back when it goes. C and Python say a field takes text with
+  `lxb_page_taking_text` (`page.taking_text`), read what was typed — its
+  letters, and U+0008 for each Backspace — with `lxb_page_typed`
+  (`page.typed`), and ask where the board stands with `lxb_page_board`
+  (`page.board`).
+  A field the light only stands in while a controller is in hand can still
+  take a keyboard reached for from its first key without the board rising
+  over it unasked: `Page::taking_keys` takes what is typed as text with
+  nothing said to the compositor, where `Page::taking_text` says both.
+  That one is the Rust page's own.
 - Applications are maximised and pinned to the display on which they launched.
   Respond to every configure instead of assuming a particular resolution or
   connector.
@@ -766,13 +854,18 @@ if page.pressed(ITEM_SPOT + index):          # a click landed on that one
 - `glide(rect)` travels; `place(rect)` appears, which is what a page uses when
   the row the light was on is gone — a new page of a different shape — because
   a light that flew there would be saying the two lists are one.
+  `light_shaped(rect, radius, strength, appears)` (`lxb_page_light_shaped`) is
+  the same light drawn in the rectangle's own shape, its corners rounded by
+  `radius` rather than a capsule's: a card or a picture lit as itself, and the
+  light travelling between it and the rows lit with `glide`.
 - `press(lit)` is the page's one press, asked per control. One is enough: the
   light is in one place, so the press is too.
 - Keep your own spot numbers clear of the flow's, which count from zero in the
   order they are drawn. Both tours use `0x200`.
 
-The same four calls exist in all three languages under the same names, and
-`examples/{c,python}/tour` uses every one of them.
+`glide`, `place`, `press` and `pressed` exist in all three languages under the
+same names, and `examples/{c,python}/tour` uses every one of them;
+`light_shaped` is in all three too.
 
 ## Drawing
 
@@ -807,6 +900,82 @@ really continues past each end, from zero to one: an end with nothing beyond it
 is nought and stays crisp, and an end part of the way there fades over a
 *narrower* band rather than a fainter one, because a fade that stopped short of
 the ground would stop at a line.
+`ui.soft_side_edges(viewport, band, left, right)` — `lxb_draw_soft_side_edges`
+in C, `page.draw_soft_side_edges` in Python — is the same effect at the left and
+right ends: a page carried sideways across a pane (`Ui::carry_between`)
+dissolves into the pane at its sides instead of stopping at the line it is cut
+at. Lay its band where nothing that stands still is drawn — between the pane's
+edge and the content's margin — because everything in it is softened.
+
+### A tick and a switch
+
+`ui.chosen(rect, icons, alpha)` — `lxb_draw_chosen` in C, `page.draw_chosen`
+in Python — is the mark that says a value is in force: the tick cut through a
+bead, in the square given, with a ring of the panel's dark glass round the
+bead. The ring is what lets it be read on a lit row, where the bead, being
+water, takes the light's accent; it rings the bead without lying under it, so
+the bead still shows the row through it as every mark does.
+
+`ui.switch(rect, on, icons, ink)` — `lxb_draw_switch`, `page.draw_switch` —
+is a switch standing in `rect`: a capsule of the dark glass, the accent's
+track in it while it is on, and a knob at the end it is switched to.
+`Ui::switch_width(height)` (`lxb_switch_width`, `Page.switch_width`) is how
+long a switch of a height is. `ink` is how strongly it is drawn — 1 on a row
+that can be used, less on one that cannot. Accept on a switch's row flips it;
+there is nothing else to do with a switch, so the light stays where it is.
+
+Both are made of the marks' own material: each part is a bead — `ui.bead`,
+`ui.bead_ring`, a rounded box shaded by the same glyph shader, lamp, depth and
+shadow as the marks, its distance measured by arithmetic rather than read out
+of the atlas — so a switch stands on a row as a mark does. Under the plain
+icons every part is a plain shape of its colour, as every mark is.
+
+### A picture
+
+`ui.picture(rect, radius, path, fit, alpha)` — `lxb_draw_picture` in C,
+`page.draw_picture` in Python — is a picture from a file on this disk (PNG,
+JPEG, GIF, WebP, BMP, TIFF or SVG, an SVG known by its `.svg` name) in `rect`,
+its corners rounded by `radius`.
+`Fit::Contain` (`LXB_FIT_CONTAIN`, `Fit.CONTAIN`) shows the whole of it as
+large as it fits; `Fit::Cover` fills the rectangle and cuts away what
+overflows it. A file is read on a worker thread the first time it is asked for
+and kept, no larger than 512 pixels a side, until it changes on disk (the
+thirty-two drawn most recently: a page drawing more at once keeps reading
+them), so the window never waits for a picture to be read: it answers false
+until the picture is there, and
+a page asks on every frame and draws what stands in for it until then. A
+picture of the window (`App::shot`) reads it at once.
+
+### Marks of your own
+
+An application with something the set has no mark for draws its own:
+
+```rust
+let app = App::new("org.example.Disks", "Disks")
+    .mark("disk-nvme", include_bytes!("glyphs/disk-nvme.svg"))?;
+// … and then, on a page, like any of the toolkit's:
+page.ui().icon(rect, "disk-nvme", page.icons());
+```
+
+C: `lxb_app_mark(app, "disk-nvme", svg, length)`, which answers 0 with the
+reason in `lxb_app_trouble`. Python: `app.mark("disk-nvme", svg)`, which raises
+`ValueError`. A Rust program driving `lxb-render` itself measures with
+`Mark::measure(svg)` and adds with `ui.add_mark(name, &mark)`.
+
+The drawing is a shape and nothing else, drawn as every mark of the set is (see
+the Marks section of the design language): white where the mark is, its
+openings cut out of it, two of its thirty-two units left clear all round for
+the shadow, no colour, no gradient, and `lxb:shape` written in it. The
+material — the wall, the sheen, the ring round every opening, the shadow — is
+computed from that outline with the same lamp as the shell's own marks, so the
+application's mark stands beside them as one of the set.
+
+A drawing is measured when it is given, so a refusal is heard there and not as
+a mark that never draws: one that does not say it is a shape, does not parse or
+has nothing in it, a name one of the toolkit's marks already has (an
+application's drawing never stands in for one of the set), or more than
+`OWN_MARKS` (64) — the room the atlas keeps for them. The same name given again
+takes the new drawing.
 
 What follows describes the material itself, for a renderer that is not this
 one.

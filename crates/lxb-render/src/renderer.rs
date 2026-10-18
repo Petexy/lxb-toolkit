@@ -30,6 +30,12 @@ pub(crate) const KIND_GLYPH: f32 = 5.0;
 pub(crate) const KIND_IMAGE: f32 = 6.0;
 pub(crate) const KIND_SOFT_EDGE: f32 = 7.0;
 pub(crate) const KIND_FROST: f32 = 8.0;
+pub(crate) const KIND_BEAD: f32 = 9.0;
+
+/// How far a bead's quad reaches past its box, as a share of the size it is
+/// shaded as (and a pixel more): room for its shadow, as a glyph's margin is.
+/// The shader's `BEAD_MARGIN`.
+pub(crate) const BEAD_MARGIN: f32 = 0.0625;
 
 /// How far into the blur pyramid the deepest part of a soft edge reaches.
 const SOFT_EDGE_LOD: f32 = 3.6;
@@ -102,6 +108,41 @@ impl Quad {
         }
     }
 
+    /// A rounded box of a glyph's material: `rect` is the box, `radius` its
+    /// corner, and `size` the size of glyph it is shaded as. The quad reaches
+    /// past the box for the shadow.
+    pub fn bead(
+        rect: [f32; 4],
+        radius: f32,
+        tint: [f32; 4],
+        size: f32,
+        gloss: f32,
+        simple: bool,
+    ) -> Self {
+        let inset = size * BEAD_MARGIN + 1.0;
+        let [x, y, w, h] = rect;
+        Self {
+            rect: [x - inset, y - inset, w + inset * 2.0, h + inset * 2.0],
+            shape: [
+                radius.min(w.min(h) * 0.5),
+                KIND_BEAD,
+                if simple { 1.0 } else { 0.0 },
+                1.0,
+            ],
+            tint,
+            material: [size, 0.0, gloss, 0.0],
+            cell: [0.0; 4],
+            cut: NO_CUT,
+        }
+    }
+
+    /// The same bead hollowed to a ring `thickness` pixels wide, standing on
+    /// the box's edge and inside it.
+    pub fn ringed(mut self, thickness: f32) -> Self {
+        self.material[1] = (thickness / self.material[0].max(1.0)).max(0.0);
+        self
+    }
+
     pub fn image(rect: [f32; 4], radius: f32, cell: [f32; 4], opacity: f32) -> Self {
         Self {
             rect,
@@ -140,6 +181,14 @@ impl Quad {
             cell: [top.clamp(0.0, 1.0), bottom.clamp(0.0, 1.0), 0.0, 0.0],
             cut: NO_CUT,
         }
+    }
+
+    /// The same effect laid along the left and right ends of `rect` instead
+    /// of its top and bottom: `material.z` says which way it runs.
+    pub fn soft_side_edges(rect: [f32; 4], band: f32, left: f32, right: f32) -> Self {
+        let mut quad = Self::soft_vertical_edges(rect, band, left, right);
+        quad.material[2] = 1.0;
+        quad
     }
 
     pub fn clipped(mut self, [x, y, width, height]: [f32; 4]) -> Self {
@@ -206,6 +255,9 @@ pub(crate) struct Run {
 pub(crate) struct Layer {
     pub quads: Vec<Quad>,
     pub runs: Vec<Run>,
+    /// The quads, by where they stand in `quads`, that an application has
+    /// counted as words though they are not ([`Ui::words_between`]).
+    pub words: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -218,7 +270,7 @@ pub(crate) struct Scene {
     pub sky: [[f32; 4]; 4],
     pub accent: [[f32; 4]; 3],
     pub glow: [f32; 4],
-    pub layers: [Layer; 5],
+    pub layers: [Layer; LAYERS],
 }
 
 #[repr(C)]
@@ -312,8 +364,11 @@ pub struct Ui {
 
     bind_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
+    atlas: wgpu::Texture,
     atlas_texture: wgpu::TextureView,
     atlas_size: [f32; 2],
+    atlas_columns: u32,
+    own_marks: Vec<String>,
     thumbnail_texture: wgpu::Texture,
     thumbnail_view: wgpu::TextureView,
     thumbnail_requests: mpsc::Sender<ThumbnailRequest>,
@@ -349,6 +404,7 @@ pub struct Ui {
 
     pub(crate) dt: f32,
     last_time: Option<f32>,
+    low_end: bool,
 
     pub(crate) light: Option<[f32; 4]>,
 
@@ -392,6 +448,7 @@ impl Ui {
             plane: atlas_pixels,
             width: atlas_width,
             height: atlas_height,
+            columns: atlas_columns,
             cells,
         } = build_atlas()?;
         let atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -428,6 +485,7 @@ impl Ui {
             },
         );
         let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let atlas = atlas_texture;
         let thumbnail_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("file thumbnails"),
             size: wgpu::Extent3d {
@@ -612,8 +670,11 @@ impl Ui {
             instance_room,
             bind_layout,
             sampler,
+            atlas,
             atlas_texture: atlas_view,
             atlas_size: [atlas_width as f32, atlas_height as f32],
+            atlas_columns,
+            own_marks: Vec::new(),
             thumbnail_texture,
             thumbnail_view,
             thumbnail_requests,
@@ -643,6 +704,7 @@ impl Ui {
             spots: Vec::new(),
             dt: 0.0,
             last_time: None,
+            low_end: false,
         })
     }
 
@@ -722,6 +784,7 @@ struct Atlas {
     plane: Vec<u8>,
     width: u32,
     height: u32,
+    columns: u32,
     cells: Vec<[f32; 4]>,
 }
 
@@ -885,37 +948,89 @@ fn unpremultiply_rgba(rgba: &mut [u8]) {
     }
 }
 
-fn build_atlas() -> Result<Atlas, String> {
+/// How many marks of its own an application may draw beside the toolkit's
+/// ([`Ui::add_mark`]). The room is kept in the atlas from the start, so a mark
+/// added is one cell written, never the atlas made again.
+pub const OWN_MARKS: usize = 64;
+
+/// A drawing of an application's own, measured into the shape the glyph
+/// material is made of — what [`Ui::add_mark`] takes.
+///
+/// The drawing is a silhouette and nothing else, as every mark of the toolkit
+/// is: white where the mark is, its openings cut out of it, and `lxb:shape`
+/// written in it to say so. The material — the bead's wall, its sheen, the
+/// ring round every opening, the shadow it casts — is computed from that
+/// outline, the same way and with the same lamp as the toolkit's own marks, so
+/// a mark of the application's stands beside them as one of the set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Mark {
+    field: Vec<u8>,
+}
+
+impl Mark {
+    /// Measure an SVG drawing. Refused when it does not say it is a shape
+    /// (`lxb:shape`), does not parse, or has nothing in it to measure.
+    pub fn measure(svg: &[u8]) -> Result<Self, String> {
+        if !glyph_material::is_shape(svg) {
+            return Err(format!(
+                "a mark is a shape and says so: {} is not in the drawing",
+                glyph_material::SHAPE_MARK
+            ));
+        }
+        let field = measure_drawing(svg)?;
+        if field.iter().all(|&stored| stored >= 128) {
+            return Err("the drawing has nothing in it to measure".into());
+        }
+        Ok(Self { field })
+    }
+}
+
+fn measure_drawing(svg: &[u8]) -> Result<Vec<u8>, String> {
     let cell = glyph_material::CELL;
     let fine = cell * glyph_material::SDF_SUPERSAMPLE;
+    let options = resvg::usvg::Options::default();
+    let tree = resvg::usvg::Tree::from_data(svg, &options)
+        .map_err(|err| format!("the drawing does not parse: {err}"))?;
+    let mut pixmap =
+        resvg::tiny_skia::Pixmap::new(fine, fine).ok_or("no room to rasterise the drawing")?;
+    let size = tree.size();
+    let scale = fine as f32 / size.width().max(size.height()).max(1.0);
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    let coverage: Vec<u8> = pixmap.pixels().iter().map(|pixel| pixel.alpha()).collect();
+    glyph_material::distance_field_alpha_from_coverage(&coverage, cell)
+        .ok_or_else(|| "the drawing could not be measured".to_string())
+}
+
+fn build_atlas() -> Result<Atlas, String> {
+    let cell = glyph_material::CELL;
     let names: Vec<&'static str> = assets::glyph_names().collect();
-    let columns = (names.len() as f32).sqrt().ceil() as u32;
-    let rows = (names.len() as u32).div_ceil(columns);
+    let room = names.len() + OWN_MARKS;
+    let columns = (room as f32).sqrt().ceil() as u32;
+    let rows = (room as u32).div_ceil(columns);
     let (width, height) = (columns * cell, rows * cell);
 
-    let mut plane = vec![0u8; (width * height) as usize];
-    let mut cells = Vec::with_capacity(names.len());
-    let options = resvg::usvg::Options::default();
+    let mut plane = vec![u8::MAX; (width * height) as usize];
+    let cells = (0..room as u32)
+        .map(|index| {
+            let column = index % columns;
+            let row = index / columns;
+            [
+                (column * cell) as f32 / width as f32,
+                (row * cell) as f32 / height as f32,
+                ((column + 1) * cell) as f32 / width as f32,
+                ((row + 1) * cell) as f32 / height as f32,
+            ]
+        })
+        .collect();
 
     for (index, name) in names.iter().enumerate() {
         let svg = assets::glyph(name)
             .ok_or_else(|| format!("the library lists {name} and does not carry it"))?;
-        let tree = resvg::usvg::Tree::from_data(svg, &options)
-            .map_err(|err| format!("{name} does not parse: {err}"))?;
-        let mut pixmap = resvg::tiny_skia::Pixmap::new(fine, fine)
-            .ok_or_else(|| format!("no room to rasterise {name}"))?;
-        let size = tree.size();
-        let scale = fine as f32 / size.width().max(size.height()).max(1.0);
-        resvg::render(
-            &tree,
-            resvg::tiny_skia::Transform::from_scale(scale, scale),
-            &mut pixmap.as_mut(),
-        );
-
-        let coverage: Vec<u8> = pixmap.pixels().iter().map(|pixel| pixel.alpha()).collect();
-        let field = glyph_material::distance_field_alpha_from_coverage(&coverage, cell)
-            .ok_or_else(|| format!("{name} could not be measured"))?;
-
+        let field = measure_drawing(svg).map_err(|err| format!("{name}: {err}"))?;
         let column = index as u32 % columns;
         let row = index as u32 / columns;
         for y in 0..cell {
@@ -923,18 +1038,13 @@ fn build_atlas() -> Result<Atlas, String> {
             let into = ((row * cell + y) * width + column * cell) as usize;
             plane[into..into + cell as usize].copy_from_slice(&field[from..from + cell as usize]);
         }
-        cells.push([
-            (column * cell) as f32 / width as f32,
-            (row * cell) as f32 / height as f32,
-            ((column + 1) * cell) as f32 / width as f32,
-            ((row + 1) * cell) as f32 / height as f32,
-        ]);
     }
 
     Ok(Atlas {
         plane,
         width,
         height,
+        columns,
         cells,
     })
 }
@@ -1582,6 +1692,9 @@ pub(crate) const SOFTEN: usize = 3;
 
 pub(crate) const OVER: usize = 4;
 
+/// How many layers a scene is drawn in, from the ground to the overlay.
+pub(crate) const LAYERS: usize = 5;
+
 /// How much of the scene had been written when this was taken.
 ///
 /// Opaque on purpose: it means nothing except to the [`Ui`] that gave it out,
@@ -1591,6 +1704,65 @@ pub struct Written {
     layer: usize,
     quads: usize,
     runs: usize,
+}
+
+/// How much of every layer of the scene had been written when this was
+/// taken, and how much of what it marks for the pointer.
+///
+/// [`Written`] counts one layer, which is all a list's cut or fade needs: its
+/// rows and their words. A page drawn whole is more than that — its lists lay
+/// their soft edges on a layer of their own, and it marks its controls for
+/// the pointer — and a page giving way to the next has to take all of it
+/// along together. See [`Ui::carry_between`]. Opaque, like [`Written`], and
+/// meaning nothing except to the [`Ui`] that gave it out, until that frame
+/// ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Drawn {
+    over: bool,
+    layers: [(usize, usize); LAYERS],
+    spots: usize,
+}
+
+/// Where [`Ui::carry_between`] carries what was drawn between two marks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Carry {
+    /// How large it is drawn about `about`: one where it stands, less where
+    /// it has stepped back.
+    pub scale: f32,
+    pub about: [f32; 2],
+    /// How far it is moved once scaled.
+    pub by: [f32; 2],
+    /// How much of it is left: glass, words and soft edges alike.
+    pub fade: f32,
+    /// How much of what is written on it is left besides — its words, its
+    /// marks and its pictures, and whatever it counted with them
+    /// ([`Ui::words_between`]), on top of `fade`. A page coming in over
+    /// another can bring its glass in at once and its words only once the
+    /// other's have gone, so the words of two pages are never read over one
+    /// another — nor over a picture, which carries words of its own.
+    pub words: f32,
+    /// What it is cut to once it has been carried — the pane it stands in,
+    /// so that nothing on its way in or out is drawn past the glass.
+    pub within: [f32; 4],
+    /// Whether what it marked for the pointer goes with it, and can be
+    /// pressed where it is drawn now, or is forgotten: a page on its way out
+    /// is not one a click lands on.
+    pub pressable: bool,
+}
+
+impl Carry {
+    /// Where it was drawn, whole and pressable, cut to `within`.
+    pub fn standing(within: [f32; 4]) -> Self {
+        Self {
+            scale: 1.0,
+            about: [0.0; 2],
+            by: [0.0; 2],
+            fade: 1.0,
+            words: 1.0,
+            within,
+            pressable: true,
+        }
+    }
 }
 
 impl Ui {
@@ -1727,14 +1899,128 @@ impl Ui {
         );
     }
 
+    /// Count everything drawn between two marks as words, which a page
+    /// carried takes in and out with its words ([`Carry::words`]) rather than
+    /// with its glass: what an application draws as part of what is written
+    /// rather than of what it is written on — a caret, the dark disc a mark
+    /// stands on. Drawn as glass, they came up with the glass of a page
+    /// coming in, ahead of the words they belong to: a caret alone in an
+    /// empty-looking field, a ring with nothing ticked in it.
+    ///
+    /// Until the frame ends. The same two rules as the carry: both marks
+    /// taken on the same side of an overlay, and `to` not before `from` on
+    /// any layer; either mistake counts nothing.
+    pub fn words_between(&mut self, from: Drawn, to: Drawn) {
+        let backwards = from
+            .layers
+            .iter()
+            .zip(&to.layers)
+            .any(|(from, to)| to.0 < from.0 || to.1 < from.1);
+        if from.over != to.over || backwards {
+            return;
+        }
+        for (layer, (from, to)) in self
+            .scene
+            .layers
+            .iter_mut()
+            .zip(from.layers.iter().zip(&to.layers))
+        {
+            if to.0 > from.0 {
+                layer.words.push((from.0, to.0));
+            }
+        }
+    }
+
+    /// Where every layer of the scene had got to, and what it had marked for
+    /// the pointer, so that what is drawn after it can be carried as one
+    /// page. See [`Ui::carry_between`].
+    pub fn drawn(&self) -> Drawn {
+        let mut layers = [(0, 0); LAYERS];
+        for (layer, counts) in layers.iter_mut().enumerate() {
+            *counts = self.mark(layer);
+        }
+        Drawn {
+            over: self.in_overlay,
+            layers,
+            spots: self.spots.len(),
+        }
+    }
+
+    /// Carry everything drawn between two marks, on every layer, the way a
+    /// page is carried as it gives way to the next one or comes in after it:
+    /// scaled about a point, moved, faded and cut, its glass, its words and
+    /// the soft edges over its lists together — and its words, marks and
+    /// pictures fainter than its glass where `words` says so.
+    ///
+    /// **What [`Ui::fade_between`] and [`Ui::cut_between`] are for a list,
+    /// this is for a page.** Those two take the one layer a list's rows and
+    /// words are on; a page's soft edges are on another, and a page sliding
+    /// out from under its own soft edges leaves them frosting the page that
+    /// comes in. What the page marked for the pointer goes with it where
+    /// `pressable` says so — a click on a page coming in lands on what is
+    /// drawn under it — and is forgotten where it does not.
+    ///
+    /// Both marks have to have been taken on the same side of an overlay, and
+    /// `to` cannot be before `from` on any layer. Either mistake carries
+    /// nothing rather than carrying the wrong thing.
+    pub fn carry_between(&mut self, from: Drawn, to: Drawn, carry: Carry) {
+        let backwards = from
+            .layers
+            .iter()
+            .zip(&to.layers)
+            .any(|(from, to)| to.0 < from.0 || to.1 < from.1)
+            || to.spots < from.spots;
+        if from.over != to.over || backwards {
+            return;
+        }
+        let factor = carry.scale;
+        let offset = [
+            carry.about[0] * (1.0 - factor) + carry.by[0],
+            carry.about[1] * (1.0 - factor) + carry.by[1],
+        ];
+        let moved = factor != 1.0 || offset != [0.0; 2];
+        for layer in 0..LAYERS {
+            let (start, end) = (from.layers[layer], to.layers[layer]);
+            if moved {
+                self.flew(layer, start, Some(end), factor, offset);
+            }
+            self.clipped(layer, start, Some(end), carry.within);
+            if carry.fade < 1.0 {
+                self.faded(layer, start, Some(end), carry.fade.max(0.0));
+            }
+            if carry.words < 1.0 {
+                self.faded_words(layer, start, end, carry.words.max(0.0));
+            }
+        }
+        for (_, rect) in &mut self.spots[from.spots..to.spots] {
+            *rect = if carry.pressable {
+                let [x, y, w, h] = *rect;
+                let carried = [
+                    x * factor + offset[0],
+                    y * factor + offset[1],
+                    w * factor,
+                    h * factor,
+                ];
+                let [x, y, w, h] = intersection(carried, carry.within);
+                [x, y, w.max(0.0), h.max(0.0)]
+            } else {
+                [0.0; 4]
+            };
+        }
+    }
+
     pub(crate) fn flew(
         &mut self,
         layer: usize,
         mark: (usize, usize),
+        to: Option<(usize, usize)>,
         factor: f32,
         offset: [f32; 2],
     ) {
-        for quad in &mut self.scene.layers[layer].quads[mark.0..] {
+        let layer = &mut self.scene.layers[layer];
+        let quads_to = to.map_or(layer.quads.len(), |mark| mark.0);
+        let runs_to = to.map_or(layer.runs.len(), |mark| mark.1);
+        for quad in &mut layer.quads[mark.0..quads_to] {
             quad.rect[0] = quad.rect[0] * factor + offset[0];
             quad.rect[1] = quad.rect[1] * factor + offset[1];
             quad.rect[2] *= factor;
@@ -1748,7 +2034,7 @@ impl Ui {
                 quad.cut[3] = quad.cut[3] * factor + offset[1];
             }
         }
-        for run in &mut self.scene.layers[layer].runs[mark.1..] {
+        for run in &mut layer.runs[mark.1..runs_to] {
             run.left = run.left * factor + offset[0];
             run.top = run.top * factor + offset[1];
             run.width *= factor;
@@ -1779,6 +2065,22 @@ impl Ui {
             quad.shape[3] *= alpha;
         }
         for run in &mut layer.runs[from.1..runs_to] {
+            run.tint[3] *= alpha;
+        }
+    }
+
+    fn faded_words(&mut self, layer: usize, from: (usize, usize), to: (usize, usize), alpha: f32) {
+        let Layer { quads, runs, words } = &mut self.scene.layers[layer];
+        for (at, quad) in quads.iter_mut().enumerate().take(to.0).skip(from.0) {
+            let kind = quad.shape[1];
+            let counted = words
+                .iter()
+                .any(|(first, end)| (*first..*end).contains(&at));
+            if kind == KIND_GLYPH || kind == KIND_BEAD || kind == KIND_IMAGE || counted {
+                quad.shape[3] *= alpha;
+            }
+        }
+        for run in &mut runs[from.1..to.1] {
             run.tint[3] *= alpha;
         }
     }
@@ -1816,7 +2118,7 @@ impl Ui {
             (about[1] + about[3] * 0.5) * (1.0 - factor),
         ];
         for layer in [PANE, CONTROL, SOFTEN] {
-            self.flew(layer, (0, 0), factor, offset);
+            self.flew(layer, (0, 0), None, factor, offset);
         }
     }
 
@@ -1888,6 +2190,18 @@ impl Ui {
 
     pub fn dt(&self) -> f32 {
         self.dt
+    }
+
+    /// Say whether the session is counted low-end hardware: the wallpaper's
+    /// clock is then held at one instant, so nothing timed by the frame's
+    /// [`Ui::dt`] would ever move, and a light is put where it is going at
+    /// once instead ([`Ui::glide`]).
+    pub fn set_low_end(&mut self, low_end: bool) {
+        self.low_end = low_end;
+    }
+
+    pub fn low_end(&self) -> bool {
+        self.low_end
     }
 
     pub(crate) fn layer(&self) -> usize {
@@ -1977,7 +2291,75 @@ impl Ui {
     }
 
     pub(crate) fn mark_index(&self, name: &str) -> Option<usize> {
-        lxb_toolkit::assets::glyph_names().position(|other| other == name)
+        lxb_toolkit::assets::glyph_names()
+            .position(|other| other == name)
+            .or_else(|| {
+                self.own_marks
+                    .iter()
+                    .position(|other| other == name)
+                    .map(|index| assets::GLYPHS.len() + index)
+            })
+    }
+
+    /// Whether a mark is drawn by this name: one of the toolkit's, or one the
+    /// application added.
+    pub fn has_mark(&self, name: &str) -> bool {
+        self.mark_index(name).is_some()
+    }
+
+    /// Add a mark of the application's own, drawn from then on by its name
+    /// wherever a mark of the toolkit's is ([`Ui::icon`], a menu row's glyph, a
+    /// page's head) and in the same material. Added again under the same name,
+    /// the new drawing takes the old one's place.
+    ///
+    /// Refused for a name the toolkit already draws a mark by — an
+    /// application's drawing never stands in for one of the set — for an empty
+    /// name, and past [`OWN_MARKS`] marks.
+    pub fn add_mark(&mut self, name: &str, mark: &Mark) -> Result<(), String> {
+        if name.is_empty() {
+            return Err("a mark needs a name".into());
+        }
+        if assets::glyph(name).is_some() {
+            return Err(format!("{name} is one of the toolkit's own marks"));
+        }
+        let index = match self.own_marks.iter().position(|other| other == name) {
+            Some(index) => index,
+            None if self.own_marks.len() < OWN_MARKS => {
+                self.own_marks.push(name.to_string());
+                self.own_marks.len() - 1
+            }
+            None => {
+                return Err(format!(
+                    "there is room for {OWN_MARKS} marks of an application's own"
+                ))
+            }
+        };
+        let cell = glyph_material::CELL;
+        let at = (assets::GLYPHS.len() + index) as u32;
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.atlas,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: at % self.atlas_columns * cell,
+                    y: at / self.atlas_columns * cell,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            &mark.field,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(cell),
+                rows_per_image: Some(cell),
+            },
+            wgpu::Extent3d {
+                width: cell,
+                height: cell,
+                depth_or_array_layers: 1,
+            },
+        );
+        Ok(())
     }
 }
 

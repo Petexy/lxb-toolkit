@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use gilrs::{Axis, Button as PadButton, EventType, Gilrs, GilrsBuilder, MappingSource};
 
-use lxb_toolkit::input::{Action, Button, Direction, Key, Repeat};
+use lxb_toolkit::input::{Action, Answered, Button, Direction, Key, Repeat};
 
 #[cfg(feature = "winit")]
 mod from_winit;
 #[cfg(feature = "winit")]
-pub use from_winit::key_of;
+pub use from_winit::{key_of, key_of_logical};
 
 const HAT: f32 = 0.5;
 
@@ -28,6 +28,7 @@ pub struct Controls {
     pads: Option<Gilrs>,
     repeat: Repeat,
     held: Option<HeldKey>,
+    answered: Answered<gilrs::GamepadId>,
 
     guide_held: bool,
 
@@ -50,6 +51,7 @@ impl Controls {
             pads,
             repeat: Repeat::default(),
             held: None,
+            answered: Answered::default(),
             guide_held: false,
             trouble,
         }
@@ -130,7 +132,11 @@ impl Controls {
                 if control == Button::RightBumper && self.guide_held {
                     continue;
                 }
-                actions.extend(Action::of_button(control));
+                if let Some(action) = Action::of_button(control) {
+                    if self.answered.answer(action, event.id, now) {
+                        actions.push(action);
+                    }
+                }
             }
 
             for (_, pad) in pads.gamepads() {
@@ -361,6 +367,27 @@ mod tests {
         assert_eq!(controls.key(Key::Enter, false, at(10)), None);
         assert_eq!(controls.poll(at(350)), [Action::Down]);
     }
+
+    /// Shift+Tab is one press however long it is held, as Tab is, and Tab
+    /// coming up does not stop a held direction whether Shift was let go of
+    /// before it (read as Tab) or after it (read as BackTab).
+    #[test]
+    fn a_held_shift_tab_is_one_press_as_tab_is() {
+        let mut controls = Controls::new();
+        let at = |ms| Duration::from_millis(ms);
+        assert_eq!(
+            controls.key(Key::BackTab, true, at(0)),
+            Some(Action::Previous)
+        );
+        assert!(controls.poll(at(1000)).is_empty());
+        assert_eq!(controls.key(Key::BackTab, false, at(1000)), None);
+
+        assert_eq!(controls.key(Key::Down, true, at(2000)), Some(Action::Down));
+        assert_eq!(controls.key(Key::BackTab, false, at(2010)), None);
+        assert_eq!(controls.key(Key::Tab, false, at(2020)), None);
+        assert_eq!(controls.poll(at(2350)), [Action::Down]);
+        assert_eq!(controls.poll(at(2440)), [Action::Down]);
+    }
 }
 
 #[cfg(test)]
@@ -485,7 +512,7 @@ mod hot_plug {
 }
 
 #[cfg(test)]
-mod steam_input {
+mod copies {
     use std::time::{Duration, Instant};
 
     use ::evdev::uinput::VirtualDevice;
@@ -499,6 +526,16 @@ mod steam_input {
 
     const REPEATED: &str = "lxb-input Test Steam Input";
     const ORDINARY: &str = "lxb-input Test Ordinary Pad";
+    const ONE: &str = "lxb-input Test Pad One";
+    const TWO: &str = "lxb-input Test Pad Two";
+
+    static PRESSING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn one_at_a_time() -> std::sync::MutexGuard<'static, ()> {
+        PRESSING
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     fn uinput_is_available() -> bool {
         std::fs::OpenOptions::new()
@@ -534,18 +571,87 @@ mod steam_input {
         })
     }
 
-    fn press(controls: &mut Controls, pad: &mut VirtualDevice, started: Instant) -> Vec<Action> {
+    fn press_b(pad: &mut VirtualDevice) {
         pad.emit(&[*KeyEvent::new(KeyCode::BTN_EAST, 1)])
             .expect("the test pad can press B");
         pad.emit(&[*KeyEvent::new(KeyCode::BTN_EAST, 0)])
             .expect("and let go of it");
+    }
+
+    fn drain(controls: &mut Controls, started: Instant, how_long: Duration) -> Vec<Action> {
         let mut actions = Vec::new();
-        let until = Instant::now() + Duration::from_millis(300);
+        let until = Instant::now() + how_long;
         while Instant::now() < until {
             actions.extend(controls.poll(started.elapsed()));
             std::thread::sleep(Duration::from_millis(8));
         }
         actions
+    }
+
+    fn press(controls: &mut Controls, pad: &mut VirtualDevice, started: Instant) -> Vec<Action> {
+        press_b(pad);
+        drain(controls, started, Duration::from_millis(300))
+    }
+
+    fn reading(names: &[&str]) -> Option<Controls> {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let controls = Controls::new();
+            if names.iter().all(|name| sees(&controls, name)) {
+                return Some(controls);
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn backs(actions: &[Action]) -> usize {
+        actions
+            .iter()
+            .filter(|action| **action == Action::Back)
+            .count()
+    }
+
+    #[test]
+    fn a_press_two_unknown_pads_both_report_is_answered_once() {
+        if !uinput_is_available() {
+            eprintln!("skipped: /dev/uinput cannot be opened here");
+            return;
+        }
+        let _alone = one_at_a_time();
+        let mut one = pad(ONE, 0x9a7e, 0x4d22);
+        let mut two = pad(TWO, 0x9a7e, 0x4d23);
+        let Some(mut controls) = reading(&[ONE, TWO]) else {
+            eprintln!("skipped: the gamepad API never saw the test pads");
+            return;
+        };
+        let started = Instant::now();
+        drain(&mut controls, started, Duration::from_millis(300));
+
+        press_b(&mut one);
+        press_b(&mut two);
+        let together = drain(&mut controls, started, Duration::from_millis(300));
+        assert_eq!(
+            backs(&together),
+            1,
+            "one press on two pads is answered once: {together:?}"
+        );
+
+        press_b(&mut one);
+        let first = drain(
+            &mut controls,
+            started,
+            lxb_toolkit::input::COINCIDENCE + Duration::from_millis(100),
+        );
+        press_b(&mut two);
+        let second = drain(&mut controls, started, Duration::from_millis(300));
+        assert_eq!(
+            backs(&first) + backs(&second),
+            2,
+            "past the window both are answered: {first:?} then {second:?}"
+        );
     }
 
     #[test]
@@ -554,6 +660,7 @@ mod steam_input {
             eprintln!("skipped: /dev/uinput cannot be opened here");
             return;
         }
+        let _alone = one_at_a_time();
         let mut repeated = pad(REPEATED, 0x28de, 0x11ff);
         let mut ordinary = pad(ORDINARY, 0xf00d, 0x0b03);
 

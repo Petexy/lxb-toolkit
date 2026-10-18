@@ -1,5 +1,6 @@
 pub mod accent;
 pub mod assets;
+pub mod board;
 pub mod color;
 pub mod control;
 pub mod css;
@@ -22,7 +23,7 @@ pub mod wallpaper;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub const TRANSCRIBED_FROM: &str = "742fadd";
+pub const TRANSCRIBED_FROM: &str = "24ff3a0";
 
 pub fn motion_durations() -> [(&'static str, f32); 34] {
     use motion::duration::*;
@@ -72,7 +73,7 @@ mod tests {
         assert!(!super::VERSION.is_empty());
         assert_eq!(super::TRANSCRIBED_FROM.len(), 7);
         assert_eq!(crate::palette::PALETTES.len(), 12);
-        assert_eq!(crate::assets::GLYPHS.len(), 109);
+        assert_eq!(crate::assets::GLYPHS.len(), 113);
         assert_eq!(crate::sound::Sound::ALL.len(), 14);
     }
 

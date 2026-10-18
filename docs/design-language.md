@@ -42,8 +42,10 @@ it is not — over a photograph, a screenshot, a page an application drew, or
 anywhere a pane is clear enough to show one — quiet the ink with **`text` at
 less alpha** instead. A dialog's body is the case that taught this: it was
 `text-soft`, and half of each line vanished wherever a bright picture showed
-through the pane behind it. Nothing here should say the same word in two
-legibilities depending on what is behind it.
+through the pane behind it. A context menu's pane is just as clear, so its
+title, a row's stamp and detail, and a row that cannot be chosen are `text` at
+less alpha too. Nothing here should say the same word in two legibilities
+depending on what is behind it.
 
 Five palettes answer all fourteen. There is no fifteenth role, and adding one
 is a decision about the language rather than about the screen you are on: the
@@ -459,6 +461,22 @@ signed-distance field and `lxb_glyph.wgsl`: Default selects the water-bead
 branch, while Simple selects its flat tint/alpha/stain branch. Rasterising the
 SVG directly is only a neutral source preview, not the shell's Simple material.
 
+The same material makes the two controls a row can end in that are not
+drawings. **The chosen mark** stands ringed in the panel's dark glass when it
+is drawn on a control (`Ui::chosen`): on the light's bright accent the bead,
+being water, took the accent and the tick showed the same accent through it.
+The ring is a bead of the material round the mark, never a disc under it, so
+the mark still shows the row through it. **A switch** is a capsule of the dark
+glass, the accent's track in it while it is on, and a knob — three beads of
+the material, a rounded box measured by arithmetic and shaded by the same
+shader, lamp and shadow as the marks. The shell itself has no switch; a row it
+turns on and off wears the chosen mark or the empty one.
+
+**An application's own marks** are drawn the same way (`App::mark`,
+`lxb_app_mark`, `app.mark`): a white silhouette saying `lxb:shape`, measured
+into the atlas beside the set and shaded by the same material, drawn by name
+like any mark of the set — and never under one of the set's names.
+
 Two things this set does not do. It never copies anybody else's icon: the
 material language is the thing to take, and the shape is drawn from scratch.
 And it does not bundle application icons — each application owns and installs
@@ -554,11 +572,11 @@ rather than three. What decides that is not the device. It is one table, in
   way out of itself. The left-hand face button is left free for the
   application; every other control means what it means everywhere.
 
-Two of the shell's own bindings are deliberately not an application's, and both
-differences are the same difference. The shell has to keep a way out of a game
-that the game cannot take, so it gives the Menu key to the guide and Tab to the
-next display. An application has nothing to keep a way out of: the key with a
-menu printed on it opens the menu, and Tab moves within the application.
+One of the shell's own bindings is deliberately not an application's. The shell
+has to keep a way out of a game that the game cannot take, so it gives Tab to
+the next display. An application has nothing to keep a way out of, so Tab moves
+within the application. The key with a menu printed on it opens the menu in
+both.
 
 ---
 

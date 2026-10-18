@@ -866,6 +866,19 @@ static void draw(lxb_page *page, void *data)
         }
     }
 
+    /* What the pointer moves onto stands still — the pages down the side and
+     * the items on this one — so it takes the light, silently, as hovering
+     * does in the shell. Only a press acts on it. */
+    {
+        long hovered = lxb_page_hovered(page);
+        if (hovered >= 0 && hovered < COUNT(SECTIONS)) {
+            tour->section = hovered;
+        } else if (hovered >= (long)ITEM_SPOT
+                   && hovered < (long)ITEM_SPOT + page_count(tour)) {
+            tour->cursor[tour->section] = hovered - (long)ITEM_SPOT;
+        }
+    }
+
     chosen = lxb_page_chose(page);
     if (chosen == 1) {
         static const char *const answers[] = { "Good", "Close" };

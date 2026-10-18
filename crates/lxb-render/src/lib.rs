@@ -7,10 +7,12 @@ mod renderer;
 mod wallpaper_clock;
 
 pub use cadence::{Cadence, Next};
-pub use components::{ContextMenu, Dialog, Entry, FilePicker, Press, Pressing, Selection};
+pub use components::{
+    ContextMenu, Dialog, Entry, FilePicker, Press, Pressing, Selection, BEAD_SHARE,
+};
 pub use files::Files;
 pub use pointing::Spot;
-pub use renderer::{instance, instance_for, Ui, Written};
+pub use renderer::{instance, instance_for, Carry, Drawn, Mark, Ui, Written, OWN_MARKS};
 pub use wallpaper_clock::{monotonic_now_ns, WallpaperClock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

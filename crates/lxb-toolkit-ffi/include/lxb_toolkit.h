@@ -345,6 +345,12 @@ lxb_beside lxb_layout_beside(float window, float margin, float column,
                              float gap, float least);
 float lxb_peek(void);
 
+/* Where LineXinBar's on-screen keyboard settles over a display width x height,
+ * [x, y, w, h] written to out: centred along its foot, wherever the field it
+ * types into is. A field being typed into with it belongs above y. See
+ * lxb_toolkit::board. */
+void lxb_board_rect(float width, float height, float *out);
+
 /* The view's slide between the two, on the cards' spring. Keep one, zeroed to
  * begin with, and hand it back every frame; the first frame does not slide. */
 typedef struct {

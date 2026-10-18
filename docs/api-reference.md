@@ -2,7 +2,7 @@
 
 Every function the toolkit answers, in the order its headers declare them.
 
-236 functions in all.
+255 functions in all.
 
 The reference is the authoritative documentation. `scripts/make-reference.py`
 refreshes every C signature from the two headers and refuses missing, extra, or
@@ -16,7 +16,7 @@ Three shapes repeat and are not written out each time. `X_count` answers how man
 
 What the language answers: colours, sizes, motion, type, marks, recordings, the shapes of its panels and the words the controls it draws say. Links no GPU stack, no window system and no audio device.
 
-169 functions.
+170 functions.
 
 ### palettes
 
@@ -486,6 +486,14 @@ lxb_beside lxb_layout_beside(float window, float margin, float column,
 
 ```c
 float lxb_peek(void);
+```
+
+Where LineXinBar's on-screen keyboard settles over a display `width` × `height`, `[x, y, w, h]` written to `out`: centred along the display's foot, floating its margin clear of it, shrunk to fit across a display standing on its side — by the shell's own rule, which `check-sync` holds it to. The shell draws its board on a layer of its own wherever the field it types into is and never moves it out of the way, and nothing comes back over Wayland to say where it went, so an application that fills the display — every one does under LineXinBar — stands a field being typed into with it above `y` itself. Rust: `board::rect`; Python: `lxb.board_rect`.
+
+`lxb_board_rect`
+
+```c
+void lxb_board_rect(float width, float height, float *out);
 ```
 
 The slide itself, on the cards' spring. Keep an `lxb_slide`, zeroed to begin with, and hand it to `lxb_slide_follow` every frame with `0` while the column has the focus and `reach` while the page has it; it answers how far the view stands slid. The first frame stands there without sliding. `lxb_slide_moving` is whether it wants another frame. Rust: `layout::Slide`; Python: `lxb.Slide`.
@@ -1036,7 +1044,7 @@ What a key means, or -1. The letters are deliberately not in here.
 int lxb_action_of_key(int key);
 ```
 
-The shell's letter shorthands: wasd and hjkl for the directions, y for the context menu. Asked for separately because an application with a field in it must not bind them.
+The shell's letter shorthands: wasd and hjkl for the directions, y for the context menu. Asked for separately because an application with a field in it must not bind them. A window of `lxb_app.h` answers y as the context menu by itself wherever no field takes it as text, as the shell does; wasd and hjkl it leaves to the application.
 
 `lxb_action_of_letter`
 
@@ -1253,7 +1261,7 @@ void lxb_string_free(char *text);
 
 The window, the frame loop, the controls and the sounds — and the page an application draws into. Carries the GPU stack.
 
-67 functions.
+85 functions.
 
 A new application. `app_id` is the stable name the desktop entry, the executable and StartupWMClass all have to agree on; `title` is what a person sees. Never null; free it with lxb_app_free.
 
@@ -1289,6 +1297,25 @@ One list read down the screen is what an application usually is, and for that th
 void lxb_app_driven(lxb_app *app);
 ```
 
+Count the session as low-end hardware whatever the shell's Settings say, as an application's own "low-end" switch would: the window is drawn as it is there — the plain materials, the wallpaper held at one instant, the frames paced, every light standing on what is chosen at once — and lxb_page_low_end answers 1. A picture of it (lxb_app_shot, lxb_app_shot_after) is drawn so too: every frame at the one instant it is given, so nothing timed by the frame moves, while a menu, a question and a press still move on a sixtieth of a second between frames, as they do in the window there.
+
+`lxb_app_low_end`
+
+```c
+void lxb_app_low_end(lxb_app *app);
+```
+
+A mark of the application's own, drawn from then on by `name` wherever one of the toolkit's is — lxb_draw_icon, lxb_page_icon, lxb_page_head — and in the same material: the bead's wall and its sheen, the ring of water round every opening, the shadow, all lit by the same lamp as the shell's marks, so it stands beside them as one of the set. `svg` is `length` bytes of an SVG drawing of the shape and nothing else, drawn the way every mark of the toolkit is: white where the mark is, cut through where it is open, two of its thirty-two units left clear all round for the shadow, and `lxb:shape` written in it to say so. The material is computed from that outline, never painted.
+
+Answers 1, or 0 with the reason in lxb_app_trouble: a drawing that does not say it is a shape, does not parse or has nothing in it, a name the toolkit already draws a mark by (an application's drawing never stands in for one of the set), or a sixty-fifth mark — room is kept for sixty-four. The same name given again takes the new drawing. Measured at once, before lxb_app_run or lxb_app_shot, so a refusal is heard where the mark is given.
+
+`lxb_app_mark`
+
+```c
+int lxb_app_mark(lxb_app *app, const char *name, const void *svg,
+                 unsigned long length);
+```
+
 Open the window and run until it is closed. Zero if it ran; non-zero if it could not, and then lxb_app_trouble says why.
 
 `lxb_app_run`
@@ -1307,6 +1334,16 @@ The same page function, the same renderer and the same material as lxb_app_run �
 int lxb_app_shot(lxb_app *app, const char *path, unsigned int width,
                  unsigned int height, float seconds, lxb_page_fn page,
                  void *data);
+```
+
+A picture of the window `frames` frames after its first, each drawn a sixtieth of a second after the one before, written to a PNG at `path`. Zero if it was written; non-zero if it was not, and then lxb_app_trouble says why. Where lxb_app_shot is a check of a page at rest — whatever its first frame raised is put where it is going before the frame that is kept — this is one of a page in motion: the page is called once a frame, as in a window drawn sixty times a second, lxb_page_seconds moving on by a sixtieth each time and a menu, a question and a press moving on by as much between them, so a menu unfolding or a page turning is caught where it has got to. A page that counts the frames it is handed can open a menu or turn a page on one of them and be photographed so long after it.
+
+`lxb_app_shot_after`
+
+```c
+int lxb_app_shot_after(lxb_app *app, const char *path, unsigned int width,
+                       unsigned int height, float seconds, unsigned int frames,
+                       lxb_page_fn page, void *data);
 ```
 
 Why the window could not open, or null if it did. Owned by the application.
@@ -1347,12 +1384,20 @@ Seconds since the window opened: the one clock everything with a movement of its
 float lxb_page_seconds(const lxb_page *page);
 ```
 
-The next thing the keyboard or a controller said since the last frame, as an index into lxb_action, or -1 when there is nothing left. Read it in a loop; nothing in it says which control sent it. Always -1 unless the application asked for lxb_app_driven.
+The next thing the keyboard or a controller said since the last frame, as one of lxb_toolkit.h's LXB_ACTION_ numbers (lxb_action_name names them), or -1 when there is nothing left. Read it in a loop; nothing in it says which control sent it. Always -1 unless the application asked for lxb_app_driven.
 
 `lxb_page_action`
 
 ```c
 int lxb_page_action(lxb_page *page);
+```
+
+Hand the window an action, one of lxb_toolkit.h's LXB_ACTION_ numbers (the ones lxb_page_action answers with), as a key or a controller would: a question, a menu or the file chooser standing over the page takes it, a driven page finds it waiting in lxb_page_action, and otherwise it walks or presses the flow's light. What a picture of something being answered presses with (lxb_app_shot_after), since the window answers its own question and menus and nothing else reaches them; call it before reading the frame's actions. A number past the list does nothing, and so does lxb_page_action's -1 for nothing, handed straight back: it arrives as the largest unsigned long.
+
+`lxb_page_act`
+
+```c
+void lxb_page_act(lxb_page *page, unsigned long action);
 ```
 
 How far a wheel or touchpad moved over the spot written down under `id` with lxb_draw_spot, counted in directions and signed downwards. The directions themselves are already waiting in lxb_page_action, so a page that never asks this still scrolls; ask it to decide *which* of the page's own lists this frame's Up and Down are moving, which is the one question a pointer raises and an action cannot answer.
@@ -1379,7 +1424,7 @@ Which control the light is on. The same number a left click reports; the right b
 unsigned long lxb_page_focused(const lxb_page *page);
 ```
 
-The lit capsule that says where the light is, drawn travelling. `out` may be null; otherwise it is filled with where the light actually is this frame, which is not where it was asked to be until it arrives. The light is one object crossing the page rather than a property each control has.
+The lit capsule that says where the light is, drawn travelling. `out` may be null; otherwise it is filled with where the light actually is this frame, which is not where it was asked to be until it arrives. The light is one object crossing the page rather than a property each control has. Where the session is counted low-end (lxb_page_low_end) it stands where it is asked for at once, as the window's clock stands still there.
 
 For a page that draws its own controls. Draw it *before* the controls it is behind, so their faces sit over it.
 
@@ -1399,6 +1444,15 @@ void lxb_page_place(lxb_page *page, const float *rect, float strength,
                     float *out);
 ```
 
+The same light drawn in the rectangle's own shape, its corners rounded by `radius` rather than a capsule's: a card, a tile or a picture lit as itself instead of wearing a pill laid over it. It is carried there as lxb_page_glide carries the capsule, or put there at once where `appears` is 1, as lxb_page_place puts it — and it is the one light the capsule is, so a page that lights its rows with one and its cards with the other has it travel between them rather than go out in one place and come on in another. `out` may be null; otherwise it is filled with where the light is drawn this frame, and nothing is written without a page or a rectangle. Draw it before the card it is behind, as the capsule is drawn.
+
+`lxb_page_light_shaped`
+
+```c
+void lxb_page_light_shaped(lxb_page *page, const float *rect, float radius,
+                           float strength, int appears, float *out);
+```
+
 How to draw one of your own controls, as an lxb_press: resting, lit, or part-way through a press. `lit` says whether the light is on this one. The page keeps one press, because the light is in one place — a control the light is not on is resting, however many are in flight elsewhere. The flow's own controls do this for themselves; this is for a page that draws its own, which is a page that asked for lxb_app_driven.
 
 `lxb_page_press`
@@ -1415,12 +1469,60 @@ Whether a press landed on the spot written down under `id` with lxb_draw_spot, a
 int lxb_page_pressed(lxb_page *page, unsigned int id);
 ```
 
-Where the pointer is while a press that began on `id` is still held down: two floats written to `out`, answering 1, or 0 and nothing written. The one gesture a press and a release cannot describe between them — a bar taken hold of and moved. Only a pointer drags; a finger on the same control moves the list instead, which is what a finger does everywhere else on the page.
+Where the pointer is while a press that took hold of `id` is still held down: two floats written to `out`, answering 1, or 0 and nothing written. The one gesture a press and a release cannot describe between them — a bar taken hold of and moved. Asking is what makes `id` a bar: a press on a control the page asked about on the frame it landed on is held, and every motion until the button comes up is that drag rather than a hover. A press on any other control holds nothing, and the pointer goes on hovering with the button down, as it does in LineXinBar, where only a bar is held — so ask on every frame the bar is drawn. Only a pointer drags; a finger on the same control moves the list instead, which is what a finger does everywhere else on the page.
 
 `lxb_page_dragging`
 
 ```c
-int lxb_page_dragging(const lxb_page *page, unsigned int id, float *out);
+int lxb_page_dragging(lxb_page *page, unsigned int id, float *out);
+```
+
+Where the pointer rests over the page: two floats written to `out`, answering 1, or 0 and nothing written. Nothing is written once the pointer has left the window, while a menu, a dialog or the file chooser stands over the page, from the moment a key, a pad or a finger is reached for until the pointer moves again — so a page that hovers never fights the hands for its light — and while a press that took hold of a bar is held down, which is a drag that lxb_page_dragging follows, not a hover. A press held on any other control leaves it answering.
+
+`lxb_page_pointer`
+
+```c
+int lxb_page_pointer(const lxb_page *page, float *out);
+```
+
+Whether the pointer moved over the page since the last frame, 1 or 0. It is the only time hovering may move a light: one the pad moved stays where the pad put it under a pointer that is resting. A press holding a bar is a drag and never a move here; one held on any other control is not, and the pointer moving with it moves the light.
+
+`lxb_page_pointer_moved`
+
+```c
+int lxb_page_pointer_moved(const lxb_page *page);
+```
+
+The control the pointer moved onto since the last frame, by the number it was drawn with — a flow control's index or an id written down with lxb_draw_spot — or -1 on a frame it did not move and over nothing of the page's own. It is read off the frame the pointer was moving over, so it can be asked before anything is drawn. Hovering is selecting for what stands still: light a row, a button or a card with it, and leave alone a list that scrolls to its selection, where a first click carries the light instead. On a page that does not drive itself, the flow's own controls take the light under the pointer by themselves.
+
+`lxb_page_hovered`
+
+```c
+int lxb_page_hovered(const lxb_page *page);
+```
+
+A field takes text this frame, standing at `rect` — four floats, or null to keep the rectangle said last. From then on the letters typed, and Backspace, arrive through lxb_page_typed instead of as actions, so Backspace is no longer Back while a field takes it; directions, Accept and Escape still arrive as actions, so a field is left the way it was entered. The desktop's text input is told of the field, which is what LineXinBar answers by raising its on-screen keyboard over it while a controller is in hand (lxb_page_board says where). Say it on every frame the field takes text, as a control is drawn on every frame it is there: a frame that does not say it has no field taking text, and 0 takes back what was said earlier in the same frame.
+
+`lxb_page_taking_text`
+
+```c
+void lxb_page_taking_text(lxb_page *page, int taking, const float *rect);
+```
+
+What was typed since the last frame, in order: its letters as UTF-8, and U+0008 for each Backspace. Null for nothing. Read it on every frame a field takes text, because what a frame does not read is gone with it. The returned UTF-8 is owned by the caller; release it with lxb_app_string_free.
+
+`lxb_page_typed`
+
+```c
+char *lxb_page_typed(lxb_page *page);
+```
+
+Where LineXinBar's on-screen keyboard stands over the window while it is up: x, y, width and height written to `out`, answering 1, or 0 and nothing written. The shell raises it over a field taking text with a controller in hand, whatever chose the field, draws it along the foot of the display and never moves it out of the way, so a field being typed into belongs above its top for as long as this answers 1 — lift it, or scroll the form it is in, and give the room back when it goes. It answers 0 from the frame after the board is put away (its own hide key, B, Start, a key of the person's own keyboard), after the field stops taking text and after a pad's press reaches the window, and always outside LineXinBar. The rectangle is lxb_board_rect's for the window's size.
+
+`lxb_page_board`
+
+```c
+int lxb_page_board(const lxb_page *page, float *out);
 ```
 
 Close the window at the end of this frame.
@@ -1445,6 +1547,14 @@ Draw the next frame no later than this many seconds from now. Only low-end hardw
 
 ```c
 void lxb_page_redraw_within(lxb_page *page, float seconds);
+```
+
+Whether the toolkit counts this session as low-end hardware: 1 or 0. It is the shell's Settings > System > Low-end hardware mode where somebody chose, and otherwise whether the window is drawn on the processor rather than a graphics chip — `ShellTheme::low_end_on(software)`, the answer the window draws its own wallpaper and paces its frames by. A page that moves things itself — a page giving way to the next, a column stepping in — puts them where they are going at once where this is 1, as everything else in the window stands still there. Decided once, as the window opens, and 1 whatever Settings say for an application that asked for lxb_app_low_end. A picture (lxb_app_shot) answers 0 unless it was asked for of such an application: it is drawn as the window is on hardware that is not low-end.
+
+`lxb_page_low_end`
+
+```c
+int lxb_page_low_end(const lxb_page *page);
 ```
 
 Play one of the language's recordings, by its index in lxb_sound_name's list. The interface's own sounds are played for you; this is for a program with something of its own to say.
@@ -1585,7 +1695,7 @@ Where the light is standing, for a page that draws its own controls: four floats
 void lxb_page_light_at(lxb_page *page, const float *rect);
 ```
 
-Raise a context menu over the control the light is on. `title` may be null for a menu that is about nothing in particular. Nothing happens if one is already up.
+Raise a context menu over the control the light is on. `title` may be null for a menu that is about nothing in particular. Nothing happens if one is already up. The menu is as wide as its widest command needs to stand on one line, lit, so a name and the setting written after it fit together; it is never narrower than its own width, never wider than the window less its inset, and still grows out of and stands beside what it was raised over.
 
 `lxb_page_menu`
 
@@ -1594,7 +1704,7 @@ void lxb_page_menu(lxb_page *page, const char *title,
                    const char *const *commands, unsigned long count);
 ```
 
-The same menu, with the one command already in force wearing the language's own chosen mark. A menu of alternatives that does not say which one you are on is a menu somebody has to press to find out. `marked` indexes `commands`; anything past the end marks nothing, which is what `lxb_page_menu` passes.
+The same menu, with the one command already in force wearing the language's own chosen mark. A menu of alternatives that does not say which one you are on is a menu somebody has to press to find out. It opens with the light on that command, as the shell opens a list of values, so Accept pressed at once keeps what is in force; a marked command that cannot be chosen passes the light to the next one that can. `marked` indexes `commands`; anything past the end marks nothing, which is what `lxb_page_menu` passes, and that menu opens at its top.
 
 `lxb_page_menu_marked`
 
@@ -1602,6 +1712,16 @@ The same menu, with the one command already in force wearing the language's own 
 void lxb_page_menu_marked(lxb_page *page, const char *title,
                           const char *const *commands, unsigned long count,
                           unsigned long marked);
+```
+
+The same menu of acts, marking nothing, with the light on the command at `row` as it opens rather than on its first. What a menu a person comes back to does: one that opened another menu from one of its rows, raised again once that is answered, opens with the light on the row they went in by — the one just changed — as the shell's Settings come back to the row a page was opened from. A row past the end is the first.
+
+`lxb_page_menu_on`
+
+```c
+void lxb_page_menu_on(lxb_page *page, const char *title,
+                      const char *const *commands, unsigned long count,
+                      unsigned long row);
 ```
 
 Which command was pressed, on the frame it was pressed, or -1 for none.
@@ -1612,7 +1732,7 @@ Which command was pressed, on the frame it was pressed, or -1 for none.
 int lxb_page_chose(lxb_page *page);
 ```
 
-Ask a question. Modal: while it is up it owns every control, which is what makes it a question. Nothing happens if one is already up.
+Ask a question. Modal: while it is up it owns every control, which is what makes it a question. Nothing happens if one is already up. The body keeps the lines it is given: a line break in it is a line break on the pane, a blank line is a blank line, and a line that fits is written exactly as it came, so a program that broke its own sentences has them back as it broke them. Only a line too wide for the pane is broken again, at a space — never at a no-break space, never inside quotation marks (“Home”, « Dom », „Daten“) unless the quoted name is wider than a whole line, never before a mark standing alone such as "·" or "/", and never between a number and the word after it.
 
 `lxb_page_ask`
 
@@ -1714,12 +1834,45 @@ float lxb_draw_paragraph(lxb_page *page, const float *rect, const char *string,
                          unsigned long role);
 ```
 
-One of the shell's own marks, shaded into a bead of water out of its own shape. The style is the shell's current one.
+One of the shell's own marks, or one the application added with lxb_app_mark, shaded into a bead of water out of its own shape. The style is the shell's current one.
 
 `lxb_draw_icon`
 
 ```c
 void lxb_draw_icon(lxb_page *page, const float *rect, const char *name);
+```
+
+A picture from a file on this disk — PNG, JPEG, GIF, WebP, BMP, TIFF or SVG (an SVG known by its `.svg` name) — in `rect`, its corners rounded by `radius`, at `alpha`. `fit` is LXB_FIT_CONTAIN, the whole picture as large as it fits and centred, or LXB_FIT_COVER, the rectangle filled and what overflows it cut away; a number past the end is the last. The path is the file system's own bytes, UTF-8 or not. Answers 1 once it is drawn, and 0 while it is still being read, when it cannot be read, and with no page, no path, or a rectangle without area. A file is read on a worker thread the first time it is asked for, scaled to no more than 512 pixels a side and kept until it changes on disk — the thirty-two drawn most recently, so a page that draws more at once keeps reading them — so the window never waits for a picture to be read: ask on every frame, and draw what stands in for it on a frame that answers 0. A picture of the window (lxb_app_shot) reads it at once, so it is there in the first frame.
+
+`lxb_draw_picture`
+
+```c
+int lxb_draw_picture(lxb_page *page, const float *rect, float radius,
+                     const char *path, unsigned long fit, float alpha);
+```
+
+The chosen mark — a tick cut through a bead, the language's one way of saying "this is the value in force" — in the square `rect`, at `alpha`, ringed in the panel's dark glass. The ring is what lets it be read on a lit control: the bead is water, and on the light's bright accent it took that colour and all but vanished, the tick showing the same accent through it. The ring is of the marks' own material and rings the bead without lying under it, so the bead still shows the control through it as every mark does.
+
+`lxb_draw_chosen`
+
+```c
+void lxb_draw_chosen(lxb_page *page, const float *rect, float alpha);
+```
+
+A switch standing in `rect`, on (1) or off (0): a capsule of the panel's dark glass, the accent's track in it while it is on, and a knob at the end it is switched to — each a bead of the marks' material, so a switch is as much one of the set as the marks beside it. The dark capsule is what keeps a switch that is on readable on a lit row, where it would otherwise be the light's accent on the light's accent. `ink` is how strongly it is drawn: 1 on a control that can be used, less on one that cannot. Under the plain icons every part is a plain shape of its colour.
+
+`lxb_draw_switch`
+
+```c
+void lxb_draw_switch(lxb_page *page, const float *rect, int on, float ink);
+```
+
+How long a switch `height` tall is drawn: its track a little under twice as long as it is tall, and the dark capsule round it.
+
+`lxb_switch_width`
+
+```c
+float lxb_switch_width(float height);
 ```
 
 The hairline this language groups with.
@@ -1771,6 +1924,15 @@ Blur and dissolve the top and bottom ends of a scrolling area, after everything 
 ```c
 void lxb_draw_soft_edges(lxb_page *page, const float *rect, float band,
                          float top, float bottom);
+```
+
+The same at the left and right ends of an area instead of its top and bottom: what is carried sideways across a pane — a page coming in or going — dissolves into the pane at its sides rather than being cut off at a line. `band` is the feather in points; `left` and `right` are how much really continues past each end. Lay the band where nothing standing still is drawn, since everything in it is softened.
+
+`lxb_draw_soft_side_edges`
+
+```c
+void lxb_draw_soft_side_edges(lxb_page *page, const float *rect, float band,
+                              float left, float right);
 ```
 
 What is at a point of the frame that is on screen: the id of the thing there, or -1 for nothing. Read from the last frame drawn, because a pointer event is about the picture the person could see.

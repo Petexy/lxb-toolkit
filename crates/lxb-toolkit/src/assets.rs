@@ -121,6 +121,10 @@ pub const GLYPHS: &[(&str, &[u8])] = glyphs![
     "refresh",
     "sign-out",
     "logo",
+    "setting-name",
+    "setting-username",
+    "setting-password",
+    "setting-account-type",
 ];
 
 pub const SOUNDS: &[(&str, &[u8])] = &[
@@ -249,7 +253,7 @@ mod tests {
 
     #[test]
     fn every_asset_is_really_here() {
-        assert_eq!(GLYPHS.len(), 109, "the mark set changed size");
+        assert_eq!(GLYPHS.len(), 113, "the mark set changed size");
         for (name, bytes) in GLYPHS {
             let source = std::str::from_utf8(bytes)
                 .unwrap_or_else(|error| panic!("{name} is not UTF-8: {error}"));
@@ -405,6 +409,10 @@ mod tests {
             "refresh",
             "sign-out",
             "logo",
+            "setting-name",
+            "setting-username",
+            "setting-password",
+            "setting-account-type",
         ];
 
         assert_eq!(glyph_names().collect::<Vec<_>>(), EXPECTED);

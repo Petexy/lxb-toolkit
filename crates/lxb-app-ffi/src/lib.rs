@@ -1,7 +1,9 @@
 #![allow(clippy::missing_safety_doc)]
-use std::ffi::{c_char, c_float, c_int, c_uint, c_void, CStr, CString};
+use std::ffi::{c_char, c_float, c_int, c_uint, c_void, CStr, CString, OsStr};
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 
-use lxb_app::lxb_render::{Align, Press};
+use lxb_app::lxb_render::{Align, Fit, Press};
 use lxb_app::lxb_toolkit::{
     material::{Overlay, Surface},
     metrics::Metric,
@@ -10,7 +12,7 @@ use lxb_app::lxb_toolkit::{
     sound::Sound,
     typography::Text,
 };
-use lxb_app::{App, Page};
+use lxb_app::{App, Page, Typed};
 
 #[allow(non_camel_case_types)]
 type Size = std::os::raw::c_ulong;
@@ -54,6 +56,41 @@ pub unsafe extern "C" fn lxb_app_driven(app: *mut AppHandle) {
     if let Some(handle) = app.as_mut() {
         handle.app = handle.app.take().map(App::driven);
     }
+}
+
+/// Count the session as low-end hardware whatever the shell's Settings say.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_app_low_end(app: *mut AppHandle) {
+    if let Some(handle) = app.as_mut() {
+        handle.app = handle.app.take().map(App::low_end);
+    }
+}
+
+/// A mark of the application's own, drawn by `name` like the toolkit's.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_app_mark(
+    app: *mut AppHandle,
+    name: *const c_char,
+    svg: *const c_void,
+    length: Size,
+) -> c_int {
+    let Some(handle) = app.as_mut() else {
+        return 0;
+    };
+    let refused = match (handle.app.as_mut(), borrow(name)) {
+        (None, _) => "this application has already been run".to_string(),
+        (_, None) => "a mark needs a name".to_string(),
+        (Some(_), Some(_)) if svg.is_null() => "a mark needs a drawing".to_string(),
+        (Some(built), Some(name)) => {
+            let drawing = std::slice::from_raw_parts(svg.cast::<u8>(), length as usize);
+            match built.add_mark(name, drawing) {
+                Ok(()) => return 1,
+                Err(message) => message,
+            }
+        }
+    };
+    handle.trouble = CString::new(refused).ok();
+    0
 }
 
 #[no_mangle]
@@ -121,6 +158,43 @@ pub unsafe extern "C" fn lxb_app_shot(
     }
 }
 
+/// A picture of the window `frames` frames after its first, a sixtieth of a
+/// second apart. Zero if it was written.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_app_shot_after(
+    app: *mut AppHandle,
+    path: *const c_char,
+    width: c_uint,
+    height: c_uint,
+    seconds: c_float,
+    frames: c_uint,
+    page: Option<PageFn>,
+    data: *mut c_void,
+) -> c_int {
+    let Some(handle) = app.as_mut() else {
+        return 1;
+    };
+    let Some(built) = handle.app.take() else {
+        handle.trouble = CString::new("this application has already been run").ok();
+        return 1;
+    };
+    let (Some(page), Some(path)) = (page, borrow(path)) else {
+        handle.trouble = CString::new("a picture with no page to draw, or nowhere to put it").ok();
+        return 1;
+    };
+    let outcome = built.shot_after(path, width, height, seconds, frames, |frame| {
+        let handed: *mut Page<'_> = frame;
+        page(handed.cast::<Page<'static>>(), data);
+    });
+    match outcome {
+        Ok(()) => 0,
+        Err(message) => {
+            handle.trouble = CString::new(message).ok();
+            1
+        }
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn lxb_app_trouble(app: *const AppHandle) -> *const c_char {
     app.as_ref()
@@ -155,6 +229,23 @@ pub unsafe extern "C" fn lxb_page_action(page: *mut Page<'static>) -> c_int {
     page.as_mut()
         .and_then(|page| page.actions().next())
         .map_or(-1, |action| action as c_int)
+}
+
+/// Hand the window an action, one of the `LXB_ACTION_` numbers, as a key or
+/// a controller would. A number past the list does nothing — and so does
+/// `lxb_page_action`'s -1 for nothing handed straight back, which arrives
+/// here as the largest `unsigned long`.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_act(page: *mut Page<'static>, action: Size) {
+    let Some(action) = lxb_app::lxb_toolkit::input::Action::ALL
+        .get(action as usize)
+        .copied()
+    else {
+        return;
+    };
+    if let Some(page) = page.as_mut() {
+        page.act(action);
+    }
 }
 
 /// How far a wheel or touchpad moved over one of this page's own spots,
@@ -221,6 +312,28 @@ unsafe fn travel(
     }
 }
 
+/// The page's light carried to `rect` — or put there at once, `appears` — and
+/// drawn in the rectangle's own shape, its corners rounded by `radius`. Writes
+/// where it is drawn this frame to `out`, or nothing without a page or a
+/// rectangle.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_light_shaped(
+    page: *mut Page<'static>,
+    rect: *const c_float,
+    radius: c_float,
+    strength: c_float,
+    appears: c_int,
+    out: *mut c_float,
+) {
+    let (Some(page), Some(rect)) = (page.as_mut(), rectangle(rect)) else {
+        return;
+    };
+    let at = page.light_shaped(rect, radius, strength, appears != 0);
+    if !out.is_null() {
+        std::ptr::copy_nonoverlapping(at.as_ptr(), out, 4);
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn lxb_page_press(page: *const Page<'static>, lit: c_int) -> Size {
     match page.as_ref() {
@@ -234,24 +347,102 @@ pub unsafe extern "C" fn lxb_page_press(page: *const Page<'static>, lit: c_int) 
     }
 }
 
-/// Where the pointer is while a press that began on this control is still
+/// Where the pointer is while a press that took hold of this control is still
 /// held down. Writes two floats — x and y — to `out` and answers 1, or answers
 /// 0 and writes nothing when nothing is being dragged from there.
 ///
-/// The one gesture a press and a release cannot describe between them: a bar
-/// taken hold of and moved. Only a pointer drags; a finger on the same control
-/// moves the list instead.
+/// Asking is what makes the control a bar: only a press on one the page asked
+/// about on the frame it landed on is held, and is a drag rather than a hover
+/// until the button comes up. Only a pointer drags; a finger on the same
+/// control moves the list instead.
 #[no_mangle]
 pub unsafe extern "C" fn lxb_page_dragging(
-    page: *const Page<'static>,
+    page: *mut Page<'static>,
     id: c_uint,
     out: *mut c_float,
 ) -> c_int {
-    let Some(at) = page.as_ref().and_then(|page| page.dragging(id)) else {
+    let Some(at) = page.as_mut().and_then(|page| page.dragging(id)) else {
         return 0;
     };
     if !out.is_null() {
         std::ptr::copy_nonoverlapping(at.as_ptr(), out, 2);
+    }
+    1
+}
+
+/// Where the pointer rests over the page. Writes x and y to `out` and answers
+/// 1, or answers 0 and writes nothing: the pointer has left the window, a
+/// menu, a dialog or the file chooser stands over the page, a key, a pad or a
+/// finger has been reached for since it last moved, or a press that took hold
+/// of a bar is held down.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_pointer(page: *const Page<'static>, out: *mut c_float) -> c_int {
+    let Some(at) = page.as_ref().and_then(|page| page.pointer()) else {
+        return 0;
+    };
+    if !out.is_null() {
+        std::ptr::copy_nonoverlapping(at.as_ptr(), out, 2);
+    }
+    1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_pointer_moved(page: *const Page<'static>) -> c_int {
+    page.as_ref()
+        .map_or(0, |page| c_int::from(page.pointer_moved()))
+}
+
+/// The control the pointer moved onto since the last frame, by the number it
+/// was drawn with, or -1.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_hovered(page: *const Page<'static>) -> c_int {
+    page.as_ref()
+        .and_then(|page| page.hovered())
+        .map_or(-1, |id| id as c_int)
+}
+
+/// A field takes text this frame (`taking` non-zero), standing at `rect`,
+/// which may be null. Asked afresh every frame, as the Rust page is; 0 takes
+/// back what was said earlier in the same frame.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_taking_text(
+    page: *mut Page<'static>,
+    taking: c_int,
+    rect: *const c_float,
+) {
+    let Some(page) = page.as_mut() else {
+        return;
+    };
+    page.taking_text(taking != 0);
+    if let (true, Some(rect)) = (taking != 0, rectangle(rect)) {
+        page.text_at(rect);
+    }
+}
+
+/// What was typed since the last frame, in order: its letters, and U+0008 for
+/// each Backspace. Null for nothing; the caller owns the rest and releases it
+/// with `lxb_app_string_free`.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_typed(page: *mut Page<'static>) -> *mut c_char {
+    let Some(page) = page.as_mut() else {
+        return std::ptr::null_mut();
+    };
+    let text = spelled(page.typed());
+    if text.is_empty() {
+        return std::ptr::null_mut();
+    }
+    owned(&text)
+}
+
+/// Where LineXinBar's on-screen keyboard stands over the window: four floats
+/// written to `out` and 1, or 0 and nothing written where it is not up.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_board(page: *const Page<'static>, out: *mut c_float) -> c_int {
+    let Some(rect) = page.as_ref().and_then(|page| page.shells_board()) else {
+        return 0;
+    };
+    if !out.is_null() {
+        std::ptr::copy_nonoverlapping(rect.as_ptr(), out, 4);
     }
     1
 }
@@ -290,6 +481,12 @@ pub unsafe extern "C" fn lxb_page_redraw_within(page: *mut Page<'static>, second
     if let (Some(page), true) = (page.as_mut(), seconds.is_finite()) {
         page.redraw_within(std::time::Duration::from_secs_f32(seconds.max(0.0)));
     }
+}
+
+/// Whether the toolkit counts this session as low-end hardware: 1 or 0.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_low_end(page: *const Page<'static>) -> c_int {
+    page.as_ref().map_or(0, |page| c_int::from(page.low_end()))
 }
 
 #[no_mangle]
@@ -455,6 +652,24 @@ pub unsafe extern "C" fn lxb_page_menu_marked(
     let commands = strings(commands, count);
     let borrowed: Vec<&str> = commands.iter().map(String::as_str).collect();
     page.menu_marked(borrow(title), &borrowed, marked as usize);
+}
+
+/// A menu of acts, marking nothing, opening with the light on `row`; a row
+/// past the end is the first.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_page_menu_on(
+    page: *mut Page<'static>,
+    title: *const c_char,
+    commands: *const *const c_char,
+    count: Size,
+    row: Size,
+) {
+    let Some(page) = page.as_mut() else {
+        return;
+    };
+    let commands = strings(commands, count);
+    let borrowed: Vec<&str> = commands.iter().map(String::as_str).collect();
+    page.menu_on(borrow(title), &borrowed, row as usize);
 }
 
 #[no_mangle]
@@ -634,6 +849,60 @@ pub unsafe extern "C" fn lxb_draw_icon(
     }
 }
 
+/// A picture from a file on this disk in `rect`: 1 once it is drawn, 0 while
+/// it is still being read, when it cannot be, or without a page, a rectangle
+/// or a path. The path is the file system's own bytes, UTF-8 or not.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_draw_picture(
+    page: *mut Page<'static>,
+    rect: *const c_float,
+    radius: c_float,
+    path: *const c_char,
+    fit: Size,
+    alpha: c_float,
+) -> c_int {
+    match (page.as_mut(), rectangle(rect), file(path)) {
+        (Some(page), Some(rect), Some(path)) => {
+            let fit = pick(&[Fit::Contain, Fit::Cover], fit);
+            c_int::from(page.ui().picture(rect, radius, path, fit, alpha))
+        }
+        _ => 0,
+    }
+}
+
+/// The chosen mark, ringed in dark glass, in the square `rect`.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_draw_chosen(
+    page: *mut Page<'static>,
+    rect: *const c_float,
+    alpha: c_float,
+) {
+    if let (Some(page), Some(rect)) = (page.as_mut(), rectangle(rect)) {
+        let style = page.icons();
+        page.ui().chosen(rect, style, alpha);
+    }
+}
+
+/// A switch, on or off, standing in `rect`.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_draw_switch(
+    page: *mut Page<'static>,
+    rect: *const c_float,
+    on: c_int,
+    ink: c_float,
+) {
+    if let (Some(page), Some(rect)) = (page.as_mut(), rectangle(rect)) {
+        let style = page.icons();
+        page.ui().switch(rect, on != 0, style, ink);
+    }
+}
+
+/// How long a switch `height` tall is.
+#[no_mangle]
+pub extern "C" fn lxb_switch_width(height: c_float) -> c_float {
+    lxb_app::lxb_render::Ui::switch_width(height)
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn lxb_draw_rule(page: *mut Page<'static>, rect: *const c_float, role: Size) {
     if let (Some(page), Some(rect)) = (page.as_mut(), rectangle(rect)) {
@@ -703,6 +972,25 @@ pub unsafe extern "C" fn lxb_draw_soft_edges(
     }
 }
 
+/// Blur and fade the left and right edges of an area, after everything in
+/// it has been drawn: what is carried sideways across a pane dissolves into
+/// it there.
+///
+/// `band` is the feather in points; `left` and `right` are how strongly each
+/// edge is there.
+#[no_mangle]
+pub unsafe extern "C" fn lxb_draw_soft_side_edges(
+    page: *mut Page<'static>,
+    rect: *const c_float,
+    band: c_float,
+    left: c_float,
+    right: c_float,
+) {
+    if let (Some(page), Some(rect)) = (page.as_mut(), rectangle(rect)) {
+        page.ui().soft_side_edges(rect, band, left, right);
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn lxb_page_at(page: *const Page<'static>, x: c_float, y: c_float) -> c_int {
     use lxb_app::lxb_render::Spot;
@@ -749,6 +1037,30 @@ unsafe fn borrow<'a>(text: *const c_char) -> Option<&'a str> {
         return None;
     }
     CStr::from_ptr(text).to_str().ok()
+}
+
+/// A path as C hands it over: the file system's bytes, which need not be
+/// UTF-8.
+unsafe fn file<'a>(path: *const c_char) -> Option<&'a Path> {
+    if path.is_null() {
+        return None;
+    }
+    let bytes = CStr::from_ptr(path).to_bytes();
+    Some(Path::new(OsStr::from_bytes(bytes)))
+}
+
+/// What was typed, as one string: its letters as they came and U+0008 for each
+/// Backspace. A NUL, which C cannot carry, is dropped rather than losing the
+/// rest.
+fn spelled(typed: impl IntoIterator<Item = Typed>) -> String {
+    let mut text = String::new();
+    for typed in typed {
+        match typed {
+            Typed::Wrote(written) => text.extend(written.chars().filter(|&letter| letter != '\0')),
+            Typed::Rubbed => text.push('\u{8}'),
+        }
+    }
+    text
 }
 
 fn owned(text: &str) -> *mut c_char {
@@ -805,5 +1117,168 @@ mod tests {
             lxb_app_string_free(text);
             lxb_app_string_free(std::ptr::null_mut());
         }
+    }
+
+    #[test]
+    fn no_page_hovers_nothing() {
+        let mut out = [7.0f32; 2];
+        unsafe {
+            assert_eq!(lxb_page_pointer(std::ptr::null(), out.as_mut_ptr()), 0);
+            assert_eq!(lxb_page_pointer_moved(std::ptr::null()), 0);
+            assert_eq!(lxb_page_hovered(std::ptr::null()), -1);
+        }
+        assert_eq!(out, [7.0; 2], "nothing is written where nothing is known");
+    }
+
+    #[test]
+    fn no_application_takes_no_picture() {
+        let path = c"never.png";
+        unsafe {
+            assert_eq!(
+                lxb_app_shot_after(
+                    std::ptr::null_mut(),
+                    path.as_ptr(),
+                    64,
+                    48,
+                    6.0,
+                    3,
+                    None,
+                    std::ptr::null_mut()
+                ),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn an_action_handed_to_no_page_or_past_the_list_does_nothing() {
+        unsafe {
+            lxb_page_act(std::ptr::null_mut(), 1);
+            lxb_page_act(std::ptr::null_mut(), Size::MAX);
+        }
+    }
+
+    #[test]
+    fn no_page_is_not_low_end() {
+        assert_eq!(unsafe { lxb_page_low_end(std::ptr::null()) }, 0);
+    }
+
+    #[test]
+    fn a_soft_side_edge_on_no_page_or_no_rectangle_does_nothing() {
+        let rect = [0.0f32, 0.0, 100.0, 50.0];
+        unsafe {
+            lxb_draw_soft_side_edges(std::ptr::null_mut(), rect.as_ptr(), 10.0, 1.0, 1.0);
+            lxb_draw_soft_side_edges(std::ptr::null_mut(), std::ptr::null(), 10.0, 1.0, 1.0);
+        }
+    }
+
+    #[test]
+    fn a_light_in_its_own_shape_on_no_page_writes_nothing() {
+        let rect = [0.0f32, 0.0, 100.0, 50.0];
+        let mut out = [7.0f32; 4];
+        unsafe {
+            lxb_page_light_shaped(
+                std::ptr::null_mut(),
+                rect.as_ptr(),
+                12.0,
+                1.0,
+                1,
+                out.as_mut_ptr(),
+            );
+            lxb_page_light_shaped(
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                12.0,
+                1.0,
+                0,
+                out.as_mut_ptr(),
+            );
+        }
+        assert_eq!(out, [7.0; 4], "nothing is written where nothing is lit");
+    }
+
+    #[test]
+    fn no_page_takes_no_text_and_has_no_board_over_it() {
+        let rect = [10.0f32, 20.0, 300.0, 40.0];
+        let mut out = [7.0f32; 4];
+        unsafe {
+            lxb_page_taking_text(std::ptr::null_mut(), 1, rect.as_ptr());
+            lxb_page_taking_text(std::ptr::null_mut(), 0, std::ptr::null());
+            assert!(lxb_page_typed(std::ptr::null_mut()).is_null());
+            assert_eq!(lxb_page_board(std::ptr::null(), out.as_mut_ptr()), 0);
+            assert_eq!(lxb_page_board(std::ptr::null(), std::ptr::null_mut()), 0);
+        }
+        assert_eq!(out, [7.0; 4], "nothing is written where nothing is known");
+    }
+
+    #[test]
+    fn what_was_typed_crosses_as_one_string_released_by_this_library() {
+        let text = spelled([
+            Typed::Wrote("fire".to_string()),
+            Typed::Rubbed,
+            Typed::Wrote("żółw\0 🙂".to_string()),
+        ]);
+        assert_eq!(
+            text, "fire\u{8}żółw 🙂",
+            "a NUL lost the rest of the typing"
+        );
+        assert!(spelled([]).is_empty());
+
+        let handed = owned(&text);
+        assert!(!handed.is_null());
+        assert_eq!(
+            unsafe { CStr::from_ptr(handed) }.to_str(),
+            Ok("fire\u{8}żółw 🙂")
+        );
+        unsafe { lxb_app_string_free(handed) };
+    }
+
+    #[test]
+    fn a_picture_on_no_page_is_not_drawn() {
+        let rect = [0.0f32, 0.0, 100.0, 50.0];
+        let path = c"/nowhere/picture.png";
+        unsafe {
+            assert_eq!(
+                lxb_draw_picture(
+                    std::ptr::null_mut(),
+                    rect.as_ptr(),
+                    8.0,
+                    path.as_ptr(),
+                    0,
+                    1.0
+                ),
+                0
+            );
+            assert_eq!(
+                lxb_draw_picture(
+                    std::ptr::null_mut(),
+                    std::ptr::null(),
+                    8.0,
+                    path.as_ptr(),
+                    1,
+                    1.0
+                ),
+                0
+            );
+            assert_eq!(
+                lxb_draw_picture(
+                    std::ptr::null_mut(),
+                    rect.as_ptr(),
+                    8.0,
+                    std::ptr::null(),
+                    Size::MAX,
+                    1.0
+                ),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn a_pictures_path_is_the_file_systems_bytes() {
+        let path = c"/tmp/\xffpicture.png";
+        let read = unsafe { file(path.as_ptr()) }.expect("a path that is not UTF-8");
+        assert_eq!(read.as_os_str().as_bytes(), b"/tmp/\xffpicture.png");
+        assert!(unsafe { file(std::ptr::null()) }.is_none());
     }
 }

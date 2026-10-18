@@ -229,6 +229,35 @@ pub const SCROLL_STEP: f32 = 15.0;
 
 pub const TAP_SLOP: f32 = 24.0;
 
+pub const COINCIDENCE: Duration = Duration::from_millis(150);
+
+#[derive(Debug, Clone)]
+pub struct Answered<S> {
+    recent: Vec<(Action, S, Duration)>,
+}
+
+impl<S> Default for Answered<S> {
+    fn default() -> Self {
+        Self { recent: Vec::new() }
+    }
+}
+
+impl<S: Copy + PartialEq> Answered<S> {
+    pub fn answer(&mut self, action: Action, from: S, now: Duration) -> bool {
+        self.recent
+            .retain(|(_, _, at)| now.saturating_sub(*at) < COINCIDENCE);
+        if self
+            .recent
+            .iter()
+            .any(|(had, by, _)| *had == action && *by != from)
+        {
+            return false;
+        }
+        self.recent.push((action, from, now));
+        true
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Wheel {
     carried: f32,
@@ -345,6 +374,34 @@ mod tests {
         let mut out = Vec::new();
         repeat.update(Duration::from_millis(millis), pressed, stick, &mut out);
         out
+    }
+
+    #[test]
+    fn the_same_press_on_two_controllers_is_answered_once() {
+        let at = Duration::from_millis;
+        let (pad, copy) = (1u32, 2u32);
+        let mut answered = Answered::default();
+
+        assert!(answered.answer(Action::Accept, pad, at(1000)));
+        assert!(
+            !answered.answer(Action::Accept, copy, at(1010)),
+            "one press, answered once"
+        );
+        assert!(
+            answered.answer(Action::Accept, pad, at(1050)),
+            "a repeat on the same controller is a second press"
+        );
+        assert!(
+            answered.answer(Action::Accept, copy, at(1050) + COINCIDENCE),
+            "past the window, both are answered"
+        );
+
+        let mut answered = Answered::default();
+        assert!(answered.answer(Action::Left, pad, at(2000)));
+        assert!(
+            answered.answer(Action::Back, copy, at(2005)),
+            "two different buttons at once are two presses"
+        );
     }
 
     #[test]

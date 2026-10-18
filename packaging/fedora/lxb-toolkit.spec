@@ -1,5 +1,5 @@
 Name:           lxb-toolkit
-Version:        0.9.3
+Version:        0.9.4
 Release:        1%{?dist}
 Summary:        The LineXinBar design language, for applications built to sit beside it
 
@@ -156,6 +156,26 @@ cargo test --offline --locked -p lxb-toolkit -p lxb-toolkit-ffi -p lxb-app -p lx
 %{python3_sitelib}/lxb_toolkit-%{version}.dist-info/
 
 %changelog
+* Wed Oct 14 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.9.4-1
+- Released with LineXinBar 0.9.4 and transcribed from it (24ff3a0). Pointing
+  at something lights it, as in LineXinBar: Page::pointer, pointer_moved and
+  hovered (lxb_page_pointer..., page.pointer...); only a bar is held by a
+  press, and a press held anywhere else goes on hovering.
+- Menus grow to their widest row and open on the choice in force
+  (Page::menu_marked, Page::menu_on); a question keeps the lines it is given;
+  menus and questions are written in white over an application's page.
+- Page::low_end and App::low_end; in low-end hardware mode a light stands on
+  what is chosen at once instead of gliding on a held clock.
+- Pages can be carried whole and photographed part of the way through
+  (Ui::drawn, carry_between, soft_side_edges, App::shot_after, Page::act).
+- An application's own marks (App::mark), the tick and the switch in the
+  marks' material (Ui::chosen, Ui::switch), and LineXinBar's four account
+  marks.
+- Page::shells_board and Page::taking_keys: a field stays above LineXinBar's
+  on-screen keyboard, and a keyboard types without raising it; the letter y
+  raises the context menu, as in LineXinBar.
+- One press reported by two controllers is answered once (input::Answered).
+
 * Tue Sep 29 2026 Piotr Lewandowski <piotr.petexy@gmail.com> - 0.9.3-1
 - Released with LineXinBar 0.9.3 and transcribed from it. Applications take
   part in the session's power management: Page::keep_awake (and
